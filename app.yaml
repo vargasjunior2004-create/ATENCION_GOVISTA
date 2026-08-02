@@ -1,9 +1,8 @@
 # Configuración de despliegue para Wasmer Edge (https://wasmer.io)
-# REEMPLAZA "TU_USUARIO" por tu nombre de usuario de Wasmer en owner y package.
 kind: wasmer.io/App.v0
-owner: TU_USUARIO
+owner: vargasjunior2004-create
 name: salestracker
-package: TU_USUARIO/salestracker
+package: vargasjunior2004-create/salestracker
 debug: false
 env:
   DJANGO_SECRET_KEY: "REMOVED_SECRET"
