@@ -32,6 +32,7 @@ export default function CashCountModule() {
   const [outflows, setOutflows] = useState([]);
   const [totalOutflows, setTotalOutflows] = useState(0);
   const [cashCountId, setCashCountId] = useState(null);
+  const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -66,11 +67,13 @@ export default function CashCountModule() {
           bill_200: c.bill_200,
         });
         setCashCountId(c.id);
+        setSaved(false);
       } else {
         const obj = {};
         DENOMINATIONS.forEach(d => obj[d.key] = 0);
         setCounts(obj);
         setCashCountId(null);
+        setSaved(false);
       }
       setOutflows(data.outflows || []);
       setTotalOutflows(data.totalOutflows || 0);
@@ -83,6 +86,7 @@ export default function CashCountModule() {
   function handleCountChange(key, val) {
     const n = parseInt(val) || 0;
     setCounts(prev => ({ ...prev, [key]: n }));
+    setSaved(false);
   }
 
   async function handleSaveCount() {
@@ -90,12 +94,25 @@ export default function CashCountModule() {
     setMsg(null);
     try {
       await api.saveCashCount({ date, ...counts });
+      await loadCashCount();
       setMsg({ type: 'success', text: 'Arqueo guardado' });
-      loadCashCount();
+      setSaved(true);
     } catch (e) {
       setMsg({ type: 'error', text: e.error || 'Error al guardar' });
     }
     setSaving(false);
+  }
+
+  function handleReset() {
+    if (!window.confirm('¿Limpiar el conteo y las salidas en pantalla? (No afecta lo guardado en la base de datos)')) return;
+    const obj = {};
+    DENOMINATIONS.forEach(d => obj[d.key] = 0);
+    setCounts(obj);
+    setOutflows([]);
+    setTotalOutflows(0);
+    setCashCountId(null);
+    setSaved(false);
+    setMsg({ type: 'success', text: 'Arqueo limpiado en pantalla' });
   }
 
   async function handleAddOutflow() {
@@ -111,6 +128,7 @@ export default function CashCountModule() {
       });
       setOutflows(prev => [...prev, data.outflow]);
       setTotalOutflows(data.totalOutflows);
+      setSaved(false);
       setNewPerson('');
       setNewAmount('');
       setNewConcept('');
@@ -125,6 +143,7 @@ export default function CashCountModule() {
       const data = await api.deleteOutflow(id);
       setOutflows(prev => prev.filter(o => o.id !== id));
       setTotalOutflows(data.totalOutflows);
+      setSaved(false);
     } catch (e) {
       setMsg({ type: 'error', text: e.error || 'Error al eliminar' });
     }
@@ -141,16 +160,6 @@ export default function CashCountModule() {
       URL.revokeObjectURL(url);
     } catch {
       setMsg({ type: 'error', text: 'Error al descargar PDF' });
-    }
-  }
-
-  async function handleWhatsApp() {
-    try {
-      const data = await api.getCashPDFLink(date);
-      const text = encodeURIComponent(`Arqueo de Caja ${date}\n${data.url}`);
-      window.open(`https://wa.me/?text=${text}`, '_blank');
-    } catch {
-      setMsg({ type: 'error', text: 'Error al generar link para WhatsApp' });
     }
   }
 
@@ -177,14 +186,21 @@ export default function CashCountModule() {
             readOnly
             className="bg-slate-50"
           />
-          <div className="flex items-end">
+          <div className="flex items-end gap-2">
             <Button
               variant="primary"
               onClick={handleSaveCount}
               disabled={saving}
-              className="w-full"
+              className="flex-1"
             >
               {saving ? 'Guardando...' : 'Guardar Arqueo'}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={handleReset}
+              className="flex-1"
+            >
+              Resetear
             </Button>
           </div>
         </div>
@@ -331,11 +347,13 @@ export default function CashCountModule() {
         </div>
         <p className="text-xs text-slate-500 mb-4 text-right">Total Contado − Total Salidas</p>
         <div className="flex flex-col sm:flex-row gap-3">
-          <Button variant="secondary" onClick={handleDownloadPDF} className="flex-1">
-            Descargar PDF
-          </Button>
-          <Button variant="success" onClick={handleWhatsApp} className="flex-1">
-            Enviar por WhatsApp
+          <Button
+            variant="secondary"
+            onClick={handleDownloadPDF}
+            className="flex-1"
+            disabled={!saved}
+          >
+            {saved ? 'Descargar PDF' : 'Guarda el arqueo para descargar'}
           </Button>
         </div>
       </Card>

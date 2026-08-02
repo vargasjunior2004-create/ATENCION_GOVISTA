@@ -1,6 +1,9 @@
 node_modules/
-backend/data/*.sqlite
 frontend/build/
+data/
+staticfiles/
 .env
 *.log
 .DS_Store
+__pycache__/
+*.pyc

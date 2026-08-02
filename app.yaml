@@ -1,0 +1,19 @@
+# Configuración de despliegue para Wasmer Edge (https://wasmer.io)
+# REEMPLAZA "TU_USUARIO" por tu nombre de usuario de Wasmer en owner y package.
+kind: wasmer.io/App.v0
+owner: TU_USUARIO
+name: salestracker
+package: TU_USUARIO/salestracker
+debug: false
+env:
+  DJANGO_SECRET_KEY: "OB1wtZZ2D0c8_qV4IHvjRjJ_bDPUBa6YUyCwPGktZnpHvcNFuvmQ-qWRWtcqgM5P1Ec"
+  DJANGO_DEBUG: "false"
+  SQLITE_PATH: "/data/db.sqlite3"
+  WASMER: "true"
+# Volumen persistente para SQLite (el nombre NO debe cambiarse nunca)
+volumes:
+  - name: data
+    mount: /data
+# SQLite necesita un solo escritor a la vez
+scaling:
+  mode: single_concurrency
