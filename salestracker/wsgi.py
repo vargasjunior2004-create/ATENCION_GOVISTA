@@ -1,0 +1,31 @@
+"""
+WSGI config for salestracker project.
+
+It exposes the WSGI callable as a module-level variable named ``application``.
+
+For more information on this file, see
+https://docs.djangoproject.com/en/6.0/howto/deployment/wsgi/
+"""
+
+import os
+
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'salestracker.settings')
+
+if os.environ.get('WASMER') == 'true':
+    import django
+    django.setup()
+    from django.core.management import call_command
+    try:
+        call_command('collectstatic', interactive=False, verbosity=0)
+        call_command('migrate', interactive=False, verbosity=0)
+        call_command('seed')
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception('migrate/seed en arranque falló')
+
+from django.core.wsgi import get_wsgi_application
+
+application = get_wsgi_application()
+
+# Entrypoint que usa Wasmer Edge
+app = application

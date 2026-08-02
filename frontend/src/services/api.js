@@ -60,18 +60,6 @@ const api = {
     if (to) params.set('to', to);
     return request(`/api/reports/xlsx?${params.toString()}`);
   },
-  getPDFLink: (from, to) => {
-    const params = new URLSearchParams();
-    if (from) params.set('from', from);
-    if (to) params.set('to', to);
-    return request(`/api/reports/pdf-link?${params.toString()}`);
-  },
-  getXLSXLink: (from, to) => {
-    const params = new URLSearchParams();
-    if (from) params.set('from', from);
-    if (to) params.set('to', to);
-    return request(`/api/reports/xlsx-link?${params.toString()}`);
-  },
 
   // Arqueo de caja
   getCashCount: (date) => {
@@ -87,10 +75,6 @@ const api = {
   getCashPDF: (date) => {
     const params = date ? `?date=${date}` : '';
     return request(`/api/cash-count/pdf${params}`);
-  },
-  getCashPDFLink: (date) => {
-    const params = date ? `?date=${date}` : '';
-    return request(`/api/cash-count/pdf-link${params}`);
   },
 };
 

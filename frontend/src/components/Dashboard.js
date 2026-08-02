@@ -70,18 +70,7 @@ export default function Dashboard() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-
-      let pdfUrl = '';
-      try {
-        const linkData = await api.getPDFLink(today, today);
-        pdfUrl = linkData.url;
-      } catch { /* ignorable */ }
-
-      const { count, total } = stats.today;
-      const text = `Planilla de ventas ${today} — ${count} clientes nuevos, Total: ${total.toFixed(2)} Bs` +
-        (pdfUrl ? `\nDescargar planilla: ${pdfUrl}` : '');
-      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
-      setMsg('PDF descargado. Se abrio WhatsApp con el mensaje.');
+      setMsg('PDF descargado correctamente.');
     } catch (err) {
       setMsg(err.error || 'Sin ventas hoy para generar planilla');
     } finally {
