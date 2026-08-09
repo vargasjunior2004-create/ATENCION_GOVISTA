@@ -7,3 +7,8 @@ staticfiles/
 .DS_Store
 __pycache__/
 *.pyc
+
+# Datos de clientes (PII) — no subir a repos públicos
+ARCHIVO ATENCION AL CLIENTE*.xlsx
+# Referencia externa clonada (documentación DigitalPlat)
+FreeDomain/

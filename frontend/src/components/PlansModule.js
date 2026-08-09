@@ -96,7 +96,7 @@ export default function PlansModule() {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {plans.map((p) => (
-              <tr key={p.id} className={`hover:bg-slate-50 transition-colors ${!p.active ? 'opacity-50' : ''}`}>
+              <tr key={p.id} className={`hover:bg-green-50 transition-colors ${!p.active ? 'opacity-50' : ''}`}>
                 <td className="px-4 py-3 font-mono text-xs text-slate-600">{p.code}</td>
                 <td className="px-4 py-3 font-medium text-slate-900">{p.label}</td>
                 <td className="px-4 py-3"><Badge color={typeColor[p.type]}>{p.type}</Badge></td>

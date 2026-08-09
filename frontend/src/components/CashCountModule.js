@@ -184,7 +184,7 @@ export default function CashCountModule() {
             label="Usuario"
             value={user?.name || ''}
             readOnly
-            className="bg-slate-50"
+            className="bg-green-50"
           />
           <div className="flex items-end gap-2">
             <Button
@@ -215,7 +215,7 @@ export default function CashCountModule() {
               <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-2">Monedas</h3>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {coins.map(d => (
-                  <div key={d.key} className="bg-slate-50 rounded-lg p-3">
+                  <div key={d.key} className="bg-green-50 rounded-lg p-3">
                     <label className="block text-xs font-medium text-slate-600 mb-1">{d.label}</label>
                     <input
                       type="number"
@@ -237,7 +237,7 @@ export default function CashCountModule() {
               <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-2">Billetes</h3>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {bills.map(d => (
-                  <div key={d.key} className="bg-slate-50 rounded-lg p-3">
+                  <div key={d.key} className="bg-green-50 rounded-lg p-3">
                     <label className="block text-xs font-medium text-slate-600 mb-1">{d.label}</label>
                     <input
                       type="number"

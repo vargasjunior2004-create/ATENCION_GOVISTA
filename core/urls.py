@@ -16,6 +16,8 @@ urlpatterns = [
     path('users', views.UserListView.as_view()),
     path('users/<int:pk>', views.UserDetailView.as_view()),
 
+    path('customers', views.CustomerListView.as_view()),
+
     path('cash-count', views.CashCountView.as_view()),
     path('cash-count/outflows', views.OutflowCreateView.as_view()),
     path('cash-count/outflows/<int:pk>', views.OutflowDetailView.as_view()),

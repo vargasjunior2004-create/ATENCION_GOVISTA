@@ -32,10 +32,11 @@ const api = {
   updatePlan: (id, data) => request(`/api/plans/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 
   // Ventas
-  getSales: (from, to) => {
+  getSales: (from, to, requestType) => {
     const params = new URLSearchParams();
     if (from) params.set('from', from);
     if (to) params.set('to', to);
+    if (requestType) params.set('requestType', requestType);
     const qs = params.toString();
     return request(`/api/sales${qs ? '?' + qs : ''}`);
   },
@@ -46,6 +47,13 @@ const api = {
   getUsers: () => request('/api/users'),
   createUser: (data) => request('/api/users', { method: 'POST', body: JSON.stringify(data) }),
   updateUser: (id, data) => request(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Clientes
+  searchCustomers: (q) => {
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    return request(`/api/customers?${params.toString()}`);
+  },
 
   // Reportes
   getPDF: (from, to) => {
