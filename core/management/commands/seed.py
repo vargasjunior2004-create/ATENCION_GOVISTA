@@ -69,9 +69,25 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--force', action='store_true',
                             help='Borra los datos existentes antes de seedear.')
+        parser.add_argument('--users-only', action='store_true',
+                            help='Solo crea usuarios si no existen (para produccion).')
 
     def handle(self, *args, **options):
         force = options['force']
+        users_only = options['users_only']
+
+        if users_only:
+            created = 0
+            for name, email, password, role in USERS:
+                if not User.objects.filter(email=email).exists():
+                    u = User(name=name, email=email, role=role)
+                    u.set_password(password)
+                    u.save()
+                    created += 1
+            self.stdout.write(self.style.SUCCESS(
+                f'Usuarios garantizados (creados {created}).'))
+            return
+
         has_data = (User.objects.exists() or Plan.objects.exists()
                     or Sale.objects.exists())
         if has_data and not force:

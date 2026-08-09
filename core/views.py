@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 
-from django.db.models import Sum
+from django.db.models import Sum, Q
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import AllowAny
@@ -9,11 +9,11 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
-from .models import User, Plan, Sale, CashCount, Outflow
+from .models import User, Customer, Plan, Sale, CashCount, Outflow
 from .serializers import (
     UserSerializer, UserWriteSerializer, PlanSerializer,
-    PlanPublicSerializer, SaleSerializer, SaleCreateSerializer,
-    CashCountSerializer, OutflowSerializer,
+    PlanPublicSerializer, CustomerSerializer, SaleSerializer,
+    SaleCreateSerializer, CashCountSerializer, OutflowSerializer,
 )
 from .reports import build_sales_pdf, build_sales_xlsx, build_cash_pdf
 
@@ -114,15 +114,28 @@ class ActivePlansView(APIView):
         return Response(PlanPublicSerializer(plans, many=True).data)
 
 
+class CustomerListView(APIView):
+    """Busqueda de clientes por kardex o nombre (para autocompletar)."""
+    def get(self, request):
+        q = request.query_params.get('q', '').strip()
+        qs = Customer.objects.all().order_by('code')
+        if q:
+            qs = qs.filter(Q(code__icontains=q) | Q(name__icontains=q))
+        return Response(CustomerSerializer(qs[:20], many=True).data)
+
+
 class SaleListView(APIView):
     def get(self, request):
         from_date = request.query_params.get('from')
         to_date = request.query_params.get('to')
+        rtype = request.query_params.get('requestType')
         qs = Sale.objects.select_related('plan', 'createdBy').all()
         if from_date:
             qs = qs.filter(date__gte=from_date)
         if to_date:
             qs = qs.filter(date__lte=to_date)
+        if rtype:
+            qs = qs.filter(requestType=rtype)
         return Response(SaleSerializer(qs, many=True).data)
 
     def post(self, request):
@@ -158,6 +171,7 @@ class SaleDetailView(IsAdminMixin, APIView):
         sale.clientCode = data.get('clientCode', sale.clientCode)
         sale.clientName = data.get('clientName', sale.clientName)
         sale.serviceType = data.get('serviceType', sale.serviceType)
+        sale.requestType = data.get('requestType', sale.requestType)
         sale.plan = plan
         sale.total = plan.total
         sale.lastEditedBy = request.user

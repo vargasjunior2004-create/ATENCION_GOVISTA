@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User, Plan, Sale, CashCount, Outflow
+from .models import User, Customer, Plan, Sale, CashCount, Outflow
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -30,6 +30,12 @@ class UserWriteSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 
+class CustomerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Customer
+        fields = ['id', 'code', 'name', 'active']
+
+
 class PlanSerializer(serializers.ModelSerializer):
     total = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
@@ -37,7 +43,7 @@ class PlanSerializer(serializers.ModelSerializer):
     class Meta:
         model = Plan
         fields = ['id', 'code', 'label', 'type', 'speed',
-                  'monthly', 'installation', 'total', 'active']
+                  'monthly', 'installation', 'total', 'active', 'legacy']
 
 
 class PlanPublicSerializer(serializers.ModelSerializer):
@@ -47,7 +53,7 @@ class PlanPublicSerializer(serializers.ModelSerializer):
     class Meta:
         model = Plan
         fields = ['id', 'code', 'label', 'type', 'speed',
-                  'monthly', 'installation', 'total']
+                  'monthly', 'installation', 'total', 'legacy']
 
 
 class SaleSerializer(serializers.ModelSerializer):
@@ -60,7 +66,8 @@ class SaleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Sale
         fields = ['id', 'date', 'clientCode', 'clientName', 'serviceType',
-                  'planId', 'total', 'Plan', 'creator']
+                  'requestType', 'changeReason', 'planFrom', 'totalFrom',
+                  'notes', 'planId', 'total', 'Plan', 'creator']
 
     def get_Plan(self, obj):
         return {'id': obj.plan.id, 'label': obj.plan.label, 'code': obj.plan.code}
@@ -76,6 +83,14 @@ class SaleCreateSerializer(serializers.Serializer):
     clientName = serializers.CharField(max_length=160)
     serviceType = serializers.ChoiceField(
         choices=[('internet', 'internet'), ('tv', 'tv'), ('combo', 'combo')])
+    requestType = serializers.ChoiceField(
+        choices=[c[0] for c in Sale.REQUEST_CHOICES], required=False,
+        default='nuevo_contrato')
+    changeReason = serializers.CharField(required=False, allow_blank=True)
+    planFrom = serializers.CharField(required=False, allow_blank=True)
+    totalFrom = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False, allow_null=True)
+    notes = serializers.CharField(required=False, allow_blank=True)
     planId = serializers.IntegerField()
 
     def validate(self, attrs):
@@ -93,11 +108,22 @@ class SaleCreateSerializer(serializers.Serializer):
     def create(self, validated_data):
         user = self.context['user']
         plan = validated_data.pop('plan')
+        code = validated_data.get('clientCode', '')
+        customer = Customer.objects.filter(code=code).first()
+        if customer is None and code:
+            customer = Customer(code=code, name=validated_data['clientName'])
+            customer.save()
         return Sale.objects.create(
             date=validated_data['date'],
             clientCode=validated_data['clientCode'],
             clientName=validated_data['clientName'],
             serviceType=validated_data['serviceType'],
+            requestType=validated_data.get('requestType', 'nuevo_contrato'),
+            changeReason=validated_data.get('changeReason', ''),
+            planFrom=validated_data.get('planFrom', ''),
+            totalFrom=validated_data.get('totalFrom'),
+            notes=validated_data.get('notes', ''),
+            customer=customer,
             plan=plan,
             total=plan.total,
             createdBy=user,

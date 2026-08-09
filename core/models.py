@@ -42,6 +42,9 @@ class Plan(models.Model):
     monthly = models.DecimalField(max_digits=12, decimal_places=2)
     installation = models.DecimalField(max_digits=12, decimal_places=2)
     active = models.BooleanField(default=True)
+    legacy = models.BooleanField(
+        default=False,
+        help_text='Plan del catalogo anterior; solo se ofrece en retiros.')
 
     @property
     def total(self):
@@ -51,16 +54,46 @@ class Plan(models.Model):
         return f'{self.code} - {self.label}'
 
 
+class Customer(models.Model):
+    """Cliente maestro (KARDEX). Clave natural: code."""
+    code = models.CharField(max_length=40, unique=True)
+    name = models.CharField(max_length=160)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f'{self.code} {self.name}'
+
+
 class Sale(models.Model):
     """Venta registrada. total se calcula SIEMPRE en el servidor a partir
     del plan, nunca se acepta del cliente."""
     TYPE_CHOICES = [('internet', 'internet'), ('tv', 'tv'), ('combo', 'combo')]
+    REQUEST_CHOICES = [
+        ('nuevo_contrato', 'NUEVO CONTRATO'),
+        ('cambio_plan', 'CAMBIO DE PLAN'),
+        ('recontratacion', 'RECONTRATACION'),
+        ('retiro', 'RETIRO'),
+        ('adicion', 'ADICIÓN'),
+        ('baja_temporal', 'BAJA TEMPORAL'),
+        ('otro', 'OTRO'),
+    ]
 
     date = models.DateField()
     clientCode = models.CharField(max_length=40)
     clientName = models.CharField(max_length=160)
+    customer = models.ForeignKey(
+        Customer, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='sales')
     serviceType = models.CharField(max_length=10, choices=TYPE_CHOICES)
+    requestType = models.CharField(
+        max_length=20, choices=REQUEST_CHOICES, default='nuevo_contrato')
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='sales')
+    changeReason = models.CharField(max_length=120, blank=True, default='')
+    planFrom = models.CharField(max_length=60, blank=True, default='')
+    totalFrom = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+    notes = models.CharField(max_length=255, blank=True, default='')
     total = models.DecimalField(max_digits=12, decimal_places=2)
     createdBy = models.ForeignKey(
         User, on_delete=models.PROTECT, related_name='sales_created')

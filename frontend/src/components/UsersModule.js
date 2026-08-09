@@ -94,7 +94,7 @@ export default function UsersModule() {
           </thead>
           <tbody className="divide-y divide-sline-100">
             {users.map((u) => (
-              <tr key={u.id} className={`hover:bg-slate-50 transition-colors ${!u.active ? 'opacity-50' : ''}`}>
+              <tr key={u.id} className={`hover:bg-green-50 transition-colors ${!u.active ? 'opacity-50' : ''}`}>
                 <td className="px-4 py-3 font-medium text-slate-900">{u.name}</td>
                 <td className="px-4 py-3 text-slate-600">{u.email}</td>
                 <td className="px-4 py-3"><Badge color={u.role === 'admin' ? 'amber' : 'blue'}>{u.role}</Badge></td>

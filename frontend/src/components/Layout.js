@@ -67,11 +67,11 @@ export default function Layout() {
   const linkClass = ({ isActive }) =>
     `flex items-center gap-3 px-4 py-2.5 text-sm font-medium rounded-lg transition-colors
      ${isActive
-       ? 'bg-white/10 text-white'
-       : 'text-slate-400 hover:bg-white/5 hover:text-white'}`;
+       ? 'bg-white/15 text-white'
+       : 'text-green-200 hover:bg-white/10 hover:text-white'}`;
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-green-50">
       {/* Mobile overlay */}
       {mobileOpen && (
         <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={closeMobile} />
@@ -90,13 +90,13 @@ export default function Layout() {
         onMouseLeave={handleSidebarLeave}
         onFocus={handleSidebarFocusIn}
         onBlur={handleSidebarFocusOut}
-        className={`fixed top-0 left-0 bottom-0 w-64 bg-slate-900 z-50 flex flex-col
+        className={`fixed top-0 left-0 bottom-0 w-64 bg-green-900 z-50 flex flex-col
           ${transitionClass}
           ${showSidebar ? 'translate-x-0' : '-translate-x-full'}
           ${showSidebar && !reducedMotion ? 'shadow-xl' : ''}`}
       >
         <div className="px-5 py-5 border-b border-white/10">
-          <h2 className="text-lg font-bold text-brand-500">SaleStracker</h2>
+          <h2 className="text-lg font-bold text-white">SaleStracker</h2>
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
@@ -109,7 +109,7 @@ export default function Layout() {
           {isAdmin && (
             <>
               <div className="pt-3 pb-1 px-4">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Admin</span>
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-green-400/80">Admin</span>
               </div>
               {adminItems.map((item) => (
                 <NavLink key={item.to} to={item.to} className={linkClass} onClick={closeMobile}>
@@ -126,7 +126,7 @@ export default function Layout() {
             <span className="text-sm text-white font-medium truncate">{user?.name}</span>
             <Badge color={user?.role === 'admin' ? 'amber' : 'blue'} className="text-[10px]">{user?.role}</Badge>
           </div>
-          <Button variant="ghost" size="sm" className="w-full text-red-400 hover:text-red-300 hover:bg-red-500/10" onClick={handleLogout}>
+          <Button variant="danger" size="sm" className="w-full" onClick={handleLogout}>
             Cerrar sesion
           </Button>
         </div>
@@ -134,7 +134,7 @@ export default function Layout() {
 
       {/* Mobile menu button */}
       <button onClick={() => setMobileOpen(!mobileOpen)}
-        className="fixed top-3 left-3 z-50 lg:hidden bg-slate-900 text-white p-2 rounded-lg shadow-lg">
+        className="fixed top-3 left-3 z-50 lg:hidden bg-green-900 text-white p-2 rounded-lg shadow-lg">
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
         </svg>

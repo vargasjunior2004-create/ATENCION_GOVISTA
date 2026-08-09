@@ -1,0 +1,464 @@
+[
+{
+  "model": "core.plan",
+  "pk": 5,
+  "fields": {
+    "code": "GOTV-120",
+    "label": "GOTV-120",
+    "type": "combo",
+    "speed": null,
+    "monthly": "300.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": true
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 11,
+  "fields": {
+    "code": "GOINT-50",
+    "label": "GOINT-50",
+    "type": "internet",
+    "speed": null,
+    "monthly": "562.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 21,
+  "fields": {
+    "code": "GOINT-80",
+    "label": "GOINT-80",
+    "type": "internet",
+    "speed": null,
+    "monthly": "810.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 25,
+  "fields": {
+    "code": "GO-60(FEB25)",
+    "label": "GO-60",
+    "type": "internet",
+    "speed": null,
+    "monthly": "230.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 26,
+  "fields": {
+    "code": "GOTV-120(FEB25)",
+    "label": "GOTV-120 (FEB25)",
+    "type": "combo",
+    "speed": null,
+    "monthly": "300.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 27,
+  "fields": {
+    "code": "GOINT-30",
+    "label": "GOINT-30",
+    "type": "internet",
+    "speed": null,
+    "monthly": "515.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 28,
+  "fields": {
+    "code": "GO-30(JUL24)",
+    "label": "GO-30",
+    "type": "internet",
+    "speed": null,
+    "monthly": "90.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 29,
+  "fields": {
+    "code": "GOTV-60(JUL24)",
+    "label": "GOTV-60 (JUL24)",
+    "type": "combo",
+    "speed": null,
+    "monthly": "230.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 30,
+  "fields": {
+    "code": "GO-400(FEB25)",
+    "label": "GO-400",
+    "type": "internet",
+    "speed": null,
+    "monthly": "360.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 31,
+  "fields": {
+    "code": "GOEMP-40",
+    "label": "GOEMP-40",
+    "type": "internet",
+    "speed": null,
+    "monthly": "2260.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 32,
+  "fields": {
+    "code": "GO-40(JUL24)",
+    "label": "GO-40",
+    "type": "internet",
+    "speed": null,
+    "monthly": "130.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 33,
+  "fields": {
+    "code": "GO-120(JUL24)",
+    "label": "GO-120",
+    "type": "internet",
+    "speed": null,
+    "monthly": "190.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 34,
+  "fields": {
+    "code": "GO-300(JUL24)",
+    "label": "GO-300",
+    "type": "internet",
+    "speed": null,
+    "monthly": "260.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 35,
+  "fields": {
+    "code": "GO-200(FEB25)",
+    "label": "GO-200",
+    "type": "internet",
+    "speed": null,
+    "monthly": "290.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 37,
+  "fields": {
+    "code": "GO-90(JUL24)",
+    "label": "GO-90",
+    "type": "internet",
+    "speed": null,
+    "monthly": "175.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 38,
+  "fields": {
+    "code": "GO-50(JUL24)",
+    "label": "GO-50",
+    "type": "internet",
+    "speed": null,
+    "monthly": "145.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 39,
+  "fields": {
+    "code": "GOTV-400(JUL24)",
+    "label": "GOTV-400 (JUL24)",
+    "type": "combo",
+    "speed": null,
+    "monthly": "260.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 40,
+  "fields": {
+    "code": "GOTV-121",
+    "label": "GOTV-121",
+    "type": "combo",
+    "speed": null,
+    "monthly": "300.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 41,
+  "fields": {
+    "code": "GOTV-122",
+    "label": "GOTV-122",
+    "type": "combo",
+    "speed": null,
+    "monthly": "300.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 42,
+  "fields": {
+    "code": "GOTV-123",
+    "label": "GOTV-123",
+    "type": "combo",
+    "speed": null,
+    "monthly": "300.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 43,
+  "fields": {
+    "code": "GOTV-124",
+    "label": "GOTV-124",
+    "type": "combo",
+    "speed": null,
+    "monthly": "300.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 44,
+  "fields": {
+    "code": "GOTV-300(FEB25)",
+    "label": "GOTV-300 (FEB25)",
+    "type": "combo",
+    "speed": null,
+    "monthly": "350.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 45,
+  "fields": {
+    "code": "GOTV-125",
+    "label": "GOTV-125",
+    "type": "combo",
+    "speed": null,
+    "monthly": "300.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 46,
+  "fields": {
+    "code": "COMERCIAL",
+    "label": "TV Comercial",
+    "type": "tv",
+    "speed": null,
+    "monthly": "900.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 47,
+  "fields": {
+    "code": "GoBasic",
+    "label": "GoBasic",
+    "type": "internet",
+    "speed": null,
+    "monthly": "230.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 48,
+  "fields": {
+    "code": "GoStandard",
+    "label": "GoStandard",
+    "type": "internet",
+    "speed": null,
+    "monthly": "290.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 49,
+  "fields": {
+    "code": "TV-120",
+    "label": "TV-120",
+    "type": "tv",
+    "speed": null,
+    "monthly": "170.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 50,
+  "fields": {
+    "code": "GoPremium",
+    "label": "GoPremium",
+    "type": "internet",
+    "speed": null,
+    "monthly": "360.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 51,
+  "fields": {
+    "code": "GOINT-140",
+    "label": "GOINT-140",
+    "type": "internet",
+    "speed": null,
+    "monthly": "1487.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 55,
+  "fields": {
+    "code": "TV DIGITAL FULL HD FTTH(GOHD)",
+    "label": "GOHD TV Digital Full HD",
+    "type": "tv",
+    "speed": null,
+    "monthly": "180.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 56,
+  "fields": {
+    "code": "GOTV-500(FEB25)",
+    "label": "GOTV-500 (FEB25)",
+    "type": "combo",
+    "speed": null,
+    "monthly": "470.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 57,
+  "fields": {
+    "code": "GoDuoBasic",
+    "label": "GoDuoBasic",
+    "type": "combo",
+    "speed": null,
+    "monthly": "300.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+},
+{
+  "model": "core.plan",
+  "pk": 58,
+  "fields": {
+    "code": "GoDuoGamer",
+    "label": "GoDuoGamer",
+    "type": "combo",
+    "speed": null,
+    "monthly": "350.00",
+    "installation": "0.00",
+    "active": true,
+    "legacy": false
+  }
+}
+]
