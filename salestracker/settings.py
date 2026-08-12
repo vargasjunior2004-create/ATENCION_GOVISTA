@@ -69,11 +69,13 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'salestracker.wsgi.application'
 
+_db_path = os.environ.get('SQLITE_PATH', str(BASE_DIR / 'data' / 'db.sqlite3'))
+os.makedirs(os.path.dirname(_db_path), exist_ok=True)
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.environ.get('SQLITE_PATH',
-                               str(BASE_DIR / 'data' / 'db.sqlite3')),
+        'NAME': _db_path,
     }
 }
 
