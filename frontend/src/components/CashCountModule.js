@@ -43,7 +43,7 @@ export default function CashCountModule() {
   const [addingOutflow, setAddingOutflow] = useState(false);
 
   const totalCounted = DENOMINATIONS.reduce((sum, d) => sum + (counts[d.key] || 0) * d.value, 0);
-  const netCash = totalCounted - totalOutflows;
+  const totalCash = totalCounted + totalOutflows;
 
   useEffect(() => {
     loadCashCount();
@@ -307,6 +307,7 @@ export default function CashCountModule() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200">
+                  <th className="text-left py-2 px-3 font-semibold text-slate-600">Hora</th>
                   <th className="text-left py-2 px-3 font-semibold text-slate-600">Persona</th>
                   <th className="text-right py-2 px-3 font-semibold text-slate-600">Monto</th>
                   <th className="text-left py-2 px-3 font-semibold text-slate-600">Concepto</th>
@@ -316,6 +317,9 @@ export default function CashCountModule() {
               <tbody>
                 {outflows.map(o => (
                   <tr key={o.id} className="border-b border-slate-100">
+                    <td className="py-2 px-3 text-slate-500 text-xs">
+                      {o.created_at ? new Date(o.created_at).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                    </td>
                     <td className="py-2 px-3 text-slate-800">{o.personName}</td>
                     <td className="py-2 px-3 text-right font-medium text-red-600 tabular-nums">{formatNum(o.amount)} Bs</td>
                     <td className="py-2 px-3 text-slate-500">{o.concept || '—'}</td>
@@ -342,10 +346,10 @@ export default function CashCountModule() {
 
       <Card className="p-4 sm:p-6">
         <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center justify-between mb-4">
-          <span className="text-base font-semibold text-green-800">Efectivo Neto</span>
-          <span className="text-2xl font-bold text-green-700 tabular-nums">{formatNum(netCash)} Bs</span>
+          <span className="text-base font-semibold text-green-800">Efectivo Total</span>
+          <span className="text-2xl font-bold text-green-700 tabular-nums">{formatNum(totalCash)} Bs</span>
         </div>
-        <p className="text-xs text-slate-500 mb-4 text-right">Total Contado − Total Salidas</p>
+        <p className="text-xs text-slate-500 mb-4 text-right">Total Contado + Total Salidas</p>
         <div className="flex flex-col sm:flex-row gap-3">
           <Button
             variant="secondary"

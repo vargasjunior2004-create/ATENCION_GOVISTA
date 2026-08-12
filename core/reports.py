@@ -185,10 +185,11 @@ def build_cash_pdf(date_str):
     story.append(Spacer(1, 12))
     story.append(Paragraph('Salidas de Efectivo', styles['Heading2']))
     if outflows:
-        rows = [['A quién', 'Concepto', 'Monto (Bs)']]
+        rows = [['Hora', 'A quién', 'Concepto', 'Monto (Bs)']]
         for o in outflows:
-            rows.append([o.personName, o.concept or '—', f'{float(o.amount):.2f}'])
-        rows.append(['', 'TOTAL SALIDAS', f'{total_out:.2f}'])
+            hora = o.created_at.strftime('%H:%M') if o.created_at else '—'
+            rows.append([hora, o.personName, o.concept or '—', f'{float(o.amount):.2f}'])
+        rows.append(['', '', 'TOTAL SALIDAS', f'{total_out:.2f}'])
         table = Table(rows)
         table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#dc2626')),
@@ -202,9 +203,9 @@ def build_cash_pdf(date_str):
     else:
         story.append(Paragraph('Sin salidas registradas.', styles['Normal']))
 
-    net = (float(cc.total) if cc else 0) - total_out
+    net = (float(cc.total) if cc else 0) + total_out
     story.append(Spacer(1, 12))
-    story.append(Paragraph(f'EFECTIVO NETO: {net:.2f} Bs', styles['Title']))
+    story.append(Paragraph(f'EFECTIVO TOTAL: {net:.2f} Bs', styles['Title']))
     doc.build(story)
     buf.seek(0)
     return buf

@@ -140,4 +140,4 @@ class CashCountSerializer(serializers.ModelSerializer):
 class OutflowSerializer(serializers.ModelSerializer):
     class Meta:
         model = Outflow
-        fields = ['id', 'date', 'personName', 'amount', 'concept']
+        fields = ['id', 'date', 'personName', 'amount', 'concept', 'created_at']
