@@ -7,6 +7,10 @@ import sys
 def main():
     """Run administrative tasks."""
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'salestracker.settings')
+    # Asegurar que el directorio de la BD exista (Wasmer volume /data)
+    db_path = os.environ.get('SQLITE_PATH',
+                             str(os.path.join(os.path.dirname(__file__), 'data', 'db.sqlite3')))
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:
