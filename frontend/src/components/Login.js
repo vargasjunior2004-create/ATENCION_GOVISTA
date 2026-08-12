@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Button, Input, Alert } from './ui';
 
 export default function Login() {
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -15,7 +16,7 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      await login(password);
+      await login(email, password);
       navigate('/', { replace: true });
     } catch (err) {
       setError(err.error || 'Error al iniciar sesion');
@@ -35,12 +36,20 @@ export default function Login() {
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && <Alert type="error">{error}</Alert>}
             <Input
+              label="Usuario"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoFocus
+              placeholder="correo@ejemplo.com"
+            />
+            <Input
               label="Contrasena"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              autoFocus
               placeholder="Ingresa tu contrasena"
             />
             <Button type="submit" size="lg" className="w-full" disabled={loading}>
