@@ -8,34 +8,31 @@ https://docs.djangoproject.com/en/6.0/howto/deployment/wsgi/
 """
 
 import os
+import logging
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'salestracker.settings')
 
-if os.environ.get('WASMER') == 'true':
-    import django
-    django.setup()
-    from django.core.management import call_command
-    from core.models import Plan
-    import logging
-    logger = logging.getLogger(__name__)
-    try:
-        call_command('collectstatic', interactive=False, verbosity=0)
-        logger.info('migrate iniciando...')
-        call_command('migrate', interactive=False, verbosity=0)
-        logger.info('migrate completado')
-        if not Plan.objects.exists():
-            logger.info('Sin planes — cargando fixture...')
-            call_command('loaddata', 'planes', verbosity=0)
-            logger.info('Fixture planes cargado')
-        call_command('seed', users_only=True)
-        logger.info('Seed users completado')
-    except Exception:
-        logger.exception('migrate/seed en arranque falló')
-        raise
-
 from django.core.wsgi import get_wsgi_application
-
 application = get_wsgi_application()
 
 # Entrypoint que usa Wasmer Edge
 app = application
+
+# Bootstrap: migrate + fixture + seed al arrancar (idempotente)
+try:
+    from django.core.management import call_command
+    logger = logging.getLogger('wsgi')
+    logger.info('migrate iniciando...')
+    call_command('migrate', interactive=False, verbosity=0)
+    logger.info('migrate completado')
+
+    from core.models import Plan
+    if not Plan.objects.exists():
+        logger.info('Sin planes — cargando fixture...')
+        call_command('loaddata', 'planes', verbosity=0)
+        logger.info('Fixture planes cargado')
+
+    call_command('seed', users_only=True)
+    logger.info('Seed users completado')
+except Exception:
+    logging.getLogger('wsgi').exception('Bootstrap en arranque falló')

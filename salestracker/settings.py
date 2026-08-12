@@ -70,7 +70,16 @@ TEMPLATES = [
 WSGI_APPLICATION = 'salestracker.wsgi.application'
 
 _db_path = os.environ.get('SQLITE_PATH', str(BASE_DIR / 'data' / 'db.sqlite3'))
-os.makedirs(os.path.dirname(_db_path), exist_ok=True)
+try:
+    os.makedirs(os.path.dirname(_db_path), exist_ok=True)
+    # Test write
+    _test = os.path.join(os.path.dirname(_db_path), '.write_test')
+    open(_test, 'w').close()
+    os.remove(_test)
+except OSError:
+    # During Wasmer build, /data volume may not be mounted yet.
+    # Fall back to a local path so manage.py migrate doesn't crash.
+    _db_path = str(BASE_DIR / 'db.sqlite3')
 
 DATABASES = {
     'default': {
