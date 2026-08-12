@@ -16,18 +16,22 @@ if os.environ.get('WASMER') == 'true':
     django.setup()
     from django.core.management import call_command
     from core.models import Plan
+    import logging
+    logger = logging.getLogger(__name__)
     try:
         call_command('collectstatic', interactive=False, verbosity=0)
+        logger.info('migrate iniciando...')
         call_command('migrate', interactive=False, verbosity=0)
-        # Arranque en limpio: si la BD está vacía se carga el catálogo de
-        # planes (fixture); los usuarios se garantizan con seed (idempotente).
-        # NUNCA se crean ventas/arqueos mock en producción.
+        logger.info('migrate completado')
         if not Plan.objects.exists():
+            logger.info('Sin planes — cargando fixture...')
             call_command('loaddata', 'planes', verbosity=0)
+            logger.info('Fixture planes cargado')
         call_command('seed', users_only=True)
+        logger.info('Seed users completado')
     except Exception:
-        import logging
-        logging.getLogger(__name__).exception('migrate/seed en arranque falló')
+        logger.exception('migrate/seed en arranque falló')
+        raise
 
 from django.core.wsgi import get_wsgi_application
 
