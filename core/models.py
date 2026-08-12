@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 from django.contrib.auth.hashers import make_password, check_password
 
 
@@ -146,6 +147,7 @@ class Outflow(models.Model):
     concept = models.CharField(max_length=255, blank=True, default='')
     createdBy = models.ForeignKey(
         User, null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         ordering = ['-id']
