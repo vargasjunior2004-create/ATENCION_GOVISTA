@@ -147,7 +147,7 @@ class Outflow(models.Model):
     concept = models.CharField(max_length=255, blank=True, default='')
     createdBy = models.ForeignKey(
         User, null=True, on_delete=models.SET_NULL)
-    created_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(default=timezone.now, null=True, blank=True)
 
     class Meta:
         ordering = ['-id']
