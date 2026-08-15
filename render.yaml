@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: salestracker
+    runtime: python
+    buildCommand: pip install -r requirements.txt && bash build.sh
+    startCommand: gunicorn salestracker.wsgi:application --bind 0.0.0.0:$PORT
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DEBUG
+        value: "false"
+      - key: DJANGO_ALLOWED_HOSTS
+        value: salestracker.onrender.com,vistabolivia.qd.je
+      - key: DJANGO_CSRF_TRUSTED_ORIGINS
+        value: https://salestracker.onrender.com,https://vistabolivia.qd.je
