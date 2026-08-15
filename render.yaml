@@ -10,6 +10,6 @@ services:
       - key: DJANGO_DEBUG
         value: "false"
       - key: DJANGO_ALLOWED_HOSTS
-        value: salestracker.onrender.com,vistabolivia.qd.je
+        value: "*"
       - key: DJANGO_CSRF_TRUSTED_ORIGINS
-        value: https://salestracker.onrender.com,https://vistabolivia.qd.je
+        value: "*"
