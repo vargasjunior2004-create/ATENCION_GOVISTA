@@ -19,6 +19,7 @@ urlpatterns = [
     path('customers', views.CustomerListView.as_view()),
 
     path('cash-count', views.CashCountView.as_view()),
+    path('arqueo', views.CashCountView.as_view()),
     path('cash-count/outflows', views.OutflowCreateView.as_view()),
     path('cash-count/outflows/<int:pk>', views.OutflowDetailView.as_view()),
 
