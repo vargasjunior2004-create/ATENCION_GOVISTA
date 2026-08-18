@@ -32,6 +32,28 @@ class IsAdminMixin:
         return None
 
 
+class HealthView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        from django.db import connection
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                tables = [r[0] for r in cursor.fetchall()]
+            user_count = User.objects.count()
+            plan_count = Plan.objects.count()
+            return Response({
+                'status': 'ok',
+                'tables': tables,
+                'users': user_count,
+                'plans': plan_count,
+                'db': str(connection.settings_dict['NAME']),
+            })
+        except Exception as e:
+            return Response({'status': 'error', 'detail': str(e)}, status=500)
+
+
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
