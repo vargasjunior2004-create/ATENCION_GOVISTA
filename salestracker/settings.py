@@ -19,7 +19,7 @@ DEBUG = os.environ.get('DJANGO_DEBUG', 'true').lower() in ('1', 'true', 'yes')
 ALLOWED_HOSTS = [
     h for h in os.environ.get(
         'DJANGO_ALLOWED_HOSTS',
-        'localhost,127.0.0.1,.wasmer.app').split(',') if h
+        'localhost,127.0.0.1,.wasmer.app,sales-tracker.wasmer.app,govistaarqueos.wasmer.app').split(',') if h
 ]
 
 CSRF_TRUSTED_ORIGINS = [
