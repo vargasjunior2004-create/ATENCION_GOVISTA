@@ -240,8 +240,6 @@ class UserDetailView(IsAdminMixin, APIView):
 
 
 class CashCountView(APIView):
-    permission_classes = [AllowAny]
-
     def get(self, request):
         try:
             d = request.query_params.get('date') or date.today().isoformat()
