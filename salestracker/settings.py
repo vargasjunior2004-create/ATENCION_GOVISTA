@@ -123,7 +123,9 @@ REST_FRAMEWORK = {
 
 SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
-    'ACCESS_TOKEN_LIFETIME': __import__('datetime').timedelta(hours=12),
+    'ACCESS_TOKEN_LIFETIME': __import__('datetime').timedelta(minutes=3),
+    'REFRESH_TOKEN_LIFETIME': __import__('datetime').timedelta(minutes=5),
+    'ROTATE_REFRESH_TOKENS': False,
 }
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
