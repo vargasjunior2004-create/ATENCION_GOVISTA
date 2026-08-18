@@ -112,8 +112,8 @@ class Sale(models.Model):
 
 
 class CashCount(models.Model):
-    """Arqueo de caja diario: conteo de efectivo por denominación."""
-    date = models.DateField(unique=True)
+    """Arqueo de caja diario por usuario: conteo de efectivo por denominación."""
+    date = models.DateField()
     coin_050 = models.PositiveIntegerField(default=0)
     coin_1 = models.PositiveIntegerField(default=0)
     coin_2 = models.PositiveIntegerField(default=0)
@@ -126,6 +126,9 @@ class CashCount(models.Model):
     createdBy = models.ForeignKey(
         User, null=True, on_delete=models.SET_NULL)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [('date', 'createdBy')]
 
     @property
     def total(self):
