@@ -43,7 +43,7 @@ export default function CashCountModule() {
   const [addingOutflow, setAddingOutflow] = useState(false);
 
   const totalCounted = DENOMINATIONS.reduce((sum, d) => sum + (counts[d.key] || 0) * d.value, 0);
-  const totalCash = totalCounted + totalOutflows;
+  const totalCash = totalCounted;
 
   useEffect(() => {
     loadCashCount();
@@ -349,7 +349,7 @@ export default function CashCountModule() {
           <span className="text-base font-semibold text-green-800">Efectivo Total</span>
           <span className="text-2xl font-bold text-green-700 tabular-nums">{formatNum(totalCash)} Bs</span>
         </div>
-        <p className="text-xs text-slate-500 mb-4 text-right">Total Contado + Total Salidas</p>
+        <p className="text-xs text-slate-500 mb-4 text-right">Total contado en efectivo</p>
         <div className="flex flex-col sm:flex-row gap-3">
           <Button
             variant="secondary"
