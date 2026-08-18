@@ -292,24 +292,36 @@ class CashCountView(APIView):
 
 class OutflowCreateView(APIView):
     def post(self, request):
-        data = request.data
-        d = data.get('date') or date.today().isoformat()
-        person_name = (data.get('personName') or '').strip()
-        amount = data.get('amount')
-        if not person_name:
-            return Response({'error': 'Nombre requerido'}, status=status.HTTP_400_BAD_REQUEST)
-        if amount is None:
-            return Response({'error': 'Monto requerido'}, status=status.HTTP_400_BAD_REQUEST)
-        outflow = Outflow.objects.create(
-            date=d, personName=person_name,
-            amount=float(amount),
-            concept=data.get('concept', ''),
-            createdBy=request.user,
-        )
-        return Response({
-            'outflow': OutflowSerializer(outflow).data,
-            'totalOutflows': _total_outflows(d),
-        }, status=status.HTTP_201_CREATED)
+        try:
+            data = request.data
+            d = data.get('date') or date.today().isoformat()
+            person_name = (data.get('personName') or '').strip()
+            amount = data.get('amount')
+            if not person_name:
+                return Response({'error': 'Nombre requerido'}, status=status.HTTP_400_BAD_REQUEST)
+            if amount is None:
+                return Response({'error': 'Monto requerido'}, status=status.HTTP_400_BAD_REQUEST)
+            outflow = Outflow.objects.create(
+                date=d, personName=person_name,
+                amount=float(amount),
+                concept=data.get('concept', ''),
+                createdBy=request.user,
+            )
+            outflow_data = {
+                'id': outflow.id,
+                'date': outflow.date.isoformat() if hasattr(outflow.date, 'isoformat') else str(outflow.date),
+                'personName': outflow.personName,
+                'amount': float(outflow.amount),
+                'concept': outflow.concept,
+                'created_at': outflow.created_at.isoformat() if outflow.created_at else None,
+            }
+            return Response({
+                'outflow': outflow_data,
+                'totalOutflows': float(_total_outflows(d)),
+            }, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            import traceback
+            return Response({'error': str(e), 'trace': traceback.format_exc()}, status=500)
 
 
 class OutflowDetailView(APIView):
