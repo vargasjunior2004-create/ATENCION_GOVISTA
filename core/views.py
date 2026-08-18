@@ -219,14 +219,19 @@ class UserDetailView(IsAdminMixin, APIView):
 
 class CashCountView(APIView):
     def get(self, request):
-        d = request.query_params.get('date') or date.today().isoformat()
-        cash_count = CashCount.objects.filter(date=d).first()
-        outflows = Outflow.objects.filter(date=d)
-        return Response({
-            'cashCount': CashCountSerializer(cash_count).data if cash_count else None,
-            'outflows': OutflowSerializer(outflows, many=True).data,
-            'totalOutflows': _total_outflows(d),
-        })
+        try:
+            d = request.query_params.get('date') or date.today().isoformat()
+            cash_count = CashCount.objects.filter(date=d).first()
+            outflows = Outflow.objects.filter(date=d)
+            return Response({
+                'cashCount': CashCountSerializer(cash_count).data if cash_count else None,
+                'outflows': OutflowSerializer(outflows, many=True).data,
+                'totalOutflows': _total_outflows(d),
+            })
+        except Exception as e:
+            import logging
+            logging.getLogger('django').exception('CashCountView.get error')
+            return Response({'error': str(e)}, status=500)
 
     def post(self, request):
         data = request.data
