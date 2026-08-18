@@ -3,7 +3,7 @@ import api from '../services/api';
 
 const AuthContext = createContext(null);
 
-const INACTIVITY_TIMEOUT = 3 * 60 * 1000; // 3 minutos
+const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutos
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
