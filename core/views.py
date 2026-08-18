@@ -247,6 +247,13 @@ class CashCountView(APIView):
             d = request.query_params.get('date') or date.today().isoformat()
             cash_count = CashCount.objects.filter(date=d).first()
             outflows = list(Outflow.objects.filter(date=d).values('id', 'date', 'personName', 'amount', 'concept', 'created_at'))
+            for o in outflows:
+                if hasattr(o.get('created_at'), 'isoformat'):
+                    o['created_at'] = o['created_at'].isoformat()
+                if hasattr(o.get('date'), 'isoformat'):
+                    o['date'] = o['date'].isoformat()
+                if hasattr(o.get('amount'), '__float__'):
+                    o['amount'] = float(o['amount'])
             cc_data = None
             if cash_count:
                 cc_data = {
