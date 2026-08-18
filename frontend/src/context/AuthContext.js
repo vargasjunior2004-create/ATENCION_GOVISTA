@@ -1,7 +1,9 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import api from '../services/api';
 
 const AuthContext = createContext(null);
+
+const INACTIVITY_TIMEOUT = 3 * 60 * 1000; // 3 minutos
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
@@ -9,18 +11,39 @@ export function AuthProvider({ children }) {
     return saved ? JSON.parse(saved) : null;
   });
 
+  const logoutTimer = useRef(null);
+
+  const logout = useCallback(() => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setUser(null);
+    if (logoutTimer.current) clearTimeout(logoutTimer.current);
+  }, []);
+
+  const resetTimer = useCallback(() => {
+    if (logoutTimer.current) clearTimeout(logoutTimer.current);
+    logoutTimer.current = setTimeout(logout, INACTIVITY_TIMEOUT);
+  }, [logout]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
+    events.forEach(e => document.addEventListener(e, resetTimer, { passive: true }));
+    resetTimer();
+
+    return () => {
+      if (logoutTimer.current) clearTimeout(logoutTimer.current);
+      events.forEach(e => document.removeEventListener(e, resetTimer));
+    };
+  }, [user, resetTimer]);
+
   const login = async (email, password) => {
     const data = await api.login(email, password);
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
     setUser(data.user);
     return data;
-  };
-
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setUser(null);
   };
 
   const value = {
