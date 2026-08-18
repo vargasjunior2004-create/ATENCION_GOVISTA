@@ -244,16 +244,31 @@ class CashCountView(APIView):
         try:
             d = request.query_params.get('date') or date.today().isoformat()
             cash_count = CashCount.objects.filter(date=d).first()
-            outflows = Outflow.objects.filter(date=d)
+            outflows = list(Outflow.objects.filter(date=d).values('id', 'date', 'personName', 'amount', 'concept', 'created_at'))
+            cc_data = None
+            if cash_count:
+                cc_data = {
+                    'id': cash_count.id,
+                    'date': str(cash_count.date),
+                    'coin_050': cash_count.coin_050,
+                    'coin_1': cash_count.coin_1,
+                    'coin_2': cash_count.coin_2,
+                    'coin_5': cash_count.coin_5,
+                    'bill_10': cash_count.bill_10,
+                    'bill_20': cash_count.bill_20,
+                    'bill_50': cash_count.bill_50,
+                    'bill_100': cash_count.bill_100,
+                    'bill_200': cash_count.bill_200,
+                }
+            total_out = Outflow.objects.filter(date=d).aggregate(s=Sum('amount'))['s'] or 0
             return Response({
-                'cashCount': CashCountSerializer(cash_count).data if cash_count else None,
-                'outflows': OutflowSerializer(outflows, many=True).data,
-                'totalOutflows': _total_outflows(d),
+                'cashCount': cc_data,
+                'outflows': outflows,
+                'totalOutflows': float(total_out),
             })
         except Exception as e:
-            import logging
-            logging.getLogger('django').exception('CashCountView.get error')
-            return Response({'error': str(e)}, status=500)
+            import traceback
+            return Response({'error': str(e), 'trace': traceback.format_exc()}, status=500)
 
     def post(self, request):
         data = request.data
