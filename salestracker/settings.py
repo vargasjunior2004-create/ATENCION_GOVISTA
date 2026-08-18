@@ -118,7 +118,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
-    'UNAUTHENTICATED_USER': None,
+    # 'UNAUTHENTICATED_USER': None,  # DRF default handles this
 }
 
 SIMPLE_JWT = {
