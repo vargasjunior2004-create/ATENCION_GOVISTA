@@ -20,8 +20,8 @@ async function request(path, options = {}) {
 }
 
 const api = {
-  login: (email, password) =>
-    request('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  login: (name, password) =>
+    request('/api/auth/login', { method: 'POST', body: JSON.stringify({ name, password }) }),
 
   me: () => request('/api/auth/me'),
 

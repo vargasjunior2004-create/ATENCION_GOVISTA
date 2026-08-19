@@ -58,25 +58,19 @@ class LoginView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        """Login del frontend: envía solo {password}. También acepta
-        {email, password}. Las credenciales son datos mock."""
-        email = (request.data.get('email') or '').strip().lower()
+        name = (request.data.get('name') or '').strip()
         password = request.data.get('password') or ''
 
+        if not name:
+            return Response({'error': 'Usuario requerido'},
+                            status=status.HTTP_400_BAD_REQUEST)
         if not password:
             return Response({'error': 'Contraseña requerida'},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        user = None
-        if email:
-            user = User.objects.filter(email__iexact=email, active=True).first()
-            if user and not user.check_password(password):
-                user = None
-        else:
-            for candidate in User.objects.filter(active=True):
-                if candidate.check_password(password):
-                    user = candidate
-                    break
+        user = User.objects.filter(name__iexact=name, active=True).first()
+        if user and not user.check_password(password):
+            user = None
 
         if user is None:
             return Response({'error': 'Credenciales inválidas'},

@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Button, Input, Alert } from './ui';
 
 export default function Login() {
-  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -16,7 +16,7 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      await login(email, password);
+      await login(name, password);
       navigate('/', { replace: true });
     } catch (err) {
       setError(err.error || 'Error al iniciar sesion');
@@ -37,12 +37,12 @@ export default function Login() {
             {error && <Alert type="error">{error}</Alert>}
             <Input
               label="Usuario"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
               required
               autoFocus
-              placeholder="correo@ejemplo.com"
+              placeholder="Tu nombre de usuario"
             />
             <Input
               label="Contrasena"

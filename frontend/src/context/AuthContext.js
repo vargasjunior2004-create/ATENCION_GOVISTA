@@ -38,8 +38,8 @@ export function AuthProvider({ children }) {
     };
   }, [user, resetTimer]);
 
-  const login = async (email, password) => {
-    const data = await api.login(email, password);
+  const login = async (name, password) => {
+    const data = await api.login(name, password);
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
     setUser(data.user);
