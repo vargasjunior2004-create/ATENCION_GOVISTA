@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Card, Button, Input, Alert } from './ui';
 import api from '../services/api';
@@ -19,16 +19,28 @@ function formatNum(n) {
   return parseFloat(n || 0).toFixed(2);
 }
 
+function zeroCounts() {
+  const obj = {};
+  DENOMINATIONS.forEach(d => { obj[d.key] = '0'; });
+  return obj;
+}
+
+function parseCount(val) {
+  return Number(val) || 0;
+}
+
+function computeTotal(countsObj) {
+  return DENOMINATIONS.reduce((sum, d) => {
+    return sum + (Number(countsObj[d.key]) || 0) * d.value;
+  }, 0);
+}
+
 export default function CashCountModule() {
   const { user } = useAuth();
   const today = new Date().toISOString().slice(0, 10);
 
   const [date, setDate] = useState(today);
-  const [counts, setCounts] = useState(() => {
-    const obj = {};
-    DENOMINATIONS.forEach(d => obj[d.key] = 0);
-    return obj;
-  });
+  const [counts, setCounts] = useState(zeroCounts);
   const [outflows, setOutflows] = useState([]);
   const [totalOutflows, setTotalOutflows] = useState(0);
   const [cashCountId, setCashCountId] = useState(null);
@@ -42,7 +54,7 @@ export default function CashCountModule() {
   const [newConcept, setNewConcept] = useState('');
   const [addingOutflow, setAddingOutflow] = useState(false);
 
-  const totalCounted = DENOMINATIONS.reduce((sum, d) => sum + (counts[d.key] || 0) * d.value, 0);
+  const totalCounted = useMemo(() => computeTotal(counts), [counts]);
   const totalCash = totalCounted;
 
   useEffect(() => {
@@ -56,22 +68,20 @@ export default function CashCountModule() {
       if (data.cashCount) {
         const c = data.cashCount;
         setCounts({
-          coin_050: c.coin_050,
-          coin_1: c.coin_1,
-          coin_2: c.coin_2,
-          coin_5: c.coin_5,
-          bill_10: c.bill_10,
-          bill_20: c.bill_20,
-          bill_50: c.bill_50,
-          bill_100: c.bill_100,
-          bill_200: c.bill_200,
+          coin_050: String(Number(c.coin_050) || 0),
+          coin_1: String(Number(c.coin_1) || 0),
+          coin_2: String(Number(c.coin_2) || 0),
+          coin_5: String(Number(c.coin_5) || 0),
+          bill_10: String(Number(c.bill_10) || 0),
+          bill_20: String(Number(c.bill_20) || 0),
+          bill_50: String(Number(c.bill_50) || 0),
+          bill_100: String(Number(c.bill_100) || 0),
+          bill_200: String(Number(c.bill_200) || 0),
         });
         setCashCountId(c.id);
         setSaved(false);
       } else {
-        const obj = {};
-        DENOMINATIONS.forEach(d => obj[d.key] = 0);
-        setCounts(obj);
+        setCounts(zeroCounts());
         setCashCountId(null);
         setSaved(false);
       }
@@ -84,16 +94,23 @@ export default function CashCountModule() {
   }
 
   function handleCountChange(key, val) {
-    const n = Number(val) || 0;
-    setCounts(prev => ({ ...prev, [key]: n }));
+    setCounts(prev => ({ ...prev, [key]: val }));
     setSaved(false);
+  }
+
+  function getSavePayload() {
+    const payload = { date };
+    DENOMINATIONS.forEach(d => {
+      payload[d.key] = Number(counts[d.key]) || 0;
+    });
+    return payload;
   }
 
   async function handleSaveCount() {
     setSaving(true);
     setMsg(null);
     try {
-      await api.saveCashCount({ date, ...counts });
+      await api.saveCashCount(getSavePayload());
       await loadCashCount();
       setMsg({ type: 'success', text: 'Arqueo guardado' });
       setSaved(true);
@@ -105,9 +122,7 @@ export default function CashCountModule() {
 
   function handleReset() {
     if (!window.confirm('¿Limpiar el conteo y las salidas en pantalla? (No afecta lo guardado en la base de datos)')) return;
-    const obj = {};
-    DENOMINATIONS.forEach(d => obj[d.key] = 0);
-    setCounts(obj);
+    setCounts(zeroCounts());
     setOutflows([]);
     setTotalOutflows(0);
     setCashCountId(null);
@@ -166,6 +181,28 @@ export default function CashCountModule() {
   const coins = DENOMINATIONS.filter(d => d.type === 'coin');
   const bills = DENOMINATIONS.filter(d => d.type === 'bill');
 
+  function renderDenominationInput(d) {
+    const qty = Number(counts[d.key]) || 0;
+    const subtotal = qty * d.value;
+    return (
+      <div key={d.key} className="bg-green-50 rounded-lg p-3">
+        <label className="block text-xs font-medium text-slate-600 mb-1">{d.label}</label>
+        <input
+          type="number"
+          min="0"
+          inputMode="numeric"
+          value={counts[d.key]}
+          onChange={e => handleCountChange(d.key, e.target.value)}
+          className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
+          placeholder="0"
+        />
+        <p className="text-xs text-slate-500 mt-1 text-right">
+          = {formatNum(subtotal)} Bs
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold text-slate-800">Arqueo de Caja</h1>
@@ -214,44 +251,14 @@ export default function CashCountModule() {
             <div className="mb-4">
               <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-2">Monedas</h3>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {coins.map(d => (
-                  <div key={d.key} className="bg-green-50 rounded-lg p-3">
-                    <label className="block text-xs font-medium text-slate-600 mb-1">{d.label}</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={counts[d.key]}
-                      onChange={e => handleCountChange(d.key, e.target.value)}
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
-                      placeholder="0"
-                    />
-                    <p className="text-xs text-slate-500 mt-1 text-right">
-                      = {formatNum((counts[d.key] || 0) * d.value)} Bs
-                    </p>
-                  </div>
-                ))}
+                {coins.map(d => renderDenominationInput(d))}
               </div>
             </div>
 
             <div className="mb-6">
               <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-2">Billetes</h3>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {bills.map(d => (
-                  <div key={d.key} className="bg-green-50 rounded-lg p-3">
-                    <label className="block text-xs font-medium text-slate-600 mb-1">{d.label}</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={counts[d.key]}
-                      onChange={e => handleCountChange(d.key, e.target.value)}
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
-                      placeholder="0"
-                    />
-                    <p className="text-xs text-slate-500 mt-1 text-right">
-                      = {formatNum((counts[d.key] || 0) * d.value)} Bs
-                    </p>
-                  </div>
-                ))}
+                {bills.map(d => renderDenominationInput(d))}
               </div>
             </div>
 
