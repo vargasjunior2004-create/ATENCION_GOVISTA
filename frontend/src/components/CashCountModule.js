@@ -84,7 +84,7 @@ export default function CashCountModule() {
   }
 
   function handleCountChange(key, val) {
-    const n = parseInt(val) || 0;
+    const n = Number(val) || 0;
     setCounts(prev => ({ ...prev, [key]: n }));
     setSaved(false);
   }
@@ -220,7 +220,7 @@ export default function CashCountModule() {
                     <input
                       type="number"
                       min="0"
-                      value={counts[d.key] || ''}
+                      value={counts[d.key]}
                       onChange={e => handleCountChange(d.key, e.target.value)}
                       className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
                       placeholder="0"
@@ -242,7 +242,7 @@ export default function CashCountModule() {
                     <input
                       type="number"
                       min="0"
-                      value={counts[d.key] || ''}
+                      value={counts[d.key]}
                       onChange={e => handleCountChange(d.key, e.target.value)}
                       className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
                       placeholder="0"
