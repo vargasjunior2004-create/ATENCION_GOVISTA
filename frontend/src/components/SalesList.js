@@ -108,7 +108,16 @@ export default function SalesList() {
     }
   };
 
-  const filteredPlans = plans.filter((p) => p.type === editForm.serviceType);
+  const filteredPlans = plans.filter((p) => {
+    const typeMap = {
+      'internet': 'internet',
+      'tv': 'tv',
+      'tv_digital': 'tv',
+      'combo_analog': 'combo',
+      'combo_digital': 'combo',
+    };
+    return p.type === typeMap[editForm.serviceType];
+  });
   const currentPlans = filteredPlans.filter((p) => !p.legacy);
   const legacyPlans = filteredPlans.filter((p) => p.legacy);
 

@@ -167,9 +167,6 @@ def build_cash_pdf(date_str):
         story.append(Spacer(1, 6))
 
     if cc:
-        def _field(label, count):
-            return [label, str(count), f'{count * value:.2f}']
-
         rows = [['Denominación', 'Cantidad', 'Subtotal (Bs)']]
         for label, value in DENOMINATIONS:
             count = getattr(cc, {
@@ -216,7 +213,7 @@ def build_cash_pdf(date_str):
     else:
         story.append(Paragraph('Sin salidas registradas.', styles['Normal']))
 
-    net = (float(cc.total) if cc else 0) + total_out
+    net = (float(cc.total) if cc else 0) - total_out
     story.append(Spacer(1, 12))
     story.append(Paragraph(f'EFECTIVO TOTAL: {net:.2f} Bs', styles['Title']))
     doc.build(story)
