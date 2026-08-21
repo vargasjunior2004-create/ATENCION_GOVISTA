@@ -87,8 +87,10 @@ export default function SalesList() {
 
   const handleEditChange = (e) => {
     const { name, value } = e.target;
+    const UPPERCASE_FIELDS = ['clientCode', 'clientName'];
+    const finalValue = UPPERCASE_FIELDS.includes(name) ? value.toUpperCase() : value;
     setEditForm((prev) => {
-      const next = { ...prev, [name]: value };
+      const next = { ...prev, [name]: finalValue };
       if (name === 'serviceType') next.planId = '';
       return next;
     });

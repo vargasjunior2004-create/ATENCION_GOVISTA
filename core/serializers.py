@@ -82,7 +82,7 @@ class SaleCreateSerializer(serializers.Serializer):
     clientCode = serializers.CharField(max_length=40)
     clientName = serializers.CharField(max_length=160)
     serviceType = serializers.ChoiceField(
-        choices=[('internet', 'internet'), ('tv', 'tv'), ('combo', 'combo')])
+        choices=[c[0] for c in Sale.TYPE_CHOICES])
     requestType = serializers.ChoiceField(
         choices=[c[0] for c in Sale.REQUEST_CHOICES], required=False,
         default='nuevo_contrato')
@@ -99,7 +99,16 @@ class SaleCreateSerializer(serializers.Serializer):
         except Plan.DoesNotExist:
             raise serializers.ValidationError(
                 {'planId': 'Plan no encontrado o inactivo'})
-        if plan.type != attrs['serviceType']:
+        # Map service types to plan types for validation
+        type_map = {
+            'internet': 'internet',
+            'tv': 'tv',
+            'tv_digital': 'tv',
+            'combo_analog': 'combo',
+            'combo_digital': 'combo',
+        }
+        expected_type = type_map.get(attrs['serviceType'])
+        if plan.type != expected_type:
             raise serializers.ValidationError(
                 {'serviceType': 'El plan no pertenece al tipo de servicio seleccionado'})
         attrs['plan'] = plan
