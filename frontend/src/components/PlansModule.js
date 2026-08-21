@@ -19,7 +19,12 @@ export default function PlansModule() {
 
   useEffect(() => { loadPlans(); }, [loadPlans]);
 
-  const handleChange = (e) => setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    const UPPERCASE_FIELDS = ['code', 'label'];
+    const finalValue = UPPERCASE_FIELDS.includes(name) ? value.toUpperCase() : value;
+    setForm((p) => ({ ...p, [name]: finalValue }));
+  };
 
   const openNew = () => { setForm({ ...emptyPlan }); setEditingId(null); setShowForm(true); setError(''); };
   const openEdit = (plan) => {

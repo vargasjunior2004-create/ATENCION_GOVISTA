@@ -69,13 +69,19 @@ class Customer(models.Model):
 class Sale(models.Model):
     """Venta registrada. total se calcula SIEMPRE en el servidor a partir
     del plan, nunca se acepta del cliente."""
-    TYPE_CHOICES = [('internet', 'internet'), ('tv', 'tv'), ('combo', 'combo')]
+    TYPE_CHOICES = [
+        ('internet', 'INTERNET'),
+        ('tv', 'TV ANALOGA'),
+        ('tv_digital', 'TV DIGITAL'),
+        ('combo_analog', 'INTERNET + TV ANALOGA'),
+        ('combo_digital', 'INTERNET + TV DIGITAL'),
+    ]
     REQUEST_CHOICES = [
         ('nuevo_contrato', 'NUEVO CONTRATO'),
         ('cambio_plan', 'CAMBIO DE PLAN'),
         ('recontratacion', 'RECONTRATACION'),
         ('retiro', 'RETIRO'),
-        ('adicion', 'ADICIÓN'),
+        ('adicion', 'ADICION'),
         ('baja_temporal', 'BAJA TEMPORAL'),
         ('otro', 'OTRO'),
     ]
@@ -86,7 +92,7 @@ class Sale(models.Model):
     customer = models.ForeignKey(
         Customer, null=True, blank=True, on_delete=models.SET_NULL,
         related_name='sales')
-    serviceType = models.CharField(max_length=10, choices=TYPE_CHOICES)
+    serviceType = models.CharField(max_length=20, choices=TYPE_CHOICES)
     requestType = models.CharField(
         max_length=20, choices=REQUEST_CHOICES, default='nuevo_contrato')
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='sales')

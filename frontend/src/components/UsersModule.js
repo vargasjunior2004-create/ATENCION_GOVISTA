@@ -18,7 +18,12 @@ export default function UsersModule() {
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
 
-  const handleChange = (e) => setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    const UPPERCASE_FIELDS = ['name'];
+    const finalValue = UPPERCASE_FIELDS.includes(name) ? value.toUpperCase() : value;
+    setForm((p) => ({ ...p, [name]: finalValue }));
+  };
 
   const openNew = () => { setForm({ ...emptyUser }); setEditingId(null); setShowForm(true); setError(''); };
   const openEdit = (user) => {

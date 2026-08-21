@@ -277,7 +277,7 @@ export default function CashCountModule() {
           <Input
             label="A quién se le dio"
             value={newPerson}
-            onChange={e => setNewPerson(e.target.value)}
+            onChange={e => setNewPerson(e.target.value.toUpperCase())}
             placeholder="Nombre"
           />
           <Input
@@ -292,8 +292,8 @@ export default function CashCountModule() {
           <Input
             label="Concepto (opcional)"
             value={newConcept}
-            onChange={e => setNewConcept(e.target.value)}
-            placeholder="Ej: depósito"
+            onChange={e => setNewConcept(e.target.value.toUpperCase())}
+            placeholder="Ej: deposito"
           />
           <div className="flex items-end">
             <Button
