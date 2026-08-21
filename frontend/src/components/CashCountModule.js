@@ -55,7 +55,11 @@ export default function CashCountModule() {
   const [addingOutflow, setAddingOutflow] = useState(false);
 
   const totalCounted = useMemo(() => computeTotal(counts), [counts]);
-  const totalCash = totalCounted - (Number(totalOutflows) || 0);
+  const totalCash = useMemo(() => {
+    const counted = Number(totalCounted) || 0;
+    const outflows = Number(totalOutflows) || 0;
+    return counted + outflows;
+  }, [totalCounted, totalOutflows]);
 
   useEffect(() => {
     loadCashCount();
