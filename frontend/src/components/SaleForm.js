@@ -185,7 +185,7 @@ export default function SaleForm() {
             <Input
               label="Nombre del Cliente *"
               value={query}
-              onChange={(e) => { setSelectedCustomer(null); searchCustomers(e.target.value); }}
+              onChange={(e) => { setSelectedCustomer(null); setForm(prev => ({ ...prev, clientName: e.target.value.toUpperCase() })); searchCustomers(e.target.value); }}
               placeholder="Escriba nombre o kardex del cliente..."
               autoComplete="off"
               required
