@@ -44,7 +44,6 @@ export default function SaleForm() {
   const [loading, setLoading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
-  // Autocompletar cliente por kardex/nombre
   const [query, setQuery] = useState('');
   const [customers, setCustomers] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -82,7 +81,6 @@ export default function SaleForm() {
   }, []);
 
   const filteredPlans = plans.filter((p) => {
-    // Map service types to plan types
     const typeMap = {
       'internet': 'internet',
       'tv': 'tv',
@@ -108,7 +106,6 @@ export default function SaleForm() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    // Convertir a mayusculas los campos de texto
     const UPPERCASE_FIELDS = ['clientCode', 'clientName', 'notes'];
     const finalValue = UPPERCASE_FIELDS.includes(name) ? value.toUpperCase() : value;
     setForm((prev) => {
@@ -168,21 +165,22 @@ export default function SaleForm() {
   };
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-slate-900">Registrar Movimiento</h1>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-black text-slate-900 tracking-tight">Registrar Movimiento</h1>
+        <p className="text-sm text-slate-400 mt-1">Nuevo registro de movimiento de cliente</p>
+      </div>
 
-      <Card className="p-5">
-        <form onSubmit={(e) => { e.preventDefault(); setShowPreview(true); }} className="space-y-4">
+      <Card className="p-6">
+        <form onSubmit={(e) => { e.preventDefault(); setShowPreview(true); }} className="space-y-5">
           {error && <Alert type="error">{error}</Alert>}
           {success && <Alert type="success">{success}</Alert>}
 
-          {/* Fila 1: Fecha + Kardex */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input label="Fecha *" type="date" name="date" value={form.date} onChange={handleChange} required />
             <Input label="Kardex *" name="clientCode" value={form.clientCode} onChange={handleChange} required placeholder="N° kardex" />
           </div>
 
-          {/* Fila 2: Nombre Cliente */}
           <div ref={dropdownRef} className="relative">
             <Input
               label="Nombre del Cliente *"
@@ -193,13 +191,13 @@ export default function SaleForm() {
               required
             />
             {showDropdown && customers.length > 0 && (
-              <ul className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-56 overflow-auto">
+              <ul className="absolute z-20 mt-1 w-full bg-white border-0 rounded-xl shadow-xl max-h-56 overflow-auto">
                 {customers.map((c) => (
                   <li key={c.id}>
                     <button type="button" onClick={() => pickCustomer(c)}
-                      className="w-full text-left px-4 py-2 hover:bg-green-50 flex items-center justify-between gap-2">
-                      <span className="text-sm text-slate-700">{c.name}</span>
-                      <span className="text-xs font-mono text-slate-400">{c.code}</span>
+                      className="w-full text-left px-4 py-3 hover:bg-brand-50 flex items-center justify-between gap-2 transition-colors">
+                      <span className="text-sm text-slate-700 font-medium">{c.name}</span>
+                      <span className="text-xs font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded">{c.code}</span>
                     </button>
                   </li>
                 ))}
@@ -210,7 +208,6 @@ export default function SaleForm() {
             )}
           </div>
 
-          {/* Fila 3: Tipo Solicitud + Tipo Servicio */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Select label="Tipo de Solicitud *" name="requestType" value={form.requestType} onChange={handleChange} required>
               {REQUEST_TYPES.map((t) => (
@@ -224,7 +221,6 @@ export default function SaleForm() {
             </Select>
           </div>
 
-          {/* Fila 4: Plan */}
           <Select label="Paquete / Plan *" name="planId" value={form.planId} onChange={handleChange} required>
             <option value="">Seleccionar plan...</option>
             <optgroup label="Planes vigentes">
@@ -241,7 +237,6 @@ export default function SaleForm() {
             )}
           </Select>
 
-          {/* Motivo Cambio */}
           {isCambio && (
             <Select label="Motivo del Cambio *" name="changeReason" value={form.changeReason} onChange={handleChange} required>
               <option value="">Seleccionar motivo...</option>
@@ -249,7 +244,6 @@ export default function SaleForm() {
             </Select>
           )}
 
-          {/* Motivo Retiro */}
           {isRetiro && (
             <Select label="Motivo del Retiro *" name="retiroReason" value={form.retiroReason} onChange={handleChange} required>
               <option value="">Seleccionar motivo...</option>
@@ -257,45 +251,35 @@ export default function SaleForm() {
             </Select>
           )}
 
-          {/* Comentarios */}
           <Input label="Comentarios (opcional)" name="notes" value={form.notes} onChange={handleChange} placeholder="Notas internas" />
 
-          {/* Vista Previa */}
           {selectedPlan && (
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
-              <h3 className="text-sm font-semibold text-slate-700 border-b pb-2">VISTA PREVIA</h3>
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div><span className="text-slate-500">Fecha:</span></div>
+            <div className="bg-slate-50 rounded-2xl p-5 space-y-3 border border-slate-100">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Vista Previa</h3>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div><span className="text-slate-400">Fecha:</span></div>
                 <div className="font-medium">{formatDate(form.date)}</div>
-
-                <div><span className="text-slate-500">Kardex:</span></div>
+                <div><span className="text-slate-400">Kardex:</span></div>
                 <div className="font-medium">{form.clientCode || '—'}</div>
-
-                <div><span className="text-slate-500">Cliente:</span></div>
+                <div><span className="text-slate-400">Cliente:</span></div>
                 <div className="font-medium">{form.clientName || '—'}</div>
-
-                <div><span className="text-slate-500">Solicitud:</span></div>
+                <div><span className="text-slate-400">Solicitud:</span></div>
                 <div className="font-medium">{getRequestLabel(form.requestType)}</div>
-
-                <div><span className="text-slate-500">Servicio:</span></div>
+                <div><span className="text-slate-400">Servicio:</span></div>
                 <div className="font-medium">{getServiceLabel(form.serviceType)}</div>
-
-                <div><span className="text-slate-500">Plan:</span></div>
+                <div><span className="text-slate-400">Plan:</span></div>
                 <div className="font-medium">{selectedPlan.label}</div>
-
-                <div><span className="text-slate-500">Monto:</span></div>
-                <div className="font-bold text-green-700">Bs. {parseFloat(selectedPlan.monthly).toFixed(2)}</div>
-
+                <div><span className="text-slate-400">Monto:</span></div>
+                <div className="font-bold text-brand-700">Bs. {parseFloat(selectedPlan.monthly).toFixed(2)}</div>
                 {getMotivoLabel() && (
                   <>
-                    <div><span className="text-slate-500">Motivo:</span></div>
+                    <div><span className="text-slate-400">Motivo:</span></div>
                     <div className="font-medium">{getMotivoLabel()}</div>
                   </>
                 )}
-
                 {form.notes && (
                   <>
-                    <div><span className="text-slate-500">Comentarios:</span></div>
+                    <div><span className="text-slate-400">Comentarios:</span></div>
                     <div className="font-medium">{form.notes}</div>
                   </>
                 )}
@@ -303,35 +287,33 @@ export default function SaleForm() {
             </div>
           )}
 
-          <div className="flex gap-3">
-            <Button type="submit" size="lg" className="flex-1" disabled={!form.planId}>
-              Revisar Registro
-            </Button>
-          </div>
+          <Button type="submit" size="lg" className="w-full" disabled={!form.planId}>
+            Revisar Registro
+          </Button>
         </form>
       </Card>
 
-      {/* Modal de Confirmacion */}
       {showPreview && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
-            <h2 className="text-lg font-bold text-slate-900 text-center">Confirmar Registro</h2>
-            
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div className="text-center">
+              <h2 className="text-xl font-black text-slate-900">Confirmar Registro</h2>
+              <p className="text-xs text-slate-400 mt-1">Revise los datos antes de guardar</p>
+            </div>
             {selectedPlan && (
-              <div className="bg-slate-50 rounded-xl p-4 space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-slate-500">Fecha:</span><span className="font-medium">{formatDate(form.date)}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">Kardex:</span><span className="font-medium">{form.clientCode}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">Cliente:</span><span className="font-medium">{form.clientName}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">Solicitud:</span><span className="font-medium">{getRequestLabel(form.requestType)}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">Servicio:</span><span className="font-medium">{getServiceLabel(form.serviceType)}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">Plan:</span><span className="font-medium">{selectedPlan.label}</span></div>
-                <div className="flex justify-between border-t pt-2"><span className="text-slate-500">Total:</span><span className="font-bold text-green-700 text-lg">Bs. {parseFloat(selectedPlan.monthly).toFixed(2)}</span></div>
+              <div className="bg-slate-50 rounded-2xl p-4 space-y-2 text-sm">
+                <div className="flex justify-between"><span className="text-slate-400">Fecha:</span><span className="font-medium">{formatDate(form.date)}</span></div>
+                <div className="flex justify-between"><span className="text-slate-400">Kardex:</span><span className="font-medium">{form.clientCode}</span></div>
+                <div className="flex justify-between"><span className="text-slate-400">Cliente:</span><span className="font-medium">{form.clientName}</span></div>
+                <div className="flex justify-between"><span className="text-slate-400">Solicitud:</span><span className="font-medium">{getRequestLabel(form.requestType)}</span></div>
+                <div className="flex justify-between"><span className="text-slate-400">Servicio:</span><span className="font-medium">{getServiceLabel(form.serviceType)}</span></div>
+                <div className="flex justify-between"><span className="text-slate-400">Plan:</span><span className="font-medium">{selectedPlan.label}</span></div>
+                <div className="flex justify-between border-t border-slate-200 pt-2"><span className="text-slate-400">Total:</span><span className="font-bold text-brand-700 text-lg">Bs. {parseFloat(selectedPlan.monthly).toFixed(2)}</span></div>
                 {getMotivoLabel() && (
-                  <div className="flex justify-between"><span className="text-slate-500">Motivo:</span><span className="font-medium">{getMotivoLabel()}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-400">Motivo:</span><span className="font-medium">{getMotivoLabel()}</span></div>
                 )}
               </div>
             )}
-
             <div className="flex gap-3">
               <Button type="button" variant="secondary" size="lg" className="flex-1" onClick={() => setShowPreview(false)}>
                 Cancelar

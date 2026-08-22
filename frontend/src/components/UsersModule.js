@@ -53,17 +53,20 @@ export default function UsersModule() {
   if (loading) return <p className="text-center text-slate-400 py-20">Cargando...</p>;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h1 className="text-2xl font-bold text-slate-900">Usuarios</h1>
-        <Button onClick={openNew}>Agregar Usuario</Button>
+        <div>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Usuarios</h1>
+          <p className="text-sm text-slate-400 mt-1">Gestion de cuentas de usuario</p>
+        </div>
+        <Button onClick={openNew}>+ Agregar Usuario</Button>
       </div>
 
       {/* Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowForm(false)}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowForm(false)}>
           <Card className="w-full max-w-lg p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-slate-900">{editingId ? 'Editar Usuario' : 'Nuevo Usuario'}</h3>
+            <h3 className="text-lg font-black text-slate-900">{editingId ? 'Editar Usuario' : 'Nuevo Usuario'}</h3>
             {error && <Alert type="error">{error}</Alert>}
             <form onSubmit={handleSubmit} className="space-y-4">
               <Input label="Nombre" name="name" value={form.name} onChange={handleChange} required />
@@ -91,17 +94,17 @@ export default function UsersModule() {
       <Card className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-200">
+            <tr className="border-b border-slate-100">
               {['Nombre', 'Email', 'Rol', 'Estado', ''].map((h) => (
-                <th key={h} className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-400">{h}</th>
+                <th key={h} className="text-left px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">{h}</th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-sline-100">
+          <tbody className="divide-y divide-slate-50">
             {users.map((u) => (
-              <tr key={u.id} className={`hover:bg-green-50 transition-colors ${!u.active ? 'opacity-50' : ''}`}>
-                <td className="px-4 py-3 font-medium text-slate-900">{u.name}</td>
-                <td className="px-4 py-3 text-slate-600">{u.email}</td>
+              <tr key={u.id} className={`hover:bg-brand-50/30 transition-colors ${!u.active ? 'opacity-50' : ''}`}>
+                <td className="px-5 py-3.5 font-medium text-slate-900">{u.name}</td>
+                <td className="px-5 py-3.5 text-slate-500">{u.email}</td>
                 <td className="px-4 py-3"><Badge color={u.role === 'admin' ? 'amber' : 'blue'}>{u.role}</Badge></td>
                 <td className="px-4 py-3">
                   <Badge color={u.active ? 'green' : 'red'}>{u.active ? 'Activo' : 'Inactivo'}</Badge>

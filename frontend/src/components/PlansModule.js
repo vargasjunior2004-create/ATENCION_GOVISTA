@@ -48,17 +48,20 @@ export default function PlansModule() {
   if (loading) return <p className="text-center text-slate-400 py-20">Cargando...</p>;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h1 className="text-2xl font-bold text-slate-900">Planes</h1>
-        <Button onClick={openNew}>Agregar Plan</Button>
+        <div>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Planes</h1>
+          <p className="text-sm text-slate-400 mt-1">Gestion de paquetes de servicio</p>
+        </div>
+        <Button onClick={openNew}>+ Agregar Plan</Button>
       </div>
 
       {/* Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowForm(false)}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowForm(false)}>
           <Card className="w-full max-w-lg p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-slate-900">{editingId ? 'Editar Plan' : 'Nuevo Plan'}</h3>
+            <h3 className="text-lg font-black text-slate-900">{editingId ? 'Editar Plan' : 'Nuevo Plan'}</h3>
             {error && <Alert type="error">{error}</Alert>}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -93,22 +96,22 @@ export default function PlansModule() {
       <Card className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-200">
+            <tr className="border-b border-slate-100">
               {['Codigo', 'Nombre', 'Tipo', 'Velocidad', 'Mensual', 'Instalacion', 'Total', 'Estado', ''].map((h) => (
-                <th key={h} className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-400">{h}</th>
+                <th key={h} className="text-left px-4 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">{h}</th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-slate-50">
             {plans.map((p) => (
-              <tr key={p.id} className={`hover:bg-green-50 transition-colors ${!p.active ? 'opacity-50' : ''}`}>
-                <td className="px-4 py-3 font-mono text-xs text-slate-600">{p.code}</td>
+              <tr key={p.id} className={`hover:bg-brand-50/30 transition-colors ${!p.active ? 'opacity-50' : ''}`}>
+                <td className="px-4 py-3 font-mono text-xs text-slate-500">{p.code}</td>
                 <td className="px-4 py-3 font-medium text-slate-900">{p.label}</td>
                 <td className="px-4 py-3"><Badge color={typeColor[p.type]}>{p.type}</Badge></td>
-                <td className="px-4 py-3 text-slate-600">{p.speed ? `${p.speed} Mbps` : '-'}</td>
-                <td className="px-4 py-3 text-slate-600 tabular-nums">{parseFloat(p.monthly).toFixed(2)}</td>
-                <td className="px-4 py-3 text-slate-600 tabular-nums">{parseFloat(p.installation).toFixed(2)}</td>
-                <td className="px-4 py-3 font-bold text-green-700 tabular-nums">{parseFloat(p.total).toFixed(2)}</td>
+                <td className="px-4 py-3 text-slate-500">{p.speed ? `${p.speed} Mbps` : '-'}</td>
+                <td className="px-4 py-3 text-slate-500 tabular-nums">{parseFloat(p.monthly).toFixed(2)}</td>
+                <td className="px-4 py-3 text-slate-500 tabular-nums">{parseFloat(p.installation).toFixed(2)}</td>
+                <td className="px-4 py-3 font-bold text-brand-700 tabular-nums">{parseFloat(p.total).toFixed(2)}</td>
                 <td className="px-4 py-3">
                   <Badge color={p.active ? 'green' : 'red'}>{p.active ? 'Activo' : 'Inactivo'}</Badge>
                 </td>
@@ -141,7 +144,7 @@ export default function PlansModule() {
             <div className="text-sm text-slate-500">{p.speed ? `${p.speed} Mbps` : 'Sin velocidad'}</div>
             <div className="flex items-center justify-between pt-1 border-t border-slate-100">
               <span className="text-xs text-slate-400">Mensual: {parseFloat(p.monthly).toFixed(2)} | Inst: {parseFloat(p.installation).toFixed(2)}</span>
-              <span className="font-bold text-green-700 tabular-nums">{parseFloat(p.total).toFixed(2)} Bs</span>
+              <span className="font-bold text-brand-700 tabular-nums">{parseFloat(p.total).toFixed(2)} Bs</span>
             </div>
             <div className="flex gap-2 pt-1">
               <Button variant="ghost" size="sm" onClick={() => openEdit(p)} className="flex-1">Editar</Button>
