@@ -1,11 +1,21 @@
 const API_URL = '';
 
+let onAuthExpired = null;
+export function setOnAuthExpired(cb) { onAuthExpired = cb; }
+
 async function request(path, options = {}) {
   const token = localStorage.getItem('token');
   const headers = { 'Content-Type': 'application/json', ...options.headers };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const res = await fetch(`${API_URL}${path}`, { ...options, headers });
+
+  if (res.status === 401) {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    if (onAuthExpired) onAuthExpired();
+    throw new Error('Sesión expirada');
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: 'Error del servidor' }));

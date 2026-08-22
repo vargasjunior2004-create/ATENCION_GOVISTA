@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import api from '../services/api';
+import api, { setOnAuthExpired } from '../services/api';
 
 const AuthContext = createContext(null);
 
-const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutos
+const INACTIVITY_TIMEOUT = 3 * 60 * 1000; // 3 minutos
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
@@ -20,6 +20,11 @@ export function AuthProvider({ children }) {
     if (logoutTimer.current) clearTimeout(logoutTimer.current);
   }, []);
 
+  useEffect(() => {
+    setOnAuthExpired(logout);
+    return () => setOnAuthExpired(null);
+  }, [logout]);
+
   const resetTimer = useCallback(() => {
     if (logoutTimer.current) clearTimeout(logoutTimer.current);
     logoutTimer.current = setTimeout(logout, INACTIVITY_TIMEOUT);
@@ -28,7 +33,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!user) return;
 
-    const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
+    const events = ['click'];
     events.forEach(e => document.addEventListener(e, resetTimer, { passive: true }));
     resetTimer();
 
