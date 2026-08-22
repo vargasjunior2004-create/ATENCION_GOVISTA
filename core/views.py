@@ -155,7 +155,10 @@ class SaleListView(APIView):
         return Response(SaleSerializer(qs, many=True).data)
 
     def post(self, request):
-        serializer = SaleCreateSerializer(data=request.data, context={'user': request.user})
+        data = request.data.copy()
+        from django.utils import timezone as tz
+        data['date'] = tz.now().date().isoformat()
+        serializer = SaleCreateSerializer(data=data, context={'user': request.user})
         if not serializer.is_valid():
             return Response({'error': _first_error(serializer)}, status=status.HTTP_400_BAD_REQUEST)
         sale = serializer.save()
