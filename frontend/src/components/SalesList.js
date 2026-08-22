@@ -27,19 +27,19 @@ const REQUEST_COLOR = {
 
 function SaleCard({ sale, isAdmin, onEdit }) {
   return (
-    <Card className="p-4 space-y-2">
+    <Card className="p-4 space-y-3">
       <div className="flex items-start justify-between">
         <div>
           <p className="font-semibold text-slate-900">{sale.clientName}</p>
-          <p className="text-sm text-slate-500">{sale.clientCode} &middot; {sale.date}</p>
+          <p className="text-sm text-slate-400">{sale.clientCode} &middot; {sale.date}</p>
         </div>
         <Badge color={REQUEST_COLOR[sale.requestType] || 'slate'}>{REQUEST_LABEL[sale.requestType] || sale.requestType}</Badge>
       </div>
       <div className="flex items-center justify-between text-sm">
         <span className="text-slate-500">{sale.Plan?.label || '-'}</span>
-        <span className="font-bold text-green-700 tabular-nums">{parseFloat(sale.total).toFixed(2)} Bs</span>
+        <span className="font-bold text-brand-700 tabular-nums">{parseFloat(sale.total).toFixed(2)} Bs</span>
       </div>
-      <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+      <div className="flex items-center justify-between pt-2 border-t border-slate-100">
         <span className="text-xs text-slate-400">por {sale.creator?.name || '-'}</span>
         {isAdmin && (
           <Button variant="ghost" size="sm" onClick={() => onEdit(sale)}>Editar</Button>
@@ -122,11 +122,14 @@ export default function SalesList() {
   const legacyPlans = filteredPlans.filter((p) => p.legacy);
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-slate-900">Ventas</h1>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-black text-slate-900 tracking-tight">Ventas</h1>
+        <p className="text-sm text-slate-400 mt-1">Historial de movimientos</p>
+      </div>
 
       {/* Filters */}
-      <Card className="p-4">
+      <Card className="p-5">
         <div className="grid grid-cols-1 sm:grid-cols-4 items-end gap-3">
           <div>
             <Input label="Desde" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
@@ -147,9 +150,9 @@ export default function SalesList() {
 
       {/* Edit modal */}
       {editingSale && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setEditingSale(null)}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setEditingSale(null)}>
           <Card className="w-full max-w-lg p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-slate-900">Editar Venta #{editingSale.id}</h3>
+            <h3 className="text-lg font-black text-slate-900">Editar Venta #{editingSale.id}</h3>
             {editError && <Alert type="error">{editError}</Alert>}
             <form onSubmit={handleUpdate} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -195,9 +198,17 @@ export default function SalesList() {
 
       {/* Sales */}
       {loading ? (
-        <p className="text-center text-slate-400 py-12">Cargando...</p>
+        <div className="flex items-center justify-center py-20">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-2 border-brand-500/20 border-t-brand-500 rounded-full animate-spin" />
+            <p className="text-sm text-slate-400 font-medium">Cargando...</p>
+          </div>
+        </div>
       ) : sales.length === 0 ? (
-        <Card className="p-12 text-center">
+        <Card className="p-16 text-center">
+          <svg className="w-12 h-12 text-slate-200 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+          </svg>
           <p className="text-slate-400 text-sm">No hay ventas en este periodo</p>
         </Card>
       ) : (
@@ -206,29 +217,24 @@ export default function SalesList() {
           <Card className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200">
-                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Fecha</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Cod.</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Nombre</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Movimiento</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Plan</th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Total</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Por</th>
-                  {isAdmin && <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-400"></th>}
+                <tr className="border-b border-slate-100">
+                  {['Fecha', 'Cod.', 'Nombre', 'Movimiento', 'Plan', 'Total', 'Por', ''].map((h) => (
+                    <th key={h} className="text-left px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">{h}</th>
+                  ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-50">
                 {sales.map((s) => (
-                  <tr key={s.id} className="hover:bg-green-50 transition-colors">
-                    <td className="px-4 py-3 text-slate-600">{s.date}</td>
-                    <td className="px-4 py-3 text-slate-600 font-mono text-xs">{s.clientCode}</td>
-                    <td className="px-4 py-3 font-medium text-slate-900">{s.clientName}</td>
-                    <td className="px-4 py-3"><Badge color={REQUEST_COLOR[s.requestType] || 'slate'}>{REQUEST_LABEL[s.requestType] || s.requestType}</Badge></td>
-                    <td className="px-4 py-3 text-slate-600">{s.Plan?.label || '-'}</td>
-                    <td className="px-4 py-3 text-right font-bold text-green-700 tabular-nums">{parseFloat(s.total).toFixed(2)} Bs</td>
-                    <td className="px-4 py-3 text-slate-500 text-xs">{s.creator?.name || '-'}</td>
+                  <tr key={s.id} className="hover:bg-brand-50/30 transition-colors">
+                    <td className="px-5 py-3.5 text-slate-500">{s.date}</td>
+                    <td className="px-5 py-3.5 text-slate-500 font-mono text-xs">{s.clientCode}</td>
+                    <td className="px-5 py-3.5 font-medium text-slate-900">{s.clientName}</td>
+                    <td className="px-5 py-3.5"><Badge color={REQUEST_COLOR[s.requestType] || 'slate'}>{REQUEST_LABEL[s.requestType] || s.requestType}</Badge></td>
+                    <td className="px-5 py-3.5 text-slate-500">{s.Plan?.label || '-'}</td>
+                    <td className="px-5 py-3.5 text-right font-bold text-brand-700 tabular-nums">{parseFloat(s.total).toFixed(2)} Bs</td>
+                    <td className="px-5 py-3.5 text-slate-500 text-xs">{s.creator?.name || '-'}</td>
                     {isAdmin && (
-                      <td className="px-4 py-3">
+                      <td className="px-5 py-3.5">
                         <Button variant="ghost" size="sm" onClick={() => startEdit(s)}>Editar</Button>
                       </td>
                     )}

@@ -209,11 +209,14 @@ export default function CashCountModule() {
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold text-slate-800">Arqueo de Caja</h1>
+      <div>
+        <h1 className="text-2xl font-black text-slate-900 tracking-tight">Arqueo de Caja</h1>
+        <p className="text-sm text-slate-400 mt-1">Control diario de efectivo</p>
+      </div>
 
       {msg && <Alert type={msg.type}>{msg.text}</Alert>}
 
-      <Card className="p-4 sm:p-6">
+      <Card className="p-6">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <Input
             label="Fecha"
@@ -225,7 +228,7 @@ export default function CashCountModule() {
             label="Usuario"
             value={user?.name || ''}
             readOnly
-            className="bg-green-50"
+            className="bg-slate-50"
           />
           <div className="flex items-end gap-2">
             <Button
@@ -246,36 +249,36 @@ export default function CashCountModule() {
           </div>
         </div>
 
-        <h2 className="text-lg font-semibold text-slate-700 mb-3">Conteo de Efectivo</h2>
+        <h2 className="text-lg font-bold text-slate-800 mb-3">Conteo de Efectivo</h2>
 
         {loading ? (
           <p className="text-slate-500 text-sm">Cargando...</p>
         ) : (
           <>
             <div className="mb-4">
-              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-2">Monedas</h3>
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Monedas</h3>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {coins.map(d => renderDenominationInput(d))}
               </div>
             </div>
 
             <div className="mb-6">
-              <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-2">Billetes</h3>
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Billetes</h3>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {bills.map(d => renderDenominationInput(d))}
               </div>
             </div>
 
-            <div className="bg-brand-50 border border-brand-200 rounded-lg p-4 flex items-center justify-between">
-              <span className="text-base font-semibold text-brand-800">Total Contado</span>
-              <span className="text-2xl font-bold text-brand-700 tabular-nums">{formatNum(totalCounted)} Bs</span>
+            <div className="bg-brand-50 border border-brand-100 rounded-xl p-4 flex items-center justify-between">
+              <span className="text-sm font-bold text-brand-800">Total Contado</span>
+              <span className="text-2xl font-extrabold text-brand-700 tabular-nums">{formatNum(totalCounted)} Bs</span>
             </div>
           </>
         )}
       </Card>
 
-      <Card className="p-4 sm:p-6">
-        <h2 className="text-lg font-semibold text-slate-700 mb-3">Salidas de Efectivo</h2>
+      <Card className="p-6">
+        <h2 className="text-lg font-bold text-slate-800 mb-3">Salidas de Efectivo</h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
           <Input
@@ -317,11 +320,11 @@ export default function CashCountModule() {
           <div className="overflow-x-auto mb-4">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-200">
-                  <th className="text-left py-2 px-3 font-semibold text-slate-600">Hora</th>
-                  <th className="text-left py-2 px-3 font-semibold text-slate-600">Persona</th>
-                  <th className="text-right py-2 px-3 font-semibold text-slate-600">Monto</th>
-                  <th className="text-left py-2 px-3 font-semibold text-slate-600">Concepto</th>
+                <tr className="border-b border-slate-100">
+                  <th className="text-left py-2.5 px-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Hora</th>
+                  <th className="text-left py-2.5 px-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Persona</th>
+                  <th className="text-right py-2.5 px-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Monto</th>
+                  <th className="text-left py-2.5 px-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Concepto</th>
                   <th className="py-2 px-3 w-10"></th>
                 </tr>
               </thead>
@@ -349,16 +352,16 @@ export default function CashCountModule() {
           </div>
         )}
 
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center justify-between">
-          <span className="text-base font-semibold text-red-800">Total Salidas</span>
-          <span className="text-2xl font-bold text-red-600 tabular-nums">{formatNum(totalOutflows)} Bs</span>
+        <div className="bg-red-50 border border-red-100 rounded-xl p-4 flex items-center justify-between">
+          <span className="text-sm font-bold text-red-800">Total Salidas</span>
+          <span className="text-2xl font-extrabold text-red-600 tabular-nums">{formatNum(totalOutflows)} Bs</span>
         </div>
       </Card>
 
-      <Card className="p-4 sm:p-6">
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center justify-between mb-4">
-          <span className="text-base font-semibold text-green-800">Efectivo Total</span>
-          <span className="text-2xl font-bold text-green-700 tabular-nums">{formatNum(totalCash)} Bs</span>
+      <Card className="p-6">
+        <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 flex items-center justify-between mb-4">
+          <span className="text-sm font-bold text-emerald-800">Efectivo Total</span>
+          <span className="text-2xl font-extrabold text-emerald-700 tabular-nums">{formatNum(totalCash)} Bs</span>
         </div>
         <p className="text-xs text-slate-500 mb-4 text-right">Total contado en efectivo</p>
         <div className="flex flex-col sm:flex-row gap-3">

@@ -1,3 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    @apply text-slate-800 bg-slate-50;
+  }
+}
+
+@layer components {
+  .btn-glow {
+    @apply relative overflow-hidden;
+  }
+  .btn-glow::after {
+    content: '';
+    @apply absolute inset-0 opacity-0 transition-opacity duration-200;
+    background: linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 60%);
+  }
+  .btn-glow:hover::after {
+    @apply opacity-100;
+  }
+
+  .card-modern {
+    @apply bg-white rounded-2xl border border-slate-100 shadow-card transition-all duration-200;
+  }
+  .card-modern:hover {
+    @apply shadow-card-hover;
+  }
+
+  .gradient-brand {
+    background: linear-gradient(135deg, #0d6e3f 0%, #12894d 50%, #0f6e3f 100%);
+  }
+
+  .gradient-sidebar {
+    background: linear-gradient(180deg, #0d2b1b 0%, #0a1f14 100%);
+  }
+
+  .glass {
+    @apply bg-white/80 backdrop-blur-sm;
+  }
+
+  .stat-number {
+    @apply text-4xl font-extrabold tracking-tight;
+    background: linear-gradient(135deg, #0d6e3f, #00d67b);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+}
