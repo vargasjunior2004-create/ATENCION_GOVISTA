@@ -123,8 +123,8 @@ REST_FRAMEWORK = {
 
 SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
-    'ACCESS_TOKEN_LIFETIME': __import__('datetime').timedelta(minutes=30),
-    'REFRESH_TOKEN_LIFETIME': __import__('datetime').timedelta(hours=2),
+    'ACCESS_TOKEN_LIFETIME': __import__('datetime').timedelta(hours=8),
+    'REFRESH_TOKEN_LIFETIME': __import__('datetime').timedelta(hours=24),
     'ROTATE_REFRESH_TOKENS': False,
 }
 
