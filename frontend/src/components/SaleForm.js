@@ -31,7 +31,15 @@ const RETIRO_REASONS = [
 ];
 
 export default function SaleForm() {
-  const today = new Date().toISOString().split('T')[0];
+  const getToday = () => {
+    const now = new Date();
+    const bolivia = new Date(now.toLocaleString('en-US', { timeZone: 'America/La_Paz' }));
+    const y = bolivia.getFullYear();
+    const m = String(bolivia.getMonth() + 1).padStart(2, '0');
+    const d = String(bolivia.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+  const today = getToday();
   const [plans, setPlans] = useState([]);
   const [form, setForm] = useState({
     date: today, clientCode: '', clientName: '', serviceType: 'internet',
@@ -177,7 +185,12 @@ export default function SaleForm() {
           {success && <Alert type="success">{success}</Alert>}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input label="Fecha *" type="date" name="date" value={form.date} onChange={handleChange} required />
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Fecha</label>
+              <div className="w-full px-4 py-3 rounded-xl bg-brand-50 border border-brand-200 text-brand-800 font-bold text-sm">
+                {formatDate(today)}
+              </div>
+            </div>
             <Input label="Kardex *" name="clientCode" value={form.clientCode} onChange={handleChange} required placeholder="N° kardex" />
           </div>
 
