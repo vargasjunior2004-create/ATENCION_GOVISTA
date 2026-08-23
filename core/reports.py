@@ -287,7 +287,7 @@ def build_sales_xlsx(from_date, to_date):
             paq_tv,
             paq_inet,
             float(s.plan.monthly),
-            float(s.plan.total - s.plan.monthly) if s.requestType == 'cambio_plan' else '',
+            float(s.plan.monthly),
             s.createdBy.name,
             s.changeReason if s.requestType == 'cambio_plan' else '',
             '',  # Paquete cambio TV (no aplica por ahora)
