@@ -329,14 +329,14 @@ def build_sales_png(from_date, to_date):
     }
 
     headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD', 'PLAN', 'MONTO', 'CAJERA']
-    col_widths = [100, 80, 180, 150, 120, 120, 80, 140]
-    row_height = 28
-    padding = 8
+    col_widths = [120, 100, 220, 180, 140, 140, 100, 180]
+    row_height = 40
+    padding = 16
 
     try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 13)
-        font_bold = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 13)
-        font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+        font_bold = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 14)
+        font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20)
     except Exception:
         font = ImageFont.load_default()
         font_bold = font
@@ -357,7 +357,7 @@ def build_sales_png(from_date, to_date):
     draw.rectangle([0, y, total_width, y + row_height], fill='#1D4ED8')
     x = padding
     for i, h in enumerate(headers):
-        draw.text((x + 4, y + 6), h, fill='#FFFFFF', font=font_bold)
+        draw.text((x + 6, y + 10), h, fill='#FFFFFF', font=font_bold)
         x += col_widths[i]
 
     # Data rows
@@ -378,7 +378,7 @@ def build_sales_png(from_date, to_date):
         ]
         x = padding
         for i, v in enumerate(values):
-            draw.text((x + 4, y + 6), str(v), fill='#1E293B', font=font)
+            draw.text((x + 6, y + 10), str(v), fill='#1E293B', font=font)
             x += col_widths[i]
         y += row_height
 
