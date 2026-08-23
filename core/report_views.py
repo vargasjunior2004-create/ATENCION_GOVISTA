@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .reports import (
-    build_sales_pdf, build_sales_xlsx, build_cash_pdf,
+    build_sales_pdf, build_sales_xlsx, build_sales_png, build_cash_pdf,
     sign_report_token, unsign_report_token,
 )
 
@@ -39,6 +39,15 @@ class SalesXlsxView(APIView):
             buf.getvalue(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = f'attachment; filename="planilla-{from_date}-{to_date}.xlsx"'
+        return response
+
+
+class SalesPngView(APIView):
+    def get(self, request):
+        from_date, to_date = _sales_range(request.query_params)
+        buf = build_sales_png(from_date, to_date)
+        response = HttpResponse(buf.getvalue(), content_type='image/png')
+        response['Content-Disposition'] = f'attachment; filename="foto-{from_date}-{to_date}.png"'
         return response
 
 
