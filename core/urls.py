@@ -26,6 +26,7 @@ urlpatterns = [
 
     path('reports/pdf', report_views.SalesPdfView.as_view()),
     path('reports/xlsx', report_views.SalesXlsxView.as_view()),
+    path('reports/png', report_views.SalesPngView.as_view()),
     path('reports/pdf-link', report_views.SalesPdfLinkView.as_view()),
     path('reports/xlsx-link', report_views.SalesXlsxLinkView.as_view()),
     path('reports/pdf-public', report_views.SalesPdfPublicView.as_view()),

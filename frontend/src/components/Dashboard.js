@@ -120,11 +120,11 @@ export default function Dashboard() {
     setMsg('');
     try {
       const today = formatDate(new Date());
-      const blob = await api.getPDF(today, today);
+      const blob = await api.getPNG(today, today);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `foto-${today}.pdf`;
+      a.download = `foto-${today}.png`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

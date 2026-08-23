@@ -310,3 +310,82 @@ def build_sales_xlsx(from_date, to_date):
     wb.save(buf)
     buf.seek(0)
     return buf
+
+
+# ---------------------------------------------------------------- PNG (sales)
+
+def build_sales_png(from_date, to_date):
+    from PIL import Image, ImageDraw, ImageFont
+
+    sales = Sale.objects.select_related('plan', 'createdBy').filter(
+        date__gte=from_date, date__lte=to_date).order_by('date', 'id')
+
+    service_type_map = {
+        'internet': 'INTERNET',
+        'tv': 'TV ANALOGA',
+        'tv_digital': 'TV DIGITAL',
+        'combo_analog': 'INTERNET + TV ANALOGA',
+        'combo_digital': 'INTERNET + TV DIGITAL',
+    }
+
+    headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD', 'PLAN', 'MONTO', 'CAJERA']
+    col_widths = [100, 80, 180, 150, 120, 120, 80, 140]
+    row_height = 28
+    padding = 8
+
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 13)
+        font_bold = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 13)
+        font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
+    except Exception:
+        font = ImageFont.load_default()
+        font_bold = font
+        font_title = font
+
+    total_width = sum(col_widths) + padding * 2
+    title_height = 60
+    total_height = title_height + row_height + row_height * len(sales) + 40
+
+    img = Image.new('RGB', (total_width, total_height), '#FFFFFF')
+    draw = ImageDraw.Draw(img)
+
+    # Title
+    draw.text((padding, 15), f'MOV. CLIENTES  {from_date} al {to_date}', fill='#1D4ED8', font=font_title)
+
+    # Header row
+    y = title_height
+    draw.rectangle([0, y, total_width, y + row_height], fill='#1D4ED8')
+    x = padding
+    for i, h in enumerate(headers):
+        draw.text((x + 4, y + 6), h, fill='#FFFFFF', font=font_bold)
+        x += col_widths[i]
+
+    # Data rows
+    y += row_height
+    for idx, s in enumerate(sales):
+        bg = '#F8FAFC' if idx % 2 == 0 else '#FFFFFF'
+        draw.rectangle([0, y, total_width, y + row_height], fill=bg)
+        service_label = service_type_map.get(s.serviceType, s.serviceType)
+        values = [
+            s.date.strftime('%d/%m/%Y') if s.date else '',
+            s.clientCode or '',
+            s.clientName or '',
+            service_label,
+            s.get_requestType_display() or '',
+            s.plan.label if s.plan else '',
+            f'{float(s.plan.monthly):.2f}',
+            s.createdBy.name if s.createdBy else '',
+        ]
+        x = padding
+        for i, v in enumerate(values):
+            draw.text((x + 4, y + 6), str(v), fill='#1E293B', font=font)
+            x += col_widths[i]
+        y += row_height
+
+    # Footer
+    draw.text((padding, y + 10), f'{len(sales)} registros', fill='#94A3B8', font=font)
+
+    buf = BytesIO()
+    img.save(buf, format='PNG', optimize=True)
+    buf.seek(0)
+    return buf

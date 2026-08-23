@@ -79,6 +79,12 @@ const api = {
     if (to) params.set('to', to);
     return request(`/api/reports/xlsx?${params.toString()}`);
   },
+  getPNG: (from, to) => {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    return request(`/api/reports/png?${params.toString()}`);
+  },
 
   // Arqueo de caja
   getCashCount: (date) => {
