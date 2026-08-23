@@ -51,7 +51,8 @@ export default function Dashboard() {
       const today = formatDate(now);
       const monthStart = formatDate(new Date(now.getFullYear(), now.getMonth(), 1));
       const weekStart = formatDate(getMonday(now));
-      const monthSales = await api.getSales(monthStart, today);
+      const res = await api.getSales(monthStart, today, '', 1, 9999);
+      const monthSales = res.items || [];
       const todaySales = monthSales.filter((s) => s.date === today);
       const weekSales = monthSales.filter((s) => s.date >= weekStart && s.date <= today);
       const sumTotal = (arr) => arr.reduce((acc, s) => acc + parseFloat(s.total), 0);
