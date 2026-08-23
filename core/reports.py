@@ -107,7 +107,7 @@ def build_sales_pdf(from_date, to_date):
             service_label, s.get_requestType_display(),
             s.plan.label,
             f'{float(s.plan.monthly):.2f}',
-            f'{float(s.plan.total - s.plan.monthly):.2f}' if s.requestType == 'cambio_plan' else '',
+            f'{float(s.plan.monthly):.2f}',
             s.createdBy.name,
         ])
 
