@@ -97,7 +97,7 @@ def build_sales_pdf(from_date, to_date):
         Paragraph(f'Periodo: {from_date} al {to_date}', styles['Normal']),
     )
 
-    header = ['Fecha', 'Kardex', 'Cliente', 'Servicio', 'Solicitud', 'Plan', 'Monto Ini', 'Monto Fin', 'Operador']
+    header = ['Fecha', 'Kardex', 'Cliente', 'Servicio', 'Solicitud', 'Plan', 'Monto Ini', 'Dif', 'Operador']
     rows = [header]
     for s in sales:
         service_label = service_type_map.get(s.serviceType, s.serviceType)
@@ -107,7 +107,7 @@ def build_sales_pdf(from_date, to_date):
             service_label, s.get_requestType_display(),
             s.plan.label,
             f'{float(s.plan.monthly):.2f}',
-            f'{float(s.plan.total):.2f}' if s.requestType == 'cambio_plan' else f'{float(s.plan.monthly):.2f}',
+            f'{float(s.plan.total - s.plan.monthly):.2f}' if s.requestType == 'cambio_plan' else '',
             s.createdBy.name,
         ])
 
@@ -235,8 +235,7 @@ def build_sales_xlsx(from_date, to_date):
         'FECHA', 'KARDEX', 'NOMBRE CLIENTE', 'TIPO DE SERVICIO', 'TIPO DE SOLICITUD',
         'PAQUETE TV CABLE', 'PAQUETE INTERNET', 'MONTO INICIAL', 'DIFERENCIA',
         'CAJERA(O)', 'MOTIVO CAMBIO DE PLAN',
-        'PAQUETE CAMBIO TV CABLE', 'PAQUETE CAMBIO INTERNET',
-        'MONTO FINAL', 'COMENTARIOS'
+        'PAQUETE CAMBIO TV CABLE', 'PAQUETE CAMBIO INTERNET', 'COMENTARIOS'
     ]
 
     # Estilos
@@ -293,18 +292,17 @@ def build_sales_xlsx(from_date, to_date):
             s.changeReason if s.requestType == 'cambio_plan' else '',
             '',  # Paquete cambio TV (no aplica por ahora)
             '',  # Paquete cambio Internet (no aplica por ahora)
-            float(s.plan.total),
             s.notes,
         ]
 
         for col, value in enumerate(data_row, 1):
             cell = ws.cell(row=row_idx, column=col, value=value)
             cell.border = thin_border
-            if col in [8, 9, 14]:  # Montos
+            if col in [8, 9]:  # Montos
                 cell.number_format = '#,##0.00'
 
     # Anchos de columna
-    column_widths = [12, 12, 28, 24, 18, 18, 18, 14, 14, 20, 20, 20, 20, 12, 30]
+    column_widths = [12, 12, 28, 24, 18, 18, 18, 14, 14, 20, 20, 20, 20, 30]
     for i, width in enumerate(column_widths, 1):
         ws.column_dimensions[chr(64 + i) if i <= 26 else 'A' + chr(64 + i - 26)].width = width
 
