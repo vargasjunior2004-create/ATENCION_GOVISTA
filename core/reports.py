@@ -329,7 +329,7 @@ def build_sales_png(from_date, to_date):
     }
 
     headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD', 'PLAN', 'MONTO', 'CAJERA']
-    col_widths = [120, 100, 220, 180, 140, 140, 100, 180]
+    col_widths = [140, 130, 300, 240, 180, 180, 120, 240]
     row_height = 40
     padding = 16
 
