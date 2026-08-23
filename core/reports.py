@@ -234,8 +234,9 @@ def build_sales_xlsx(from_date, to_date):
     headers = [
         'FECHA', 'KARDEX', 'NOMBRE CLIENTE', 'TIPO DE SERVICIO', 'TIPO DE SOLICITUD',
         'PAQUETE TV CABLE', 'PAQUETE INTERNET', 'MONTO INICIAL', 'MONTO FINAL',
-        'MOTIVO CAMBIO DE PLAN', 'PAQUETE CAMBIO TV CABLE', 'PAQUETE CAMBIO INTERNET',
-        'DIFERENCIA', 'CAJERA(O)', 'COMENTARIOS'
+        'CAJERA(O)', 'MOTIVO CAMBIO DE PLAN',
+        'PAQUETE CAMBIO TV CABLE', 'PAQUETE CAMBIO INTERNET',
+        'DIFERENCIA', 'COMENTARIOS'
     ]
 
     # Estilos
@@ -288,22 +289,22 @@ def build_sales_xlsx(from_date, to_date):
             paq_inet,
             float(s.plan.monthly),
             float(s.plan.total),
+            s.createdBy.name,
             s.changeReason if s.requestType == 'cambio_plan' else '',
             '',  # Paquete cambio TV (no aplica por ahora)
             '',  # Paquete cambio Internet (no aplica por ahora)
             float(s.plan.total - s.plan.monthly) if s.requestType == 'cambio_plan' else '',
-            s.createdBy.name,
             s.notes,
         ]
 
         for col, value in enumerate(data_row, 1):
             cell = ws.cell(row=row_idx, column=col, value=value)
             cell.border = thin_border
-            if col in [8, 9, 13]:  # Montos
+            if col in [8, 9, 14]:  # Montos
                 cell.number_format = '#,##0.00'
 
     # Anchos de columna
-    column_widths = [12, 12, 28, 24, 18, 18, 18, 14, 14, 20, 20, 20, 12, 20, 30]
+    column_widths = [12, 12, 28, 24, 18, 18, 18, 14, 14, 20, 20, 20, 20, 12, 30]
     for i, width in enumerate(column_widths, 1):
         ws.column_dimensions[chr(64 + i) if i <= 26 else 'A' + chr(64 + i - 26)].width = width
 
