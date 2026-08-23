@@ -233,10 +233,10 @@ def build_sales_xlsx(from_date, to_date):
     # Encabezados exactos como en el Excel original
     headers = [
         'FECHA', 'KARDEX', 'NOMBRE CLIENTE', 'TIPO DE SERVICIO', 'TIPO DE SOLICITUD',
-        'PAQUETE TV CABLE', 'PAQUETE INTERNET', 'MONTO INICIAL', 'MONTO FINAL',
+        'PAQUETE TV CABLE', 'PAQUETE INTERNET', 'MONTO INICIAL', 'DIFERENCIA',
         'CAJERA(O)', 'MOTIVO CAMBIO DE PLAN',
         'PAQUETE CAMBIO TV CABLE', 'PAQUETE CAMBIO INTERNET',
-        'DIFERENCIA', 'COMENTARIOS'
+        'MONTO FINAL', 'COMENTARIOS'
     ]
 
     # Estilos
@@ -288,12 +288,12 @@ def build_sales_xlsx(from_date, to_date):
             paq_tv,
             paq_inet,
             float(s.plan.monthly),
-            float(s.plan.total),
+            float(s.plan.total - s.plan.monthly) if s.requestType == 'cambio_plan' else '',
             s.createdBy.name,
             s.changeReason if s.requestType == 'cambio_plan' else '',
             '',  # Paquete cambio TV (no aplica por ahora)
             '',  # Paquete cambio Internet (no aplica por ahora)
-            float(s.plan.total - s.plan.monthly) if s.requestType == 'cambio_plan' else '',
+            float(s.plan.total),
             s.notes,
         ]
 
