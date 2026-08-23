@@ -97,7 +97,7 @@ def build_sales_pdf(from_date, to_date):
         Paragraph(f'Periodo: {from_date} al {to_date}', styles['Normal']),
     )
 
-    header = ['Fecha', 'Kardex', 'Cliente', 'Servicio', 'Solicitud', 'Plan', 'Monto', 'Operador']
+    header = ['Fecha', 'Kardex', 'Cliente', 'Servicio', 'Solicitud', 'Plan', 'Monto Ini', 'Monto Fin', 'Operador']
     rows = [header]
     total_sum = 0.0
     for s in sales:
@@ -107,10 +107,12 @@ def build_sales_pdf(from_date, to_date):
             s.date.strftime('%d/%m/%Y') if s.date else '',
             s.clientCode, s.clientName,
             service_label, s.get_requestType_display(),
-            s.plan.label, f'{float(s.plan.monthly):.2f}',
+            s.plan.label,
+            f'{float(s.plan.monthly):.2f}',
+            f'{float(s.plan.total):.2f}' if s.requestType == 'cambio_plan' else f'{float(s.plan.monthly):.2f}',
             s.createdBy.name,
         ])
-    rows.append(['', '', '', '', '', 'TOTAL', f'{total_sum:.2f}', ''])
+    rows.append(['', '', '', '', '', 'TOTAL', f'{total_sum:.2f}', '', ''])
 
     table = Table(rows, repeatRows=1)
     table.setStyle(TableStyle([
@@ -291,7 +293,7 @@ def build_sales_xlsx(from_date, to_date):
             paq_tv,
             paq_inet,
             float(s.plan.monthly),
-            float(s.plan.total) if s.requestType == 'cambio_plan' else '',
+            float(s.plan.total),
             s.changeReason if s.requestType == 'cambio_plan' else '',
             '',  # Paquete cambio TV (no aplica por ahora)
             '',  # Paquete cambio Internet (no aplica por ahora)
@@ -307,18 +309,9 @@ def build_sales_xlsx(from_date, to_date):
                 cell.number_format = '#,##0.00'
 
     # Anchos de columna
-    column_widths = [12, 10, 25, 22, 16, 22, 22, 14, 22, 22, 22, 14, 12, 22, 30]
+    column_widths = [12, 12, 28, 24, 18, 18, 18, 14, 14, 20, 20, 20, 12, 20, 30]
     for i, width in enumerate(column_widths, 1):
         ws.column_dimensions[chr(64 + i) if i <= 26 else 'A' + chr(64 + i - 26)].width = width
-
-    # Fila de total
-    total_row = len(sales) + 3
-    ws.cell(row=total_row, column=7, value='TOTAL').font = Font(bold=True)
-    ws.cell(row=total_row, column=7).border = thin_border
-    total_sum = sum(float(s.plan.monthly) for s in sales)
-    ws.cell(row=total_row, column=8, value=total_sum).font = Font(bold=True)
-    ws.cell(row=total_row, column=8).number_format = '#,##0.00'
-    ws.cell(row=total_row, column=8).border = thin_border
 
     buf = BytesIO()
     wb.save(buf)
