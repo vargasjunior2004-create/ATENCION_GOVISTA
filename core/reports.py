@@ -99,9 +99,7 @@ def build_sales_pdf(from_date, to_date):
 
     header = ['Fecha', 'Kardex', 'Cliente', 'Servicio', 'Solicitud', 'Plan', 'Monto Ini', 'Monto Fin', 'Operador']
     rows = [header]
-    total_sum = 0.0
     for s in sales:
-        total_sum += float(s.plan.monthly)
         service_label = service_type_map.get(s.serviceType, s.serviceType)
         rows.append([
             s.date.strftime('%d/%m/%Y') if s.date else '',
@@ -112,7 +110,6 @@ def build_sales_pdf(from_date, to_date):
             f'{float(s.plan.total):.2f}' if s.requestType == 'cambio_plan' else f'{float(s.plan.monthly):.2f}',
             s.createdBy.name,
         ])
-    rows.append(['', '', '', '', '', 'TOTAL', f'{total_sum:.2f}', '', ''])
 
     table = Table(rows, repeatRows=1)
     table.setStyle(TableStyle([
@@ -120,12 +117,9 @@ def build_sales_pdf(from_date, to_date):
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 8),
-        ('FONTSIZE', (0, 1), (-1, -2), 7),
-        ('FONTSIZE', (0, -1), (-1, -1), 8),
-        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#dbeafe')),
+        ('FONTSIZE', (0, 1), (-1, -1), 7),
         ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#f8fafc')]),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ]))
     story.append(table)
