@@ -237,9 +237,9 @@ def build_sales_xlsx(from_date, to_date):
     # Encabezados exactos como en el Excel original
     headers = [
         'FECHA', 'KARDEX', 'NOMBRE CLIENTE', 'TIPO DE SERVICIO', 'TIPO DE SOLICITUD',
-        'PAQUETE TV CABLE', 'PAQUETE INTERNET', 'MONTO INICIAL', 'MOTIVO CAMBIO DE PLAN',
-        'PAQUETE CAMBIO TV CABLE', 'PAQUETE CAMBIO INTERNET', 'MONTO FINAL', 'DIFERENCIA',
-        'CAJERA(O)', 'COMENTARIOS'
+        'PAQUETE TV CABLE', 'PAQUETE INTERNET', 'MONTO INICIAL', 'MONTO FINAL',
+        'MOTIVO CAMBIO DE PLAN', 'PAQUETE CAMBIO TV CABLE', 'PAQUETE CAMBIO INTERNET',
+        'DIFERENCIA', 'CAJERA(O)', 'COMENTARIOS'
     ]
 
     # Estilos
@@ -291,10 +291,10 @@ def build_sales_xlsx(from_date, to_date):
             paq_tv,
             paq_inet,
             float(s.plan.monthly),
+            float(s.plan.total) if s.requestType == 'cambio_plan' else '',
             s.changeReason if s.requestType == 'cambio_plan' else '',
             '',  # Paquete cambio TV (no aplica por ahora)
             '',  # Paquete cambio Internet (no aplica por ahora)
-            float(s.plan.total) if s.requestType == 'cambio_plan' else '',
             float(s.plan.total - s.plan.monthly) if s.requestType == 'cambio_plan' else '',
             s.createdBy.name,
             s.notes,
@@ -303,7 +303,7 @@ def build_sales_xlsx(from_date, to_date):
         for col, value in enumerate(data_row, 1):
             cell = ws.cell(row=row_idx, column=col, value=value)
             cell.border = thin_border
-            if col in [8, 12, 13]:  # Montos
+            if col in [8, 9, 13]:  # Montos
                 cell.number_format = '#,##0.00'
 
     # Anchos de columna
@@ -313,12 +313,12 @@ def build_sales_xlsx(from_date, to_date):
 
     # Fila de total
     total_row = len(sales) + 3
-    ws.cell(row=total_row, column=8, value='TOTAL').font = Font(bold=True)
-    ws.cell(row=total_row, column=8).border = thin_border
+    ws.cell(row=total_row, column=7, value='TOTAL').font = Font(bold=True)
+    ws.cell(row=total_row, column=7).border = thin_border
     total_sum = sum(float(s.plan.monthly) for s in sales)
-    ws.cell(row=total_row, column=9, value=total_sum).font = Font(bold=True)
-    ws.cell(row=total_row, column=9).number_format = '#,##0.00'
-    ws.cell(row=total_row, column=9).border = thin_border
+    ws.cell(row=total_row, column=8, value=total_sum).font = Font(bold=True)
+    ws.cell(row=total_row, column=8).number_format = '#,##0.00'
+    ws.cell(row=total_row, column=8).border = thin_border
 
     buf = BytesIO()
     wb.save(buf)
