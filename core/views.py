@@ -145,14 +145,29 @@ class SaleListView(APIView):
         from_date = request.query_params.get('from')
         to_date = request.query_params.get('to')
         rtype = request.query_params.get('requestType')
-        qs = Sale.objects.select_related('plan', 'createdBy').all()
+        qs = Sale.objects.select_related('plan', 'createdBy').all().order_by('-date', '-id')
         if from_date:
             qs = qs.filter(date__gte=from_date)
         if to_date:
             qs = qs.filter(date__lte=to_date)
         if rtype:
             qs = qs.filter(requestType=rtype)
-        return Response(SaleSerializer(qs, many=True).data)
+
+        total = qs.count()
+        page = int(request.query_params.get('page', 1))
+        page_size = int(request.query_params.get('page_size', 25))
+        start = (page - 1) * page_size
+        end = start + page_size
+        items = qs[start:end]
+        total_pages = (total + page_size - 1) // page_size
+
+        return Response({
+            'items': SaleSerializer(items, many=True).data,
+            'total': total,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': total_pages,
+        })
 
     def post(self, request):
         data = request.data.copy()

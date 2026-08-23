@@ -42,13 +42,14 @@ const api = {
   updatePlan: (id, data) => request(`/api/plans/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 
   // Ventas
-  getSales: (from, to, requestType) => {
+  getSales: (from, to, requestType, page = 1, pageSize = 25) => {
     const params = new URLSearchParams();
     if (from) params.set('from', from);
     if (to) params.set('to', to);
     if (requestType) params.set('requestType', requestType);
-    const qs = params.toString();
-    return request(`/api/sales${qs ? '?' + qs : ''}`);
+    params.set('page', page);
+    params.set('page_size', pageSize);
+    return request(`/api/sales?${params.toString()}`);
   },
   createSale: (data) => request('/api/sales', { method: 'POST', body: JSON.stringify(data) }),
   updateSale: (id, data) => request(`/api/sales/${id}`, { method: 'PUT', body: JSON.stringify(data) }),

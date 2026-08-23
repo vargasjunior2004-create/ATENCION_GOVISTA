@@ -61,12 +61,16 @@ export default function SalesList() {
   const [editingSale, setEditingSale] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [editError, setEditError] = useState('');
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ total: 0, total_pages: 1 });
 
-  const loadSales = useCallback(async () => {
+  const loadSales = useCallback(async (p = 1) => {
     setLoading(true);
     try {
-      const data = await api.getSales(from, to, requestType);
-      setSales(data);
+      const res = await api.getSales(from, to, requestType, p, 25);
+      setSales(res.items);
+      setPagination({ total: res.total, total_pages: res.total_pages, page: res.page });
+      setPage(res.page);
     } catch (err) {
       console.error(err);
     } finally {
@@ -74,7 +78,7 @@ export default function SalesList() {
     }
   }, [from, to, requestType]);
 
-  useEffect(() => { loadSales(); }, [loadSales]);
+  useEffect(() => { loadSales(1); }, [loadSales]);
   useEffect(() => {
     if (isAdmin) api.getPlans().then(setPlans).catch(() => {});
   }, [isAdmin]);
@@ -102,7 +106,7 @@ export default function SalesList() {
     try {
       await api.updateSale(editingSale.id, { date: editForm.date, clientCode: editForm.clientCode, clientName: editForm.clientName, serviceType: editForm.serviceType, requestType: editForm.requestType, planId: Number(editForm.planId) });
       setEditingSale(null);
-      loadSales();
+      loadSales(page);
     } catch (err) {
       setEditError(err.error || 'Error al editar');
     }
@@ -144,7 +148,7 @@ export default function SalesList() {
               ))}
             </Select>
           </div>
-          <Button variant="secondary" onClick={loadSales}>Buscar</Button>
+          <Button variant="secondary" onClick={() => loadSales(1)}>Buscar</Button>
         </div>
       </Card>
 
@@ -250,6 +254,58 @@ export default function SalesList() {
               <SaleCard key={s.id} sale={s} isAdmin={isAdmin} onEdit={startEdit} />
             ))}
           </div>
+
+          {/* Pagination */}
+          {pagination.total_pages > 1 && (
+            <Card className="p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-slate-500">
+                  {pagination.total} registros &middot; Pagina {pagination.page} de {pagination.total_pages}
+                </p>
+                <div className="flex items-center gap-1">
+                  <button
+                    disabled={page <= 1}
+                    onClick={() => loadSales(page - 1)}
+                    className="px-3 py-1.5 text-sm rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    Anterior
+                  </button>
+                  {Array.from({ length: Math.min(pagination.total_pages, 5) }, (_, i) => {
+                    let pNum;
+                    if (pagination.total_pages <= 5) {
+                      pNum = i + 1;
+                    } else if (page <= 3) {
+                      pNum = i + 1;
+                    } else if (page >= pagination.total_pages - 2) {
+                      pNum = pagination.total_pages - 4 + i;
+                    } else {
+                      pNum = page - 2 + i;
+                    }
+                    return (
+                      <button
+                        key={pNum}
+                        onClick={() => loadSales(pNum)}
+                        className={`w-9 h-9 text-sm rounded-lg font-medium transition-colors ${
+                          pNum === page
+                            ? 'bg-brand-600 text-white shadow-sm'
+                            : 'text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        {pNum}
+                      </button>
+                    );
+                  })}
+                  <button
+                    disabled={page >= pagination.total_pages}
+                    onClick={() => loadSales(page + 1)}
+                    className="px-3 py-1.5 text-sm rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    Siguiente
+                  </button>
+                </div>
+              </div>
+            </Card>
+          )}
         </>
       )}
     </div>
