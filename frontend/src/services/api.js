@@ -35,6 +35,9 @@ const api = {
 
   me: () => request('/api/auth/me'),
 
+  // Dashboard
+  getDashboardStats: () => request('/api/dashboard/stats'),
+
   // Planes
   getPlans: () => request('/api/plans'),
   getActivePlans: () => request('/api/plans/active'),

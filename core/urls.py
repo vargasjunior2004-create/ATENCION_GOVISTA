@@ -13,6 +13,7 @@ urlpatterns = [
 
     path('sales', views.SaleListView.as_view()),
     path('sales/<int:pk>', views.SaleDetailView.as_view()),
+    path('dashboard/stats', views.DashboardStatsView.as_view()),
 
     path('users', views.UserListView.as_view()),
     path('users/<int:pk>', views.UserDetailView.as_view()),
