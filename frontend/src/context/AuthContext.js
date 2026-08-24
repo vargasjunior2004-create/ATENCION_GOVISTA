@@ -3,7 +3,7 @@ import api, { setOnAuthExpired } from '../services/api';
 
 const AuthContext = createContext(null);
 
-const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutos
+const INACTIVITY_TIMEOUT = 8 * 60 * 60 * 1000; // 8 horas
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
