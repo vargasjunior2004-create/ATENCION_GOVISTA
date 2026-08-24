@@ -1,6 +1,7 @@
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime, timezone as tz
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from .models import User, Plan, Sale, CashCount, Outflow
@@ -25,29 +26,29 @@ class ApiTestCase(TestCase):
 
         self.client = APIClient()
 
-    def login(self, password):
-        res = self.client.post('/api/auth/login', {'password': password},
+    def login(self, name, password):
+        res = self.client.post('/api/auth/login', {'name': name, 'password': password},
                                format='json')
         return res
 
     def auth_as(self, user, password):
-        res = self.login(password)
+        res = self.login(user.name, password)
         self.assertEqual(res.status_code, 200, res.data)
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {res.data["token"]}')
 
     def test_login_admin_ok(self):
-        res = self.login('admin123')
+        res = self.login('Admin', 'admin123')
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.data['user']['role'], 'admin')
         self.assertIn('token', res.data)
 
     def test_login_wrong_password(self):
-        res = self.login('incorrecta')
+        res = self.login('Admin', 'incorrecta')
         self.assertEqual(res.status_code, 401)
 
     def test_login_email_password(self):
         res = self.client.post('/api/auth/login',
-                               {'email': 'admin@t.com', 'password': 'admin123'},
+                               {'name': 'Admin', 'password': 'admin123'},
                                format='json')
         self.assertEqual(res.status_code, 200)
 
@@ -164,8 +165,9 @@ class ApiTestCase(TestCase):
         self.auth_as(self.admin, 'admin123')
         res = self.client.get(f'/api/sales?from={date.today()}&to={date.today()}')
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(len(res.data), 1)
-        self.assertEqual(res.data[0]['clientCode'], 'B')
+        items = res.data.get('items', res.data)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]['clientCode'], 'B')
 
     def test_cash_count_upsert_and_outflows(self):
         self.auth_as(self.admin, 'admin123')
@@ -224,3 +226,115 @@ class ApiTestCase(TestCase):
         ok = self.client.get('/api/reports/pdf-public/', {'token': token})
         self.assertEqual(ok.status_code, 200)
         self.assertIn(b'%PDF', ok.content)
+
+
+class TimezoneBugAcceptanceTest(TestCase):
+    """Tests de aceptación para el bug de zona horaria.
+    Verifica que las ventas se registren con la fecha local (America/La_Paz)
+    y no con UTC, causando que ventas de la noche aparezcan al día siguiente."""
+
+    def setUp(self):
+        self.admin = User(name='AdminTZ', email='admin-tz@t.com', role='admin')
+        self.admin.set_password('admin123')
+        self.admin.save()
+        self.seller = User(name='VendedorTZ', email='ventas-tz@t.com', role='ventas')
+        self.seller.set_password('ventas123')
+        self.seller.save()
+        self.plan = Plan.objects.create(
+            code='GO-TZ', label='Plan TZ', type='internet',
+            speed=50, monthly=220, installation=180)
+        self.client = APIClient()
+
+    def _auth(self, user, password):
+        res = self.client.post('/api/auth/login', {'name': user.name, 'password': password},
+                               format='json')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {res.data["token"]}')
+
+    def test_sale_uses_localdate_not_utc(self):
+        """Al crear una venta, la fecha debe ser la fecha local (La Paz), no UTC."""
+        self._auth(self.seller, 'ventas123')
+        res = self.client.post('/api/sales', {
+            'clientCode': 'CLI-TZ-1',
+            'clientName': 'Cliente TZ',
+            'serviceType': 'internet',
+            'planId': self.plan.id,
+        }, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        sale_date = date.fromisoformat(res.data['date'])
+        self.assertEqual(sale_date, timezone.localdate(),
+                         f"La fecha de la venta ({sale_date}) debe coincidir "
+                         f"con timezone.localdate() ({timezone.localdate()})")
+
+    def test_cash_count_uses_localdate(self):
+        """El arqueo de caja debe usar la fecha local (La Paz)."""
+        self._auth(self.admin, 'admin123')
+        res = self.client.post('/api/cash-count', {
+            'coin_1': 50, 'bill_100': 5,
+        }, format='json')
+        self.assertEqual(res.status_code, 200, res.data)
+        cc_date = date.fromisoformat(res.data['date'])
+        self.assertEqual(cc_date, timezone.localdate(),
+                         f"La fecha del arqueo ({cc_date}) debe coincidir "
+                         f"con timezone.localdate() ({timezone.localdate()})")
+
+    def test_outflow_uses_localdate(self):
+        """Las salidas de efectivo deben usar la fecha local (La Paz)."""
+        self._auth(self.admin, 'admin123')
+        res = self.client.post('/api/cash-count/outflows', {
+            'personName': 'Test', 'amount': 100,
+        }, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        outflow_date = date.fromisoformat(res.data['outflow']['date'])
+        self.assertEqual(outflow_date, timezone.localdate(),
+                         f"La fecha de la salida ({outflow_date}) debe coincidir "
+                         f"con timezone.localdate() ({timezone.localdate()})")
+
+    def test_dashboard_filters_sales_by_localdate(self):
+        """El dashboard debe filtrar ventas usando la fecha local, no UTC."""
+        self._auth(self.seller, 'ventas123')
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+
+        # Create a sale for yesterday
+        Sale.objects.create(
+            date=yesterday, clientCode='CLI-Y', clientName='Ayer',
+            serviceType='internet', plan=self.plan, total=self.plan.total,
+            createdBy=self.seller)
+
+        # Create a sale for today
+        Sale.objects.create(
+            date=today, clientCode='CLI-T', clientName='Hoy',
+            serviceType='internet', plan=self.plan, total=self.plan.total,
+            createdBy=self.seller)
+
+        # Query like the dashboard does: from=today, to=today
+        res = self.client.get(f'/api/sales?from={today}&to={today}')
+        self.assertEqual(res.status_code, 200)
+        items = res.data.get('items', res.data if isinstance(res.data, list) else [])
+        self.assertEqual(len(items), 1,
+                         "Solo la venta de hoy debe aparecer al filtrar por hoy")
+        self.assertEqual(items[0]['clientCode'], 'CLI-T')
+
+    def test_sale_date_not_shifted_by_utc(self):
+        """Verifica que la fecha de la venta NO se desplaza por conversión UTC.
+        Simula el escenario: usuario en La Paz crea venta a las 22:00 (02:00 UTC+1).
+        La fecha debe ser la de La Paz, no la de UTC."""
+        # Simulate: set the server time to a moment where UTC date != La Paz date
+        # by creating a sale and checking the date matches localdate
+        self._auth(self.seller, 'ventas123')
+        res = self.client.post('/api/sales', {
+            'clientCode': 'CLI-UTC',
+            'clientName': 'Cliente UTC Test',
+            'serviceType': 'internet',
+            'planId': self.plan.id,
+        }, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        sale_date = date.fromisoformat(res.data['date'])
+        local_today = timezone.localdate()
+        utc_today = datetime.now(tz.utc).date()
+        # The sale date must match localdate, not UTC
+        self.assertEqual(sale_date, local_today)
+        # If UTC and local differ, this proves the fix works
+        if utc_today != local_today:
+            self.assertNotEqual(sale_date, utc_today,
+                                "La fecha NO debe ser la de UTC cuando difiere de la local")

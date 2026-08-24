@@ -1,5 +1,3 @@
-from datetime import date, timedelta
-
 from django.db.models import Sum, Q
 from django.utils import timezone
 from rest_framework import status
@@ -171,8 +169,7 @@ class SaleListView(APIView):
 
     def post(self, request):
         data = request.data.copy()
-        from django.utils import timezone as tz
-        data['date'] = tz.now().date().isoformat()
+        data['date'] = timezone.localdate().isoformat()
         serializer = SaleCreateSerializer(data=data, context={'user': request.user})
         if not serializer.is_valid():
             return Response({'error': _first_error(serializer)}, status=status.HTTP_400_BAD_REQUEST)
@@ -254,7 +251,7 @@ class UserDetailView(IsAdminMixin, APIView):
 class CashCountView(APIView):
     def get(self, request):
         try:
-            d = request.query_params.get('date') or date.today().isoformat()
+            d = request.query_params.get('date') or timezone.localdate().isoformat()
             cash_count = CashCount.objects.filter(date=d, createdBy=request.user).first()
             outflows = list(Outflow.objects.filter(date=d, createdBy=request.user).values('id', 'date', 'personName', 'amount', 'concept', 'created_at'))
             for o in outflows:
@@ -291,7 +288,7 @@ class CashCountView(APIView):
 
     def post(self, request):
         data = request.data
-        d = data.get('date') or date.today().isoformat()
+        d = data.get('date') or timezone.localdate().isoformat()
         fields = ['coin_050', 'coin_1', 'coin_2', 'coin_5',
                   'bill_10', 'bill_20', 'bill_50', 'bill_100', 'bill_200']
         payload = {f: max(0, int(data.get(f, 0) or 0)) for f in fields}
@@ -304,7 +301,7 @@ class OutflowCreateView(APIView):
     def post(self, request):
         try:
             data = request.data
-            d = data.get('date') or date.today().isoformat()
+            d = data.get('date') or timezone.localdate().isoformat()
             person_name = (data.get('personName') or '').strip()
             amount = data.get('amount')
             if not person_name:
