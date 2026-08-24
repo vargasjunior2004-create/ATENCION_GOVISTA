@@ -37,7 +37,8 @@ function computeTotal(countsObj) {
 
 export default function CashCountModule() {
   const { user } = useAuth();
-  const today = new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
   const [date, setDate] = useState(today);
   const [counts, setCounts] = useState(zeroCounts);
