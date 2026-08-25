@@ -88,7 +88,7 @@ export default function SalesList() {
 
   const startEdit = (sale) => {
     setEditingSale(sale);
-    setEditForm({ date: sale.date, clientCode: sale.clientCode, clientName: sale.clientName, serviceType: sale.serviceType, requestType: sale.requestType, planId: sale.planId });
+    setEditForm({ date: sale.date, clientCode: sale.clientCode, clientName: sale.clientName, serviceType: sale.serviceType, requestType: sale.requestType, planId: sale.planId, changeReason: sale.changeReason || '', notes: sale.notes || '' });
     setEditError('');
   };
 
@@ -107,7 +107,7 @@ export default function SalesList() {
     e.preventDefault();
     setEditError('');
     try {
-      await api.updateSale(editingSale.id, { date: editForm.date, clientCode: editForm.clientCode, clientName: editForm.clientName, serviceType: editForm.serviceType, requestType: editForm.requestType, planId: Number(editForm.planId) });
+      await api.updateSale(editingSale.id, { date: editForm.date, clientCode: editForm.clientCode, clientName: editForm.clientName, serviceType: editForm.serviceType, requestType: editForm.requestType, planId: Number(editForm.planId), changeReason: editForm.changeReason, notes: editForm.notes });
       setEditingSale(null);
       loadSales(page);
     } catch (err) {
@@ -230,6 +230,12 @@ export default function SalesList() {
                   </optgroup>
                 )}
               </Select>
+              {editForm.requestType === 'retiro' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Input label="Motivo del Retiro" name="changeReason" value={editForm.changeReason} onChange={handleEditChange} placeholder="Ej: no paga" />
+                  <Input label="Comentario" name="notes" value={editForm.notes} onChange={handleEditChange} placeholder="Opcional" />
+                </div>
+              )}
               <div className="flex gap-3 pt-2">
                 <Button type="submit">Guardar</Button>
                 <Button variant="secondary" type="button" onClick={() => setEditingSale(null)}>Cancelar</Button>
