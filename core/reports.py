@@ -109,19 +109,35 @@ def build_sales_pdf(from_date, to_date, request_type=None):
         Paragraph(f'Periodo: {from_date} al {to_date}', styles['Normal']),
     )
 
-    header = ['Fecha', 'Kardex', 'Cliente', 'Servicio', 'Solicitud', 'Plan', 'Monto Ini', 'Dif', 'Operador']
+    if request_type == 'retiro':
+        header = ['Fecha', 'Kardex', 'Cliente', 'Servicio', 'Solicitud', 'Plan', 'Motivo', 'Comentario', 'Monto Ini', 'Dif', 'Operador']
+    else:
+        header = ['Fecha', 'Kardex', 'Cliente', 'Servicio', 'Solicitud', 'Plan', 'Monto Ini', 'Dif', 'Operador']
     rows = [header]
     for s in sales:
         service_label = service_type_map.get(s.serviceType, s.serviceType)
-        rows.append([
-            s.date.strftime('%d/%m/%Y') if s.date else '',
-            s.clientCode, s.clientName,
-            service_label, s.get_requestType_display(),
-            s.plan.label,
-            f'{float(s.plan.monthly):.2f}',
-            f'{float(s.plan.monthly):.2f}',
-            s.createdBy.name,
-        ])
+        if request_type == 'retiro':
+            rows.append([
+                s.date.strftime('%d/%m/%Y') if s.date else '',
+                s.clientCode, s.clientName,
+                service_label, s.get_requestType_display(),
+                s.plan.label,
+                s.changeReason or '-',
+                s.notes or '-',
+                f'{float(s.plan.monthly):.2f}',
+                f'{float(s.plan.monthly):.2f}',
+                s.createdBy.name,
+            ])
+        else:
+            rows.append([
+                s.date.strftime('%d/%m/%Y') if s.date else '',
+                s.clientCode, s.clientName,
+                service_label, s.get_requestType_display(),
+                s.plan.label,
+                f'{float(s.plan.monthly):.2f}',
+                f'{float(s.plan.monthly):.2f}',
+                s.createdBy.name,
+            ])
 
     table = Table(rows, repeatRows=1)
     table.setStyle(TableStyle([
