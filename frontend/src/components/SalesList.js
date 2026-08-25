@@ -16,6 +16,15 @@ const REQUEST_TYPES = [
   { value: 'otro', label: 'Otro' },
 ];
 
+const SERVICE_TYPES = [
+  { value: '', label: 'Todos los tipos de servicio' },
+  { value: 'internet', label: 'Internet' },
+  { value: 'tv', label: 'TV Cable' },
+  { value: 'tv_digital', label: 'TV Digital' },
+  { value: 'combo_analog', label: 'Internet + TV Analoga' },
+  { value: 'combo_digital', label: 'Internet + TV Digital' },
+];
+
 const REQUEST_LABEL = Object.fromEntries(
   REQUEST_TYPES.filter((t) => t.value).map((t) => [t.value, t.label])
 );
@@ -56,6 +65,7 @@ export default function SalesList() {
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
   const [requestType, setRequestType] = useState('');
+  const [serviceType, setServiceType] = useState('');
   const [sales, setSales] = useState([]);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -70,7 +80,7 @@ export default function SalesList() {
   const loadSales = useCallback(async (p = 1) => {
     setLoading(true);
     try {
-      const res = await api.getSales(from, to, requestType, p, 25);
+      const res = await api.getSales(from, to, requestType, p, 25, serviceType);
       setSales(res.items);
       setPagination({ total: res.total, total_pages: res.total_pages, page: res.page });
       setPage(res.page);
@@ -79,7 +89,7 @@ export default function SalesList() {
     } finally {
       setLoading(false);
     }
-  }, [from, to, requestType]);
+  }, [from, to, requestType, serviceType]);
 
   useEffect(() => { loadSales(1); }, [loadSales]);
   useEffect(() => {
@@ -133,7 +143,7 @@ export default function SalesList() {
     setGeneratingPdf(true);
     setMsg('');
     try {
-      const blob = await api.getPDF(from, to, requestType);
+      const blob = await api.getPDF(from, to, requestType, serviceType);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -160,7 +170,7 @@ export default function SalesList() {
 
       {/* Filters */}
       <Card className="p-5">
-        <div className="grid grid-cols-1 sm:grid-cols-5 items-end gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-6 items-end gap-3">
           <div>
             <Input label="Desde" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
@@ -170,6 +180,13 @@ export default function SalesList() {
           <div>
             <Select label="Movimiento" value={requestType} onChange={(e) => setRequestType(e.target.value)}>
               {REQUEST_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Select label="Tipo Servicio" value={serviceType} onChange={(e) => setServiceType(e.target.value)}>
+              {SERVICE_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </Select>

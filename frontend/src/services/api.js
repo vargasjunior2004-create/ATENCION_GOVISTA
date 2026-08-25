@@ -45,11 +45,12 @@ const api = {
   updatePlan: (id, data) => request(`/api/plans/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 
   // Ventas
-  getSales: (from, to, requestType, page = 1, pageSize = 25) => {
+  getSales: (from, to, requestType, page = 1, pageSize = 25, serviceType = '') => {
     const params = new URLSearchParams();
     if (from) params.set('from', from);
     if (to) params.set('to', to);
     if (requestType) params.set('requestType', requestType);
+    if (serviceType) params.set('serviceType', serviceType);
     params.set('page', page);
     params.set('page_size', pageSize);
     return request(`/api/sales?${params.toString()}`);
@@ -70,11 +71,12 @@ const api = {
   },
 
   // Reportes
-  getPDF: (from, to, requestType) => {
+  getPDF: (from, to, requestType, serviceType = '') => {
     const params = new URLSearchParams();
     if (from) params.set('from', from);
     if (to) params.set('to', to);
     if (requestType) params.set('requestType', requestType);
+    if (serviceType) params.set('serviceType', serviceType);
     return request(`/api/reports/pdf?${params.toString()}`);
   },
   getXLSX: (from, to) => {

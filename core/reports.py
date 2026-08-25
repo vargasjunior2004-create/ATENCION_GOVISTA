@@ -76,7 +76,7 @@ def _report_header(title, subtitle):
 
 # ---------------------------------------------------------------- PDF (sales)
 
-def build_sales_pdf(from_date, to_date, request_type=None):
+def build_sales_pdf(from_date, to_date, request_type=None, service_type=None):
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.units import mm
     from reportlab.lib import colors
@@ -88,6 +88,8 @@ def build_sales_pdf(from_date, to_date, request_type=None):
         date__gte=from_date, date__lte=to_date).order_by('date', 'id')
     if request_type:
         sales = sales.filter(requestType=request_type)
+    if service_type:
+        sales = sales.filter(serviceType=service_type)
 
     # Service type mapping
     service_type_map = {
@@ -104,8 +106,19 @@ def build_sales_pdf(from_date, to_date, request_type=None):
                             leftMargin=12 * mm, rightMargin=12 * mm,
                             topMargin=12 * mm, bottomMargin=12 * mm)
 
+    SERVICE_TYPE_LABELS = {
+        'internet': 'INTERNET', 'tv': 'TV ANALOGA', 'tv_digital': 'TV DIGITAL',
+        'combo_analog': 'INTERNET + TV ANALOGA', 'combo_digital': 'INTERNET + TV DIGITAL',
+    }
+    subtitle_parts = []
+    if request_type:
+        subtitle_parts.append(REQUEST_TYPE_LABELS.get(request_type, request_type.upper()))
+    if service_type:
+        subtitle_parts.append(SERVICE_TYPE_LABELS.get(service_type, service_type.upper()))
+    title_label = ' - '.join(subtitle_parts) if subtitle_parts else 'TODOS'
+
     story = _report_header(
-        Paragraph(f'MOV. CLIENTES - {REQUEST_TYPE_LABELS.get(request_type, "TODOS") if request_type else "TODOS"}', styles['Title']),
+        Paragraph(f'MOV. CLIENTES - {title_label}', styles['Title']),
         Paragraph(f'Periodo: {from_date} al {to_date}', styles['Normal']),
     )
 
