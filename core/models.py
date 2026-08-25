@@ -163,3 +163,26 @@ class Outflow(models.Model):
 
     def __str__(self):
         return f'{self.date} {self.personName} -{self.amount}'
+
+
+class Backup(models.Model):
+    """Copia de seguridad de la base de datos SQLite."""
+    TYPE_CHOICES = [('automatic', 'Automatico'), ('manual', 'Manual')]
+    STATUS_CHOICES = [('success', 'Correcto'), ('failed', 'Fallido')]
+
+    filename = models.CharField(max_length=255)
+    backup_type = models.CharField(max_length=10, choices=TYPE_CHOICES)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='success')
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='backups')
+    size = models.BigIntegerField(default=0)
+    storage_path = models.CharField(max_length=500, blank=True, default='')
+    checksum = models.CharField(max_length=64, blank=True, default='')
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.filename} ({self.get_backup_type_display()})'

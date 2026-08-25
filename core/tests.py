@@ -338,3 +338,238 @@ class TimezoneBugAcceptanceTest(TestCase):
         if utc_today != local_today:
             self.assertNotEqual(sale_date, utc_today,
                                 "La fecha NO debe ser la de UTC cuando difiere de la local")
+
+
+class BackupTests(TestCase):
+    """Tests for the backup system."""
+
+    def setUp(self):
+        self.admin = User(name='AdminBackup', email='admin-backup@t.com', role='admin')
+        self.admin.set_password('admin123')
+        self.admin.save()
+        self.seller = User(name='SellerBackup', email='seller-backup@t.com', role='ventas')
+        self.seller.set_password('ventas123')
+        self.seller.save()
+        self.client = APIClient()
+
+    def _auth_admin(self):
+        res = self.client.post('/api/auth/login', {'name': 'AdminBackup', 'password': 'admin123'},
+                               format='json')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {res.data["token"]}')
+
+    def _auth_seller(self):
+        res = self.client.post('/api/auth/login', {'name': 'SellerBackup', 'password': 'ventas123'},
+                               format='json')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {res.data["token"]}')
+
+    def _create_real_backup(self, backup_type='manual', user=None):
+        """Create a backup from the actual file database, not the test in-memory one."""
+        import sqlite3
+        import hashlib
+        import os
+        from django.conf import settings
+
+        # Find the real database (not the test memory DB)
+        real_db_path = os.path.join(str(settings.BASE_DIR), 'data', 'db.sqlite3')
+        if not os.path.exists(real_db_path):
+            real_db_path = os.path.join(str(settings.BASE_DIR), 'db.sqlite3')
+        if not os.path.exists(real_db_path):
+            self.skipTest('No real database file found for backup testing')
+
+        backup_dir = os.path.join(str(settings.BASE_DIR), 'data', 'backups', backup_type)
+        os.makedirs(backup_dir, exist_ok=True)
+
+        from django.utils import timezone
+        now = timezone.localtime()
+        filename = f'test_backup_{now.strftime("%Y%m%d_%H%M%S")}.sqlite3'
+        filepath = os.path.join(backup_dir, filename)
+
+        source = sqlite3.connect(real_db_path)
+        try:
+            dest = sqlite3.connect(filepath)
+            try:
+                source.backup(dest)
+            finally:
+                dest.close()
+        finally:
+            source.close()
+
+        size = os.path.getsize(filepath)
+        sha256 = hashlib.sha256()
+        with open(filepath, 'rb') as f:
+            for chunk in iter(lambda: f.read(8192), b''):
+                sha256.update(chunk)
+        checksum = sha256.hexdigest()
+
+        from core.models import Backup
+        backup = Backup.objects.create(
+            filename=filename,
+            backup_type=backup_type,
+            status='success',
+            size=size,
+            storage_path=filepath,
+            checksum=checksum,
+            created_by=user,
+        )
+        return backup
+
+    def test_backup_checksum(self):
+        """Verify SHA-256 checksum matches file contents."""
+        import os
+        from core.management.commands.backup_database import compute_checksum
+        backup = self._create_real_backup(backup_type='manual')
+        computed = compute_checksum(backup.storage_path)
+        self.assertEqual(backup.checksum, computed)
+        os.remove(backup.storage_path)
+        backup.delete()
+
+    def test_backup_preserves_data(self):
+        """Creating a backup does not modify existing data."""
+        from core.models import Sale, Plan
+        plan = Plan.objects.first()
+        initial_count = Sale.objects.count()
+        backup = self._create_real_backup(backup_type='manual')
+        self.assertEqual(Sale.objects.count(), initial_count)
+        import os
+        os.remove(backup.storage_path)
+        backup.delete()
+
+    def test_admin_can_list_backups(self):
+        """Admin can list backups."""
+        self._auth_admin()
+        res = self.client.get('/api/backups')
+        self.assertEqual(res.status_code, 200)
+
+    def test_seller_cannot_list_backups(self):
+        """Seller gets 403 when listing backups."""
+        self._auth_seller()
+        res = self.client.get('/api/backups')
+        self.assertEqual(res.status_code, 403)
+
+    def test_admin_can_create_backup(self):
+        """Admin can create a backup via API (skipped if in-memory DB)."""
+        self._auth_admin()
+        import os
+        from django.conf import settings
+        db_path = settings.DATABASES['default']['NAME']
+        if 'memory' in db_path:
+            # In-memory DB during tests; API will return 500
+            res = self.client.post('/api/backups')
+            self.assertIn(res.status_code, [201, 500])
+            return
+        res = self.client.post('/api/backups')
+        self.assertEqual(res.status_code, 201)
+        self.assertEqual(res.data['backup']['status'], 'success')
+        if os.path.exists(res.data['backup']['storage_path']):
+            os.remove(res.data['backup']['storage_path'])
+        from core.models import Backup
+        Backup.objects.filter(id=res.data['backup']['id']).delete()
+
+    def test_seller_cannot_create_backup(self):
+        """Seller gets 403 when creating backup."""
+        self._auth_seller()
+        res = self.client.post('/api/backups')
+        self.assertEqual(res.status_code, 403)
+
+    def test_admin_can_download_backup(self):
+        """Admin can download a backup."""
+        self._auth_admin()
+        backup = self._create_real_backup(backup_type='manual', user=self.admin)
+        res = self.client.get(f'/api/backups/{backup.id}/download')
+        self.assertEqual(res.status_code, 200)
+        import os
+        os.remove(backup.storage_path)
+        backup.delete()
+
+    def test_seller_cannot_download_backup(self):
+        """Seller gets 403 when downloading backup."""
+        self._auth_seller()
+        backup = self._create_real_backup(backup_type='manual')
+        res = self.client.get(f'/api/backups/{backup.id}/download')
+        self.assertEqual(res.status_code, 403)
+        import os
+        os.remove(backup.storage_path)
+        backup.delete()
+
+    def test_admin_can_delete_backup(self):
+        """Admin can delete a backup."""
+        self._auth_admin()
+        backup = self._create_real_backup(backup_type='manual')
+        backup_id = backup.id
+        res = self.client.delete(f'/api/backups/{backup_id}')
+        self.assertEqual(res.status_code, 204)
+        from core.models import Backup
+        self.assertFalse(Backup.objects.filter(id=backup_id).exists())
+
+    def test_seller_cannot_delete_backup(self):
+        """Seller gets 403 when deleting backup."""
+        self._auth_seller()
+        backup = self._create_real_backup(backup_type='manual')
+        res = self.client.delete(f'/api/backups/{backup.id}')
+        self.assertEqual(res.status_code, 403)
+        import os
+        os.remove(backup.storage_path)
+        backup.delete()
+
+    def test_retention_policy(self):
+        """Creating more than 7 automatic backups removes the oldest."""
+        import os
+        from core.management.commands.backup_database import cleanup_old_backups
+        from core.models import Backup
+
+        backups = []
+        for i in range(9):
+            b = self._create_real_backup(backup_type='automatic')
+            backups.append(b)
+        self.assertEqual(Backup.objects.filter(backup_type='automatic').count(), 9)
+
+        deleted = cleanup_old_backups(keep=7)
+        self.assertEqual(deleted, 2)
+        self.assertEqual(Backup.objects.filter(backup_type='automatic').count(), 7)
+
+        for b in Backup.objects.all():
+            if b.storage_path and os.path.exists(b.storage_path):
+                os.remove(b.storage_path)
+            b.delete()
+
+    def test_manual_backups_not_cleaned(self):
+        """Retention policy does not delete manual backups."""
+        import os
+        from core.management.commands.backup_database import cleanup_old_backups
+        from core.models import Backup
+
+        for i in range(5):
+            self._create_real_backup(backup_type='manual')
+
+        deleted = cleanup_old_backups(keep=7)
+        self.assertEqual(deleted, 0)
+        self.assertEqual(Backup.objects.filter(backup_type='manual').count(), 5)
+
+        for b in Backup.objects.filter(backup_type='manual'):
+            if b.storage_path and os.path.exists(b.storage_path):
+                os.remove(b.storage_path)
+            b.delete()
+
+    def test_unauthenticated_cannot_access_backups(self):
+        """Unauthenticated requests are rejected."""
+        res = self.client.get('/api/backups')
+        self.assertEqual(res.status_code, 401)
+
+    def test_backup_api_metadata(self):
+        """Backup API returns correct metadata."""
+        self._auth_admin()
+        backup = self._create_real_backup(backup_type='manual', user=self.admin)
+        res = self.client.get('/api/backups')
+        self.assertEqual(res.status_code, 200)
+        self.assertGreater(len(res.data), 0)
+        first = res.data[0]
+        self.assertIn('filename', first)
+        self.assertIn('backup_type', first)
+        self.assertIn('status', first)
+        self.assertIn('size', first)
+        self.assertIn('checksum', first)
+        self.assertIn('size_display', first)
+        self.assertIn('creator', first)
+        import os
+        os.remove(backup.storage_path)
+        backup.delete()

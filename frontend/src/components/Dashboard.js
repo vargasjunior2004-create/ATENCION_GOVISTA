@@ -90,8 +90,9 @@ export default function Dashboard() {
   useEffect(() => { loadStats(); }, [loadStats]);
 
   const getToday = () => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const now = new Date();
+    const bolivia = new Date(now.toLocaleString('en-US', { timeZone: 'America/La_Paz' }));
+    return `${bolivia.getFullYear()}-${String(bolivia.getMonth() + 1).padStart(2, '0')}-${String(bolivia.getDate()).padStart(2, '0')}`;
   };
 
   const handleGenerateReport = async () => {
