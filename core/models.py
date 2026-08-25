@@ -9,7 +9,6 @@ class User(models.Model):
     ROLE_CHOICES = [('admin', 'admin'), ('ventas', 'ventas')]
 
     name = models.CharField(max_length=120)
-    email = models.EmailField(unique=True)
     password = models.CharField(max_length=255)
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='ventas')
     active = models.BooleanField(default=True)

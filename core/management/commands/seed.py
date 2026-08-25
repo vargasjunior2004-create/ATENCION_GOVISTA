@@ -13,9 +13,9 @@ from django.utils import timezone
 from core.models import User, Plan, Sale, CashCount, Outflow
 
 USERS = [
-    ('Administrador', 'admin@salestracker.com', 'admin123', 'admin'),
-    ('Juan Pérez', 'juan@salestracker.com', 'juan2026', 'ventas'),
-    ('María Rojas', 'maria@salestracker.com', 'maria2026', 'ventas'),
+    ('Administrador', 'admin123', 'admin'),
+    ('Juan Pérez', 'juan2026', 'ventas'),
+    ('María Rojas', 'maria2026', 'ventas'),
 ]
 
 PLANS = [
@@ -78,9 +78,9 @@ class Command(BaseCommand):
 
         if users_only:
             created = 0
-            for name, email, password, role in USERS:
-                if not User.objects.filter(email=email).exists():
-                    u = User(name=name, email=email, role=role)
+            for name, password, role in USERS:
+                if not User.objects.filter(name__iexact=name).exists():
+                    u = User(name=name, role=role)
                     u.set_password(password)
                     u.save()
                     created += 1
@@ -98,8 +98,8 @@ class Command(BaseCommand):
                 model.objects.all().delete()
 
         users = {}
-        for name, email, password, role in USERS:
-            u = User(name=name, email=email, role=role)
+        for name, password, role in USERS:
+            u = User(name=name, role=role)
             u.set_password(password)
             u.save()
             users[role] = u
