@@ -24,11 +24,24 @@ def _pdf_response(buf, filename):
     return response
 
 
+REQUEST_TYPE_LABELS = {
+    'nuevo_contrato': 'INSTALACIONES',
+    'cambio_plan': 'CAMBIO DE PLAN',
+    'recontratacion': 'RECONTRATACION',
+    'retiro': 'RETIROS',
+    'adicion': 'ADICION',
+    'baja_temporal': 'BAJA TEMPORAL',
+    'otro': 'OTROS',
+}
+
+
 class SalesPdfView(APIView):
     def get(self, request):
         from_date, to_date = _sales_range(request.query_params)
-        return _pdf_response(build_sales_pdf(from_date, to_date),
-                             f'planilla-{from_date}-{to_date}.pdf')
+        request_type = request.query_params.get('requestType') or None
+        buf = build_sales_pdf(from_date, to_date, request_type)
+        suffix = f'-{REQUEST_TYPE_LABELS.get(request_type, "TODOS")}' if request_type else ''
+        return _pdf_response(buf, f'planilla{suffix}-{from_date}-{to_date}.pdf')
 
 
 class SalesXlsxView(APIView):

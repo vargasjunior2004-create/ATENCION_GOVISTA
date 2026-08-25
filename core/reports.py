@@ -66,7 +66,7 @@ def _report_header(title, subtitle):
 
 # ---------------------------------------------------------------- PDF (sales)
 
-def build_sales_pdf(from_date, to_date):
+def build_sales_pdf(from_date, to_date, request_type=None):
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.units import mm
     from reportlab.lib import colors
@@ -76,6 +76,8 @@ def build_sales_pdf(from_date, to_date):
 
     sales = Sale.objects.select_related('plan', 'createdBy').filter(
         date__gte=from_date, date__lte=to_date).order_by('date', 'id')
+    if request_type:
+        sales = sales.filter(requestType=request_type)
 
     # Service type mapping
     service_type_map = {
