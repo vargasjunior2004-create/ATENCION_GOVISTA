@@ -253,46 +253,65 @@ class UserDetailView(IsAdminMixin, APIView):
 
 class DashboardStatsView(APIView):
     def get(self, request):
-        today = timezone.localdate()
-        week_start = today - __import__('datetime').timedelta(days=today.weekday())
-        month_start = today.replace(day=1)
+        try:
+            today = timezone.localdate()
+            week_start = today - __import__('datetime').timedelta(days=today.weekday())
+            month_start = today.replace(day=1)
 
-        all_sales = Sale.objects.all()
-        installations = all_sales.filter(requestType='nuevo_contrato')
-        outflows = Outflow.objects.all()
+            all_sales = Sale.objects.all()
+            installations = all_sales.filter(requestType='nuevo_contrato')
+            outflows = Outflow.objects.all()
 
-        def stats(qs, from_date, to_date):
-            filtered = qs.filter(date__gte=from_date, date__lte=to_date)
-            total = filtered.aggregate(s=Sum('total'))['s'] or 0
-            return {'count': filtered.count(), 'total': float(total)}
+            def stats(qs, from_date, to_date):
+                filtered = qs.filter(date__gte=from_date, date__lte=to_date)
+                total = filtered.aggregate(s=Sum('total'))['s'] or 0
+                return {'count': filtered.count(), 'total': float(total)}
 
-        def outflow_stats(from_date, to_date):
-            filtered = outflows.filter(date__gte=from_date, date__lte=to_date)
-            total = filtered.aggregate(s=Sum('amount'))['s'] or 0
-            return {'count': filtered.count(), 'total': float(total)}
+            def outflow_stats(from_date, to_date):
+                filtered = outflows.filter(date__gte=from_date, date__lte=to_date)
+                total = filtered.aggregate(s=Sum('amount'))['s'] or 0
+                return {'count': filtered.count(), 'total': float(total)}
 
-        def retiros_stats(from_date, to_date):
-            sale_retiros = all_sales.filter(requestType='retiro', date__gte=from_date, date__lte=to_date)
-            total = sale_retiros.aggregate(s=Sum('total'))['s'] or 0
-            return {'count': sale_retiros.count(), 'total': float(total)}
+            def retiros_stats(from_date, to_date):
+                sale_retiros = all_sales.filter(requestType='retiro', date__gte=from_date, date__lte=to_date)
+                total = sale_retiros.aggregate(s=Sum('total'))['s'] or 0
+                return {'count': sale_retiros.count(), 'total': float(total)}
 
-        return Response({
-            'movimientos': {
-                'today': stats(all_sales, today, today),
-                'week': stats(all_sales, week_start, today),
-                'month': stats(all_sales, month_start, today),
-            },
-            'instalaciones': {
-                'today': stats(installations, today, today),
-                'week': stats(installations, week_start, today),
-                'month': stats(installations, month_start, today),
-            },
-            'retiros': {
-                'today': retiros_stats(today, today),
-                'week': retiros_stats(week_start, today),
-                'month': retiros_stats(month_start, today),
-            },
-        })
+            return Response({
+                'movimientos': {
+                    'today': stats(all_sales, today, today),
+                    'week': stats(all_sales, week_start, today),
+                    'month': stats(all_sales, month_start, today),
+                },
+                'instalaciones': {
+                    'today': stats(installations, today, today),
+                    'week': stats(installations, week_start, today),
+                    'month': stats(installations, month_start, today),
+                },
+                'retiros': {
+                    'today': retiros_stats(today, today),
+                    'week': retiros_stats(week_start, today),
+                    'month': retiros_stats(month_start, today),
+                },
+            })
+        except Exception as e:
+            return Response({
+                'movimientos': {
+                    'today': {'count': 0, 'total': 0},
+                    'week': {'count': 0, 'total': 0},
+                    'month': {'count': 0, 'total': 0},
+                },
+                'instalaciones': {
+                    'today': {'count': 0, 'total': 0},
+                    'week': {'count': 0, 'total': 0},
+                    'month': {'count': 0, 'total': 0},
+                },
+                'retiros': {
+                    'today': {'count': 0, 'total': 0},
+                    'week': {'count': 0, 'total': 0},
+                    'month': {'count': 0, 'total': 0},
+                },
+            })
 
 
 class CashCountView(APIView):
