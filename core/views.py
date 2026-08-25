@@ -270,12 +270,8 @@ class DashboardStatsView(APIView):
 
         def retiros_stats(from_date, to_date):
             sale_retiros = all_sales.filter(requestType='retiro', date__gte=from_date, date__lte=to_date)
-            outflow_retiros = outflows.filter(date__gte=from_date, date__lte=to_date)
-            sale_count = sale_retiros.count()
-            outflow_count = outflow_retiros.count()
-            sale_total = float(sale_retiros.aggregate(s=Sum('total'))['s'] or 0)
-            outflow_total = float(outflow_retiros.aggregate(s=Sum('amount'))['s'] or 0)
-            return {'count': sale_count + outflow_count, 'total': sale_total + outflow_total}
+            total = sale_retiros.aggregate(s=Sum('total'))['s'] or 0
+            return {'count': sale_retiros.count(), 'total': float(total)}
 
         return Response({
             'movimientos': {
