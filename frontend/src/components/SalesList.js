@@ -64,6 +64,8 @@ export default function SalesList() {
   const [editError, setEditError] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, total_pages: 1 });
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [msg, setMsg] = useState('');
 
   const loadSales = useCallback(async (p = 1) => {
     setLoading(true);
@@ -126,6 +128,29 @@ export default function SalesList() {
   const currentPlans = filteredPlans.filter((p) => !p.legacy);
   const legacyPlans = filteredPlans.filter((p) => p.legacy);
 
+  const handleGeneratePDF = async () => {
+    if (!requestType) return;
+    setGeneratingPdf(true);
+    setMsg('');
+    try {
+      const blob = await api.getPDF(from, to, requestType);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const typeName = REQUEST_TYPES.find(t => t.value === requestType)?.label || requestType;
+      a.download = `reporte-${typeName}-${from}-${to}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setMsg('PDF generado correctamente.');
+    } catch (err) {
+      setMsg(err.error || 'Error al generar PDF');
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -135,7 +160,7 @@ export default function SalesList() {
 
       {/* Filters */}
       <Card className="p-5">
-        <div className="grid grid-cols-1 sm:grid-cols-4 items-end gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-5 items-end gap-3">
           <div>
             <Input label="Desde" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
@@ -150,8 +175,21 @@ export default function SalesList() {
             </Select>
           </div>
           <Button variant="secondary" onClick={() => loadSales(1)}>Buscar</Button>
+          <Button
+            variant="primary"
+            onClick={handleGeneratePDF}
+            disabled={!requestType || generatingPdf}
+            className={!requestType ? 'opacity-50 cursor-not-allowed' : ''}
+          >
+            {generatingPdf ? 'Generando...' : 'Reporte PDF'}
+          </Button>
         </div>
+        {!requestType && (
+          <p className="text-xs text-slate-400 mt-2">Selecciona un tipo de movimiento para habilitar el reporte PDF</p>
+        )}
       </Card>
+
+      {msg && <Alert type={msg.includes('Error') ? 'error' : 'success'}>{msg}</Alert>}
 
       {/* Edit modal */}
       {editingSale && (
