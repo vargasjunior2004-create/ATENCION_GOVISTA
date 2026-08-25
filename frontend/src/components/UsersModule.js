@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { Button, Input, Select, Card, Alert, Badge } from './ui';
 
-const emptyUser = { name: '', email: '', password: '', role: 'ventas' };
+const emptyUser = { name: '', password: '', role: 'ventas' };
 
 export default function UsersModule() {
   const [users, setUsers] = useState([]);
@@ -27,14 +27,14 @@ export default function UsersModule() {
 
   const openNew = () => { setForm({ ...emptyUser }); setEditingId(null); setShowForm(true); setError(''); };
   const openEdit = (user) => {
-    setForm({ name: user.name, email: user.email, password: '', role: user.role });
+    setForm({ name: user.name, password: '', role: user.role });
     setEditingId(user.id); setShowForm(true); setError('');
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault(); setError('');
     try {
-      const payload = { name: form.name, email: form.email, role: form.role };
+      const payload = { name: form.name, role: form.role };
       if (form.password) payload.password = form.password;
       if (editingId) {
         await api.updateUser(editingId, payload);
@@ -70,7 +70,6 @@ export default function UsersModule() {
             {error && <Alert type="error">{error}</Alert>}
             <form onSubmit={handleSubmit} className="space-y-4">
               <Input label="Nombre" name="name" value={form.name} onChange={handleChange} required />
-              <Input label="Email" name="email" type="email" value={form.email} onChange={handleChange} required />
               <Input
                 label={editingId ? 'Nueva contrasena (dejar vacio para no cambiar)' : 'Contrasena (unica por usuario)'}
                 name="password" type="password" value={form.password} onChange={handleChange}
@@ -95,7 +94,7 @@ export default function UsersModule() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100">
-              {['Nombre', 'Email', 'Rol', 'Estado', ''].map((h) => (
+              {['Nombre', 'Rol', 'Estado', ''].map((h) => (
                 <th key={h} className="text-left px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">{h}</th>
               ))}
             </tr>
@@ -104,7 +103,6 @@ export default function UsersModule() {
             {users.map((u) => (
               <tr key={u.id} className={`hover:bg-brand-50/30 transition-colors ${!u.active ? 'opacity-50' : ''}`}>
                 <td className="px-5 py-3.5 font-medium text-slate-900">{u.name}</td>
-                <td className="px-5 py-3.5 text-slate-500">{u.email}</td>
                 <td className="px-4 py-3"><Badge color={u.role === 'admin' ? 'amber' : 'blue'}>{u.role}</Badge></td>
                 <td className="px-4 py-3">
                   <Badge color={u.active ? 'green' : 'red'}>{u.active ? 'Activo' : 'Inactivo'}</Badge>
@@ -128,7 +126,6 @@ export default function UsersModule() {
             <div className="flex items-start justify-between">
               <div>
                 <p className="font-semibold text-slate-900">{u.name}</p>
-                <p className="text-sm text-slate-500">{u.email}</p>
               </div>
               <div className="flex gap-1.5">
                 <Badge color={u.role === 'admin' ? 'amber' : 'blue'}>{u.role}</Badge>

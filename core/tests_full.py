@@ -12,8 +12,8 @@ def _json(response):
         return {'_raw': response.content.decode()[:500]}
 
 
-def _create_user(name, email, password, role='ventas'):
-    u = User.objects.create(name=name, email=email, password='', role=role, active=True)
+def _create_user(name, password, role='ventas'):
+    u = User.objects.create(name=name, password='', role=role, active=True)
     u.set_password(password)
     u.save()
     return u
@@ -22,8 +22,8 @@ def _create_user(name, email, password, role='ventas'):
 class AuthTests(TestCase):
     def setUp(self):
         self.c = Client()
-        self.admin = _create_user('admin_test', 'admin@test.com', 'admin123', 'admin')
-        self.ventas = _create_user('ventas_test', 'ventas@test.com', 'ventas123', 'ventas')
+        self.admin = _create_user('admin_test', 'admin123', 'admin')
+        self.ventas = _create_user('ventas_test', 'ventas123', 'ventas')
         self.plan = Plan.objects.create(
             type='internet', code='TEST01', label='Plan Test 100',
             monthly=100, speed='10', active=True,
@@ -78,8 +78,8 @@ class AuthTests(TestCase):
 class SaleTests(TestCase):
     def setUp(self):
         self.c = Client()
-        self.admin = _create_user('admin1', 'a@t.com', 'pass1', 'admin')
-        self.ventas_user = _create_user('ventas1', 'v@t.com', 'pass2', 'ventas')
+        self.admin = _create_user('admin1', 'pass1', 'admin')
+        self.ventas_user = _create_user('ventas1', 'pass2', 'ventas')
         self.plan = Plan.objects.create(
             type='internet', code='P001', label='Plan 150',
             monthly=150, speed='20', active=True,
@@ -210,7 +210,7 @@ class SaleTests(TestCase):
 class DashboardTests(TestCase):
     def setUp(self):
         self.c = Client()
-        self.admin = _create_user('admin2', 'a2@t.com', 'pass1', 'admin')
+        self.admin = _create_user('admin2', 'pass1', 'admin')
         self.plan = Plan.objects.create(
             type='internet', code='P002', label='Plan 200',
             monthly=200, speed='30', active=True,
@@ -258,7 +258,7 @@ class DashboardTests(TestCase):
 class CashCountTests(TestCase):
     def setUp(self):
         self.c = Client()
-        self.admin = _create_user('admin3', 'a3@t.com', 'pass1', 'admin')
+        self.admin = _create_user('admin3', 'pass1', 'admin')
 
     def _token(self):
         r = self.c.post('/api/auth/login', {'name': 'admin3', 'password': 'pass1'},
@@ -355,7 +355,7 @@ class CashCountTests(TestCase):
 class ReportTests(TestCase):
     def setUp(self):
         self.c = Client()
-        self.admin = _create_user('admin4', 'a4@t.com', 'pass1', 'admin')
+        self.admin = _create_user('admin4', 'pass1', 'admin')
         self.plan = Plan.objects.create(
             type='internet', code='P003', label='Plan 100',
             monthly=100, speed='10', active=True,
@@ -412,8 +412,8 @@ class ReportTests(TestCase):
 class PlanTests(TestCase):
     def setUp(self):
         self.c = Client()
-        self.admin = _create_user('admin5', 'a5@t.com', 'pass1', 'admin')
-        self.ventas_user = _create_user('ventas5', 'v5@t.com', 'pass2', 'ventas')
+        self.admin = _create_user('admin5', 'pass1', 'admin')
+        self.ventas_user = _create_user('ventas5', 'pass2', 'ventas')
 
     def _token(self, user, pw):
         r = self.c.post('/api/auth/login', {'name': user.name, 'password': pw},
@@ -438,8 +438,8 @@ class PlanTests(TestCase):
 class UserManagementTests(TestCase):
     def setUp(self):
         self.c = Client()
-        self.admin = _create_user('admin6', 'a6@t.com', 'pass1', 'admin')
-        self.ventas_user = _create_user('ventas6', 'v6@t.com', 'pass2', 'ventas')
+        self.admin = _create_user('admin6', 'pass1', 'admin')
+        self.ventas_user = _create_user('ventas6', 'pass2', 'ventas')
 
     def _token(self, user, pw):
         r = self.c.post('/api/auth/login', {'name': user.name, 'password': pw},
@@ -459,7 +459,7 @@ class UserManagementTests(TestCase):
     def test_create_user_admin(self):
         token = self._token(self.admin, 'pass1')
         r = self.c.post('/api/users', {
-            'name': 'newuser', 'email': 'new@t.com',
+            'name': 'newuser',
             'password': 'newpass', 'role': 'ventas'
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r.status_code, 201)
@@ -467,7 +467,7 @@ class UserManagementTests(TestCase):
     def test_create_user_ventas_forbidden(self):
         token = self._token(self.ventas_user, 'pass2')
         r = self.c.post('/api/users', {
-            'name': 'hack', 'email': 'hack@t.com',
+            'name': 'hack',
             'password': 'hack', 'role': 'admin'
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r.status_code, 403)
@@ -475,7 +475,7 @@ class UserManagementTests(TestCase):
     def test_edit_user_admin(self):
         token = self._token(self.admin, 'pass1')
         r = self.c.put(f'/api/users/{self.ventas_user.id}', {
-            'name': 'ventas_updated', 'email': 'v_updated@t.com', 'role': 'ventas'
+            'name': 'ventas_updated', 'role': 'ventas'
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r.status_code, 200)
         self.assertEqual(_json(r)['name'], 'ventas_updated')
@@ -490,7 +490,7 @@ class UserManagementTests(TestCase):
 class CustomerTests(TestCase):
     def setUp(self):
         self.c = Client()
-        self.admin = _create_user('admin7', 'a7@t.com', 'pass1', 'admin')
+        self.admin = _create_user('admin7', 'pass1', 'admin')
 
     def _token(self):
         r = self.c.post('/api/auth/login', {'name': 'admin7', 'password': 'pass1'},

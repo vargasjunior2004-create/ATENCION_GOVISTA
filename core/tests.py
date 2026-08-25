@@ -9,10 +9,10 @@ from .models import User, Plan, Sale, CashCount, Outflow
 
 class ApiTestCase(TestCase):
     def setUp(self):
-        admin = User(name='Admin', email='admin@t.com', role='admin')
+        admin = User(name='Admin', role='admin')
         admin.set_password('admin123')
         admin.save()
-        seller = User(name='Vendedor', email='ventas@t.com', role='ventas')
+        seller = User(name='Vendedor', role='ventas')
         seller.set_password('ventas123')
         seller.save()
         self.admin, self.seller = admin, seller
@@ -46,7 +46,7 @@ class ApiTestCase(TestCase):
         res = self.login('Admin', 'incorrecta')
         self.assertEqual(res.status_code, 401)
 
-    def test_login_email_password(self):
+    def test_login_name_password(self):
         res = self.client.post('/api/auth/login',
                                {'name': 'Admin', 'password': 'admin123'},
                                format='json')
@@ -60,7 +60,7 @@ class ApiTestCase(TestCase):
         self.auth_as(self.admin, 'admin123')
         res = self.client.get('/api/auth/me')
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.data['user']['email'], 'admin@t.com')
+        self.assertEqual(res.data['user']['name'], 'Admin')
 
     def test_plans_admin_only(self):
         self.auth_as(self.seller, 'ventas123')
@@ -148,7 +148,7 @@ class ApiTestCase(TestCase):
     def test_create_user(self):
         self.auth_as(self.admin, 'admin123')
         res = self.client.post('/api/users', {
-            'name': 'Nuevo', 'email': 'nuevo@t.com',
+            'name': 'Nuevo',
             'password': 'nuevo123', 'role': 'ventas',
         }, format='json')
         self.assertEqual(res.status_code, 201)
@@ -234,10 +234,10 @@ class TimezoneBugAcceptanceTest(TestCase):
     y no con UTC, causando que ventas de la noche aparezcan al día siguiente."""
 
     def setUp(self):
-        self.admin = User(name='AdminTZ', email='admin-tz@t.com', role='admin')
+        self.admin = User(name='AdminTZ', role='admin')
         self.admin.set_password('admin123')
         self.admin.save()
-        self.seller = User(name='VendedorTZ', email='ventas-tz@t.com', role='ventas')
+        self.seller = User(name='VendedorTZ', role='ventas')
         self.seller.set_password('ventas123')
         self.seller.save()
         self.plan = Plan.objects.create(
@@ -344,10 +344,10 @@ class BackupTests(TestCase):
     """Tests for the backup system."""
 
     def setUp(self):
-        self.admin = User(name='AdminBackup', email='admin-backup@t.com', role='admin')
+        self.admin = User(name='AdminBackup', role='admin')
         self.admin.set_password('admin123')
         self.admin.save()
-        self.seller = User(name='SellerBackup', email='seller-backup@t.com', role='ventas')
+        self.seller = User(name='SellerBackup', role='ventas')
         self.seller.set_password('ventas123')
         self.seller.save()
         self.client = APIClient()

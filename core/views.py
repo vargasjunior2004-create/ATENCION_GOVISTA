@@ -18,7 +18,7 @@ from .reports import build_sales_pdf, build_sales_xlsx, build_cash_pdf
 
 
 def _user_payload(user):
-    return {'id': user.id, 'name': user.name, 'email': user.email,
+    return {'id': user.id, 'name': user.name,
             'role': user.role, 'active': user.active}
 
 

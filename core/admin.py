@@ -4,7 +4,7 @@ from .models import User, Plan, Sale, CashCount, Outflow, Backup
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'email', 'role', 'active')
+    list_display = ('id', 'name', 'role', 'active')
 
 
 @admin.register(Plan)

@@ -5,7 +5,7 @@ from .models import User, Customer, Plan, Sale, CashCount, Outflow, Backup
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'name', 'email', 'role', 'active']
+        fields = ['id', 'name', 'role', 'active']
 
 
 class UserWriteSerializer(serializers.ModelSerializer):
@@ -13,7 +13,7 @@ class UserWriteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'name', 'email', 'password', 'role', 'active']
+        fields = ['id', 'name', 'password', 'role', 'active']
 
     def create(self, validated_data):
         password = validated_data.pop('password', None)
