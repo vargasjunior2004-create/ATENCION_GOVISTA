@@ -110,7 +110,7 @@ def build_sales_pdf(from_date, to_date, request_type=None):
     )
 
     if request_type == 'retiro':
-        header = ['Fecha', 'Kardex', 'Cliente', 'Servicio', 'Solicitud', 'Plan', 'Motivo', 'Comentario', 'Monto Ini', 'Dif', 'Operador']
+        header = ['Fecha', 'Kardex', 'Cliente', 'Servicio', 'Solicitud', 'Plan', 'Motivo', 'Monto Ini', 'Dif', 'Operador']
     else:
         header = ['Fecha', 'Kardex', 'Cliente', 'Servicio', 'Solicitud', 'Plan', 'Monto Ini', 'Dif', 'Operador']
     rows = [header]
@@ -123,7 +123,6 @@ def build_sales_pdf(from_date, to_date, request_type=None):
                 service_label, s.get_requestType_display(),
                 s.plan.label,
                 s.changeReason or '-',
-                s.notes or '-',
                 f'{float(s.plan.monthly):.2f}',
                 f'{float(s.plan.monthly):.2f}',
                 s.createdBy.name,
