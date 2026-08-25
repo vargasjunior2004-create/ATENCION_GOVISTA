@@ -78,7 +78,7 @@ export default function UsersModule() {
                 {...(!editingId && { required: true })}
               />
               <Select label="Rol" name="role" value={form.role} onChange={handleChange}>
-                <option value="ventas">Ventas</option>
+                <option value="ventas">Movimientos</option>
                 <option value="admin">Administrador</option>
               </Select>
               <div className="flex gap-3 pt-2">
