@@ -7,6 +7,16 @@ from .models import Sale, CashCount, Outflow
 
 SIGNER = TimestampSigner()
 
+REQUEST_TYPE_LABELS = {
+    'nuevo_contrato': 'INSTALACIONES',
+    'cambio_plan': 'CAMBIO DE PLAN',
+    'recontratacion': 'RECONTRATACION',
+    'retiro': 'RETIROS',
+    'adicion': 'ADICION',
+    'baja_temporal': 'BAJA TEMPORAL',
+    'otro': 'OTROS',
+}
+
 LOGO_PATH = Path(__file__).resolve().parent / 'logo.png'
 
 DENOMINATIONS = [
@@ -95,7 +105,7 @@ def build_sales_pdf(from_date, to_date, request_type=None):
                             topMargin=12 * mm, bottomMargin=12 * mm)
 
     story = _report_header(
-        Paragraph('MOV. CLIENTES', styles['Title']),
+        Paragraph(f'MOV. CLIENTES - {REQUEST_TYPE_LABELS.get(request_type, "TODOS") if request_type else "TODOS"}', styles['Title']),
         Paragraph(f'Periodo: {from_date} al {to_date}', styles['Normal']),
     )
 

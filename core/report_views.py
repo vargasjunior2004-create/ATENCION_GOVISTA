@@ -7,7 +7,7 @@ from rest_framework.views import APIView
 
 from .reports import (
     build_sales_pdf, build_sales_xlsx, build_sales_png, build_cash_pdf,
-    sign_report_token, unsign_report_token,
+    sign_report_token, unsign_report_token, REQUEST_TYPE_LABELS,
 )
 
 
@@ -22,17 +22,6 @@ def _pdf_response(buf, filename):
     response = HttpResponse(buf.getvalue(), content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
-
-
-REQUEST_TYPE_LABELS = {
-    'nuevo_contrato': 'INSTALACIONES',
-    'cambio_plan': 'CAMBIO DE PLAN',
-    'recontratacion': 'RECONTRATACION',
-    'retiro': 'RETIROS',
-    'adicion': 'ADICION',
-    'baja_temporal': 'BAJA TEMPORAL',
-    'otro': 'OTROS',
-}
 
 
 class SalesPdfView(APIView):
