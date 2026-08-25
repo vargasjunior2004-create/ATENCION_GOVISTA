@@ -1,6 +1,7 @@
 from datetime import date
 
 from django.http import HttpResponse
+from django.utils import timezone
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -12,7 +13,7 @@ from .reports import (
 
 
 def _sales_range(params, default_day=True):
-    today = date.today().isoformat()
+    today = timezone.localdate().isoformat()
     from_date = params.get('from') or (today if default_day else '')
     to_date = params.get('to') or (today if default_day else '')
     return from_date, to_date
@@ -106,7 +107,7 @@ class SalesXlsxPublicView(APIView):
 
 class CashPdfView(APIView):
     def get(self, request):
-        d = request.query_params.get('date') or date.today().isoformat()
+        d = request.query_params.get('date') or timezone.localdate().isoformat()
         return _pdf_response(build_cash_pdf(d), f'arqueo-{d}.pdf')
 
 

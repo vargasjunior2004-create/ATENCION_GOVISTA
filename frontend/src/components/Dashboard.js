@@ -89,11 +89,16 @@ export default function Dashboard() {
 
   useEffect(() => { loadStats(); }, [loadStats]);
 
+  const getToday = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
   const handleGenerateReport = async () => {
     setGenerating(true);
     setMsg('');
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = getToday();
       const blob = await api.getPDF(today, today);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -115,7 +120,7 @@ export default function Dashboard() {
     setGeneratingXlsx(true);
     setMsg('');
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = getToday();
       const blob = await api.getXLSX(today, today);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -137,7 +142,7 @@ export default function Dashboard() {
     setGeneratingFoto(true);
     setMsg('');
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = getToday();
       const blob = await api.getPNG(today, today);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
