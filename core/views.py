@@ -144,6 +144,7 @@ class SaleListView(APIView):
         from_date = request.query_params.get('from')
         to_date = request.query_params.get('to')
         rtype = request.query_params.get('requestType')
+        stype = request.query_params.get('serviceType')
         qs = Sale.objects.select_related('plan', 'createdBy').all().order_by('-date', '-id')
         if from_date:
             qs = qs.filter(date__gte=from_date)
@@ -151,6 +152,8 @@ class SaleListView(APIView):
             qs = qs.filter(date__lte=to_date)
         if rtype:
             qs = qs.filter(requestType=rtype)
+        if stype:
+            qs = qs.filter(serviceType=stype)
 
         total = qs.count()
         page = int(request.query_params.get('page', 1))
