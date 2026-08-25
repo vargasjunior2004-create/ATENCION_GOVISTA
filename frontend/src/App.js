@@ -9,6 +9,7 @@ import SalesList from './components/SalesList';
 import PlansModule from './components/PlansModule';
 import UsersModule from './components/UsersModule';
 import CashCountModule from './components/CashCountModule';
+import BackupModule from './components/BackupModule';
 
 function ProtectedRoute() {
   const { token } = useAuth();
@@ -35,6 +36,7 @@ function App() {
               <Route element={<AdminRoute />}>
                 <Route path="/planes" element={<PlansModule />} />
                 <Route path="/usuarios" element={<UsersModule />} />
+                <Route path="/backups" element={<BackupModule />} />
               </Route>
             </Route>
           </Route>

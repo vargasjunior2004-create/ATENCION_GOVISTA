@@ -85,6 +85,9 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': _db_path,
+        'OPTIONS': {
+            'init_command': 'PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;',
+        },
     }
 }
 
@@ -124,7 +127,7 @@ REST_FRAMEWORK = {
 
 SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
-    'ACCESS_TOKEN_LIFETIME': __import__('datetime').timedelta(minutes=3),
+    'ACCESS_TOKEN_LIFETIME': __import__('datetime').timedelta(minutes=5),
     'REFRESH_TOKEN_LIFETIME': __import__('datetime').timedelta(hours=1),
     'ROTATE_REFRESH_TOKENS': False,
 }

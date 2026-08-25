@@ -7,11 +7,12 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
-from .models import User, Customer, Plan, Sale, CashCount, Outflow
+from .models import User, Customer, Plan, Sale, CashCount, Outflow, Backup
 from .serializers import (
     UserSerializer, UserWriteSerializer, PlanSerializer,
     PlanPublicSerializer, CustomerSerializer, SaleSerializer,
     SaleCreateSerializer, CashCountSerializer, OutflowSerializer,
+    BackupSerializer,
 )
 from .reports import build_sales_pdf, build_sales_xlsx, build_cash_pdf
 
@@ -403,3 +404,83 @@ def _first_error(serializer):
                 return str(value[0])
             return str(value)
     return 'Error de validación'
+
+
+class BackupListView(IsAdminMixin, APIView):
+    def get(self, request):
+        error = self.check_admin(request)
+        if error:
+            return error
+        backups = Backup.objects.all()
+        serializer = BackupSerializer(backups, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        error = self.check_admin(request)
+        if error:
+            return error
+        try:
+            from .management.commands.backup_database import create_backup, cleanup_old_backups
+            backup = create_backup(backup_type='manual', user=request.user)
+            deleted = cleanup_old_backups(keep=7)
+            return Response({
+                'backup': BackupSerializer(backup).data,
+                'deleted_count': deleted,
+            }, status=status.HTTP_201_CREATED)
+        except FileNotFoundError as e:
+            return Response(
+                {'error': f'Base de datos no encontrada: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            return Response(
+                {'error': f'Error al crear backup: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class BackupDownloadView(IsAdminMixin, APIView):
+    def get(self, request, pk):
+        error = self.check_admin(request)
+        if error:
+            return error
+        try:
+            backup = Backup.objects.get(id=pk)
+        except Backup.DoesNotExist:
+            return Response(
+                {'error': 'Backup no encontrado'},
+                status=status.HTTP_404_NOT_FOUND)
+
+        import os
+        if not backup.storage_path or not os.path.exists(backup.storage_path):
+            return Response(
+                {'error': 'Archivo de backup no encontrado en disco'},
+                status=status.HTTP_404_NOT_FOUND)
+
+        from django.http import FileResponse
+        response = FileResponse(
+            open(backup.storage_path, 'rb'),
+            content_type='application/octet-stream')
+        response['Content-Disposition'] = (
+            f'attachment; filename="{backup.filename}"')
+        return response
+
+
+class BackupDeleteView(IsAdminMixin, APIView):
+    def delete(self, request, pk):
+        error = self.check_admin(request)
+        if error:
+            return error
+        try:
+            backup = Backup.objects.get(id=pk)
+        except Backup.DoesNotExist:
+            return Response(
+                {'error': 'Backup no encontrado'},
+                status=status.HTTP_404_NOT_FOUND)
+
+        import os
+        if backup.storage_path and os.path.exists(backup.storage_path):
+            try:
+                os.remove(backup.storage_path)
+            except OSError:
+                pass
+        backup.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

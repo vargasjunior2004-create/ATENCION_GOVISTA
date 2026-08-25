@@ -38,4 +38,8 @@ urlpatterns = [
     path('reports/cash-public/', report_views.CashPdfPublicView.as_view()),
     path('cash-count/pdf', report_views.CashPdfView.as_view()),
     path('cash-count/pdf-link', report_views.CashPdfLinkView.as_view()),
+
+    path('backups', views.BackupListView.as_view()),
+    path('backups/<int:pk>/download', views.BackupDownloadView.as_view()),
+    path('backups/<int:pk>', views.BackupDeleteView.as_view()),
 ]

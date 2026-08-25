@@ -105,6 +105,20 @@ const api = {
     const params = date ? `?date=${date}` : '';
     return request(`/api/cash-count/pdf${params}`);
   },
+
+  // Backups
+  getBackups: () => request('/api/backups'),
+  createBackup: () => request('/api/backups', { method: 'POST' }),
+  downloadBackup: (id) => {
+    const token = localStorage.getItem('token');
+    return fetch(`${API_URL}/api/backups/${id}/download`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    }).then(res => {
+      if (!res.ok) throw new Error('Error al descargar');
+      return res.blob();
+    });
+  },
+  deleteBackup: (id) => request(`/api/backups/${id}`, { method: 'DELETE' }),
 };
 
 export default api;

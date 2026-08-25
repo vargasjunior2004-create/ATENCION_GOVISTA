@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User, Customer, Plan, Sale, CashCount, Outflow
+from .models import User, Customer, Plan, Sale, CashCount, Outflow, Backup
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -150,3 +150,28 @@ class OutflowSerializer(serializers.ModelSerializer):
     class Meta:
         model = Outflow
         fields = ['id', 'date', 'personName', 'amount', 'concept', 'created_at']
+
+
+class BackupSerializer(serializers.ModelSerializer):
+    creator = serializers.SerializerMethodField()
+    size_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Backup
+        fields = ['id', 'filename', 'backup_type', 'status', 'created_at',
+                  'created_by', 'size', 'size_display', 'storage_path',
+                  'checksum', 'creator']
+
+    def get_creator(self, obj):
+        if obj.created_by:
+            return {'id': obj.created_by.id, 'name': obj.created_by.name}
+        return None
+
+    def get_size_display(self, obj):
+        size = obj.size
+        if size < 1024:
+            return f'{size} B'
+        elif size < 1024 * 1024:
+            return f'{size / 1024:.1f} KB'
+        else:
+            return f'{size / (1024 * 1024):.1f} MB'
