@@ -42,7 +42,7 @@ export default function Login() {
             GO<span className="text-vista-accent">VISTA</span>
           </h1>
           <p className="text-green-300/70 text-lg font-medium">
-            Planilla de Ventas Diaria
+            Planilla de Movimientos Diaria
           </p>
           <p className="text-green-400/40 text-sm mt-2">
             Telecomunicaciones Bolivia
@@ -58,7 +58,7 @@ export default function Login() {
             <h1 className="text-4xl font-black text-white tracking-tight mb-2">
               GO<span className="text-vista-accent">VISTA</span>
             </h1>
-            <p className="text-green-300/60 text-sm">Planilla de Ventas Diaria</p>
+            <p className="text-green-300/60 text-sm">Planilla de Movimientos Diaria</p>
           </div>
 
           <div className="bg-white/5 backdrop-blur-xl rounded-3xl p-8 border border-white/10 shadow-2xl">
