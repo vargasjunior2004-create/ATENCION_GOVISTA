@@ -265,6 +265,8 @@ class DashboardStatsView(APIView):
             installations = all_sales.filter(requestType='nuevo_contrato')
             outflows = Outflow.objects.all()
 
+            is_admin = getattr(request.user, 'role', '') == 'admin'
+
             def stats(qs, from_date, to_date):
                 filtered = qs.filter(date__gte=from_date, date__lte=to_date)
                 total = filtered.aggregate(s=Sum('total'))['s'] or 0
@@ -280,22 +282,25 @@ class DashboardStatsView(APIView):
                 total = sale_retiros.aggregate(s=Sum('total'))['s'] or 0
                 return {'count': sale_retiros.count(), 'total': float(total)}
 
+            empty = {'count': 0, 'total': 0}
+
             return Response({
                 'movimientos': {
                     'today': stats(all_sales, today, today),
-                    'week': stats(all_sales, week_start, today),
-                    'month': stats(all_sales, month_start, today),
+                    'week': stats(all_sales, week_start, today) if is_admin else empty,
+                    'month': stats(all_sales, month_start, today) if is_admin else empty,
                 },
                 'instalaciones': {
                     'today': stats(installations, today, today),
-                    'week': stats(installations, week_start, today),
-                    'month': stats(installations, month_start, today),
+                    'week': stats(installations, week_start, today) if is_admin else empty,
+                    'month': stats(installations, month_start, today) if is_admin else empty,
                 },
                 'retiros': {
                     'today': retiros_stats(today, today),
-                    'week': retiros_stats(week_start, today),
-                    'month': retiros_stats(month_start, today),
+                    'week': retiros_stats(week_start, today) if is_admin else empty,
+                    'month': retiros_stats(month_start, today) if is_admin else empty,
                 },
+                'role': request.user.role,
             })
         except Exception as e:
             return Response({
