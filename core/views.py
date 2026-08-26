@@ -48,6 +48,7 @@ class HealthView(APIView):
                 'users': user_count,
                 'plans': plan_count,
                 'db': str(connection.settings_dict['NAME']),
+                'version': 'v2-tryexcept',
             })
         except Exception as e:
             return Response({'status': 'error', 'detail': str(e)}, status=500)
