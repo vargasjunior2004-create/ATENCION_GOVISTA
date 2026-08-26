@@ -172,13 +172,20 @@ class SaleListView(APIView):
         })
 
     def post(self, request):
+        import logging, traceback
+        logger = logging.getLogger('core')
         data = request.data.copy()
         data['date'] = timezone.localdate().isoformat()
-        serializer = SaleCreateSerializer(data=data, context={'user': request.user})
-        if not serializer.is_valid():
-            return Response({'error': _first_error(serializer)}, status=status.HTTP_400_BAD_REQUEST)
-        sale = serializer.save()
-        return Response(SaleSerializer(sale).data, status=status.HTTP_201_CREATED)
+        logger.warning('SaleListView POST data: %s', data)
+        try:
+            serializer = SaleCreateSerializer(data=data, context={'user': request.user})
+            if not serializer.is_valid():
+                return Response({'error': _first_error(serializer)}, status=status.HTTP_400_BAD_REQUEST)
+            sale = serializer.save()
+            return Response(SaleSerializer(sale).data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            logger.error('SaleListView POST error: %s\n%s', e, traceback.format_exc())
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class SaleDetailView(IsAdminMixin, APIView):
