@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { Button, Card, Alert } from './ui';
 
 function formatNum(n) {
@@ -69,6 +70,7 @@ function SectionHeader({ title, color = 'brand' }) {
 }
 
 export default function Dashboard() {
+  const { isAdmin } = useAuth();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -225,8 +227,8 @@ export default function Dashboard() {
 
       {/* Movimientos del dia */}
       <div className="space-y-3">
-        <SectionHeader title="Movimientos del Dia" color="brand" />
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <SectionHeader title={isAdmin ? "Movimientos" : "Mis Movimientos"} color="brand" />
+        <div className={`grid grid-cols-1 gap-4 ${isAdmin ? 'sm:grid-cols-3' : 'sm:grid-cols-1 max-w-sm'}`}>
           <MetricCard
             label="Hoy"
             count={stats?.movimientos?.today?.count || 0}
@@ -234,27 +236,31 @@ export default function Dashboard() {
             icon={CalendarIcon}
             color="brand"
           />
-          <MetricCard
-            label="Esta Semana"
-            count={stats?.movimientos?.week?.count || 0}
-            total={stats?.movimientos?.week?.total || 0}
-            icon={WeekIcon}
-            color="brand"
-          />
-          <MetricCard
-            label="Este Mes"
-            count={stats?.movimientos?.month?.count || 0}
-            total={stats?.movimientos?.month?.total || 0}
-            icon={MonthIcon}
-            color="brand"
-          />
+          {isAdmin && (
+            <>
+              <MetricCard
+                label="Esta Semana"
+                count={stats?.movimientos?.week?.count || 0}
+                total={stats?.movimientos?.week?.total || 0}
+                icon={WeekIcon}
+                color="brand"
+              />
+              <MetricCard
+                label="Este Mes"
+                count={stats?.movimientos?.month?.count || 0}
+                total={stats?.movimientos?.month?.total || 0}
+                icon={MonthIcon}
+                color="brand"
+              />
+            </>
+          )}
         </div>
       </div>
 
       {/* Instalaciones */}
       <div className="space-y-3">
         <SectionHeader title="Instalaciones" color="green" />
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className={`grid grid-cols-1 gap-4 ${isAdmin ? 'sm:grid-cols-3' : 'sm:grid-cols-1 max-w-sm'}`}>
           <MetricCard
             label="Hoy"
             count={stats?.instalaciones?.today?.count || 0}
@@ -262,27 +268,31 @@ export default function Dashboard() {
             icon={CalendarIcon}
             color="green"
           />
-          <MetricCard
-            label="Esta Semana"
-            count={stats?.instalaciones?.week?.count || 0}
-            total={stats?.instalaciones?.week?.total || 0}
-            icon={WeekIcon}
-            color="green"
-          />
-          <MetricCard
-            label="Este Mes"
-            count={stats?.instalaciones?.month?.count || 0}
-            total={stats?.instalaciones?.month?.total || 0}
-            icon={MonthIcon}
-            color="green"
-          />
+          {isAdmin && (
+            <>
+              <MetricCard
+                label="Esta Semana"
+                count={stats?.instalaciones?.week?.count || 0}
+                total={stats?.instalaciones?.week?.total || 0}
+                icon={WeekIcon}
+                color="green"
+              />
+              <MetricCard
+                label="Este Mes"
+                count={stats?.instalaciones?.month?.count || 0}
+                total={stats?.instalaciones?.month?.total || 0}
+                icon={MonthIcon}
+                color="green"
+              />
+            </>
+          )}
         </div>
       </div>
 
       {/* Retiros */}
       <div className="space-y-3">
         <SectionHeader title="Retiros" color="red" />
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className={`grid grid-cols-1 gap-4 ${isAdmin ? 'sm:grid-cols-3' : 'sm:grid-cols-1 max-w-sm'}`}>
           <MetricCard
             label="Hoy"
             count={stats?.retiros?.today?.count || 0}
@@ -290,20 +300,24 @@ export default function Dashboard() {
             icon={CalendarIcon}
             color="red"
           />
-          <MetricCard
-            label="Esta Semana"
-            count={stats?.retiros?.week?.count || 0}
-            total={stats?.retiros?.week?.total || 0}
-            icon={WeekIcon}
-            color="red"
-          />
-          <MetricCard
-            label="Este Mes"
-            count={stats?.retiros?.month?.count || 0}
-            total={stats?.retiros?.month?.total || 0}
-            icon={MonthIcon}
-            color="red"
-          />
+          {isAdmin && (
+            <>
+              <MetricCard
+                label="Esta Semana"
+                count={stats?.retiros?.week?.count || 0}
+                total={stats?.retiros?.week?.total || 0}
+                icon={WeekIcon}
+                color="red"
+              />
+              <MetricCard
+                label="Este Mes"
+                count={stats?.retiros?.month?.count || 0}
+                total={stats?.retiros?.month?.total || 0}
+                icon={MonthIcon}
+                color="red"
+              />
+            </>
+          )}
         </div>
       </div>
     </div>
