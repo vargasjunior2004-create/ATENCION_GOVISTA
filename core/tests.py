@@ -573,3 +573,163 @@ class BackupTests(TestCase):
         import os
         os.remove(backup.storage_path)
         backup.delete()
+
+
+class PaginationTestCase(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User(name='AdminPage', role='admin')
+        self.admin.set_password('test123')
+        self.admin.save()
+        self.plan = Plan.objects.create(
+            code='PAGE-01', label='Plan Pagination', type='internet',
+            speed=50, monthly=220, installation=180)
+        self.auth()
+
+    def auth(self):
+        res = self.client.post('/api/auth/login',
+                               {'name': 'AdminPage', 'password': 'test123'},
+                               format='json')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {res.data["token"]}')
+
+    def _create_sales(self, n):
+        for i in range(n):
+            Sale.objects.create(
+                date=date.today() - timedelta(days=i % 30),
+                clientCode=f'K{i:04d}', clientName=f'Cliente {i}',
+                serviceType='internet', requestType='nuevo_contrato',
+                plan=self.plan, total=self.plan.total, createdBy=self.admin)
+
+    def test_empty(self):
+        res = self.client.get('/api/sales?from=2020-01-01&to=2030-12-31')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data['total'], 0)
+        self.assertEqual(res.data['items'], [])
+        self.assertEqual(res.data['total_pages'], 1)
+
+    def test_single_record(self):
+        self._create_sales(1)
+        res = self.client.get('/api/sales?from=2020-01-01&to=2030-12-31')
+        self.assertEqual(res.data['total'], 1)
+        self.assertEqual(len(res.data['items']), 1)
+
+    def test_25_records_one_page(self):
+        self._create_sales(25)
+        res = self.client.get('/api/sales?from=2020-01-01&to=2030-12-31&page=1&page_size=25')
+        self.assertEqual(res.data['total'], 25)
+        self.assertEqual(len(res.data['items']), 25)
+        self.assertEqual(res.data['total_pages'], 1)
+
+    def test_26_records_two_pages(self):
+        self._create_sales(26)
+        res = self.client.get('/api/sales?from=2020-01-01&to=2030-12-31&page=1&page_size=25')
+        self.assertEqual(res.data['total'], 26)
+        self.assertEqual(len(res.data['items']), 25)
+        self.assertEqual(res.data['total_pages'], 2)
+        res2 = self.client.get('/api/sales?from=2020-01-01&to=2030-12-31&page=2&page_size=25')
+        self.assertEqual(len(res2.data['items']), 1)
+
+    def test_100_records_four_pages(self):
+        self._create_sales(100)
+        res = self.client.get('/api/sales?from=2020-01-01&to=2030-12-31&page=1&page_size=25')
+        self.assertEqual(res.data['total'], 100)
+        self.assertEqual(res.data['total_pages'], 4)
+        self.assertEqual(len(res.data['items']), 25)
+
+    def test_filters_preserved_across_pages(self):
+        self._create_sales(30)
+        res = self.client.get(
+            '/api/sales?from=2020-01-01&to=2030-12-31&requestType=nuevo_contrato&page=1&page_size=25')
+        self.assertEqual(res.data['total'], 30)
+        res2 = self.client.get(
+            '/api/sales?from=2020-01-01&to=2030-12-31&requestType=nuevo_contrato&page=2&page_size=25')
+        self.assertEqual(len(res2.data['items']), 5)
+
+    def test_no_duplicates_across_pages(self):
+        self._create_sales(50)
+        all_ids = set()
+        for p in range(1, 4):
+            res = self.client.get(f'/api/sales?from=2020-01-01&to=2030-12-31&page={p}&page_size=25')
+            ids = {item['id'] for item in res.data['items']}
+            self.assertTrue(len(ids & all_ids) == 0, f'Duplicate IDs on page {p}')
+            all_ids |= ids
+        self.assertEqual(len(all_ids), 50)
+
+
+class PdfMultiPageTestCase(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User(name='AdminPDF', role='admin')
+        self.admin.set_password('test123')
+        self.admin.save()
+        self.plan = Plan.objects.create(
+            code='PDF-01', label='Plan PDF Test', type='internet',
+            speed=50, monthly=220, installation=180)
+        self.auth()
+
+    def auth(self):
+        res = self.client.post('/api/auth/login',
+                               {'name': 'AdminPDF', 'password': 'test123'},
+                               format='json')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {res.data["token"]}')
+
+    def _create_sales(self, n):
+        for i in range(n):
+            Sale.objects.create(
+                date=date.today() - timedelta(days=i % 30),
+                clientCode=f'K{i:04d}', clientName=f'Cliente {i}',
+                serviceType='internet', requestType='nuevo_contrato',
+                plan=self.plan, total=self.plan.total, createdBy=self.admin)
+
+    def test_pdf_generates(self):
+        from core.reports import build_sales_pdf
+        buf = build_sales_pdf('2020-01-01', '2030-12-31')
+        self.assertGreater(len(buf.getvalue()), 0)
+
+    def test_pdf_multipage(self):
+        from core.reports import build_sales_pdf
+        from PyPDF2 import PdfReader
+        self._create_sales(100)
+        buf = build_sales_pdf('2020-01-01', '2030-12-31')
+        reader = PdfReader(buf)
+        self.assertGreater(len(reader.pages), 1, 'PDF should have multiple pages')
+
+    def test_pdf_headers_repeated(self):
+        from core.reports import build_sales_pdf
+        from PyPDF2 import PdfReader
+        self._create_sales(100)
+        buf = build_sales_pdf('2020-01-01', '2030-12-31')
+        reader = PdfReader(buf)
+        for i, page in enumerate(reader.pages):
+            text = page.extract_text()
+            self.assertIn('Fecha', text, f'Page {i+1} missing header')
+            self.assertIn('Kardex', text, f'Page {i+1} missing header')
+
+    def test_pdf_record_count_footer(self):
+        from core.reports import build_sales_pdf
+        from PyPDF2 import PdfReader
+        self._create_sales(50)
+        buf = build_sales_pdf('2020-01-01', '2030-12-31')
+        reader = PdfReader(buf)
+        last_text = reader.pages[-1].extract_text()
+        self.assertIn('50 registros', last_text)
+
+    def test_pdf_500_records(self):
+        from core.reports import build_sales_pdf
+        from PyPDF2 import PdfReader
+        self._create_sales(500)
+        buf = build_sales_pdf('2020-01-01', '2030-12-31')
+        reader = PdfReader(buf)
+        self.assertGreater(len(reader.pages), 10)
+        last_text = reader.pages[-1].extract_text()
+        self.assertIn('registros', last_text)
+
+    def test_pdf_xlsx_png_not_broken(self):
+        from core.reports import build_sales_pdf, build_sales_xlsx, build_sales_png
+        self._create_sales(30)
+        pdf = build_sales_pdf('2020-01-01', '2030-12-31')
+        self.assertGreater(len(pdf.getvalue()), 0)
+        xlsx = build_sales_xlsx('2020-01-01', '2030-12-31')
+        self.assertGreater(len(xlsx.getvalue()), 0)
+        png = build_sales_png('2020-01-01', '2030-12-31')
+        self.assertGreater(len(png.getvalue()), 0)
