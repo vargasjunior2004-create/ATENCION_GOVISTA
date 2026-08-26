@@ -156,12 +156,12 @@ class SaleListView(APIView):
             qs = qs.filter(serviceType=stype)
 
         total = qs.count()
-        page = int(request.query_params.get('page', 1))
-        page_size = int(request.query_params.get('page_size', 25))
+        page = max(1, int(request.query_params.get('page', 1)))
+        page_size = max(1, int(request.query_params.get('page_size', 25)))
         start = (page - 1) * page_size
         end = start + page_size
         items = qs[start:end]
-        total_pages = (total + page_size - 1) // page_size
+        total_pages = max(1, (total + page_size - 1) // page_size)
 
         return Response({
             'items': SaleSerializer(items, many=True).data,
