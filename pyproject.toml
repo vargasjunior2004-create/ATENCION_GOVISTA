@@ -1,6 +1,6 @@
 [project]
 name = "salestracker"
-version = "0.1.1"
+version = "0.1.2"
 description = "Planilla de ventas diarias (SaleStracker)"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -11,6 +11,7 @@ dependencies = [
     "reportlab>=4.0",
     "openpyxl>=3.1",
     "whitenoise>=6.0",
+    "tzdata",
 ]
 
 [tool.uv]
