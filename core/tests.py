@@ -363,27 +363,34 @@ class BackupTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {res.data["token"]}')
 
     def _create_real_backup(self, backup_type='manual', user=None):
-        """Create a backup from the actual file database, not the test in-memory one."""
-        import sqlite3
+        """Create a backup from the actual database, not the test in-memory one."""
         import hashlib
         import os
         from django.conf import settings
+        from core.management.commands.backup_database import create_backup
 
-        # Find the real database (not the test memory DB)
-        real_db_path = os.path.join(str(settings.BASE_DIR), 'data', 'db.sqlite3')
-        if not os.path.exists(real_db_path):
-            real_db_path = os.path.join(str(settings.BASE_DIR), 'db.sqlite3')
-        if not os.path.exists(real_db_path):
-            self.skipTest('No real database file found for backup testing')
-
-        backup_dir = os.path.join(str(settings.BASE_DIR), 'data', 'backups', backup_type)
-        os.makedirs(backup_dir, exist_ok=True)
+        engine = settings.DATABASES['default']['ENGINE']
+        if 'sqlite' in engine:
+            real_db_path = os.path.join(str(settings.BASE_DIR), 'data', 'db.sqlite3')
+            if not os.path.exists(real_db_path):
+                real_db_path = os.path.join(str(settings.BASE_DIR), 'db.sqlite3')
+            if not os.path.exists(real_db_path):
+                self.skipTest('No real database file found for backup testing')
+        else:
+            # PostgreSQL — backup via pg_dump
+            try:
+                return create_backup(backup_type=backup_type, user=user)
+            except Exception:
+                self.skipTest('pg_dump not available or connection failed')
 
         from django.utils import timezone
         now = timezone.localtime()
+        backup_dir = os.path.join(str(settings.BASE_DIR), 'data', 'backups', backup_type)
+        os.makedirs(backup_dir, exist_ok=True)
         filename = f'test_backup_{now.strftime("%Y%m%d_%H%M%S")}.sqlite3'
         filepath = os.path.join(backup_dir, filename)
 
+        import sqlite3
         source = sqlite3.connect(real_db_path)
         try:
             dest = sqlite3.connect(filepath)

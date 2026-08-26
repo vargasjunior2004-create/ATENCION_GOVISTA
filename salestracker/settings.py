@@ -69,27 +69,41 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'salestracker.wsgi.application'
 
-_db_path = os.environ.get('SQLITE_PATH', str(BASE_DIR / 'data' / 'db.sqlite3'))
-try:
-    os.makedirs(os.path.dirname(_db_path), exist_ok=True)
-    # Test write
-    _test = os.path.join(os.path.dirname(_db_path), '.write_test')
-    open(_test, 'w').close()
-    os.remove(_test)
-except OSError:
-    # During Wasmer build, /data volume may not be mounted yet.
-    # Fall back to a local path so manage.py migrate doesn't crash.
-    _db_path = str(BASE_DIR / 'db.sqlite3')
+DATABASE_URL = os.environ.get('DATABASE_URL', '')
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': _db_path,
-        'OPTIONS': {
-            'init_command': 'PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;',
-        },
+if DATABASE_URL:
+    import urllib.parse
+    url = urllib.parse.urlparse(DATABASE_URL)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': url.path[1:],
+            'USER': url.username or '',
+            'PASSWORD': url.password or '',
+            'HOST': url.hostname or 'localhost',
+            'PORT': url.port or '5432',
+            'OPTIONS': {},
+        }
     }
-}
+else:
+    _db_path = os.environ.get('SQLITE_PATH', str(BASE_DIR / 'data' / 'db.sqlite3'))
+    try:
+        os.makedirs(os.path.dirname(_db_path), exist_ok=True)
+        _test = os.path.join(os.path.dirname(_db_path), '.write_test')
+        open(_test, 'w').close()
+        os.remove(_test)
+    except OSError:
+        _db_path = str(BASE_DIR / 'db.sqlite3')
+
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': _db_path,
+            'OPTIONS': {
+                'init_command': 'PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;',
+            },
+        }
+    }
 
 LANGUAGE_CODE = 'es'
 

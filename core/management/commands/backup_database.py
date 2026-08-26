@@ -1,4 +1,4 @@
-"""Backup SQLite database using SQLite's backup API for consistency.
+"""Backup database — supports both SQLite and PostgreSQL.
 
 Usage:
     python manage.py backup_database                    # automatic backup
@@ -7,6 +7,7 @@ Usage:
 """
 import hashlib
 import os
+import subprocess
 from datetime import datetime
 
 from django.conf import settings
@@ -17,7 +18,11 @@ from core.models import Backup, User
 
 
 def get_backup_dir():
-    base = os.path.dirname(settings.DATABASES['default']['NAME'])
+    engine = settings.DATABASES['default']['ENGINE']
+    if 'sqlite' in engine:
+        base = os.path.dirname(settings.DATABASES['default']['NAME'])
+    else:
+        base = os.path.join(str(settings.BASE_DIR), 'data')
     backup_dir = os.path.join(base, 'backups')
     os.makedirs(backup_dir, exist_ok=True)
     return backup_dir
@@ -31,27 +36,34 @@ def compute_checksum(filepath):
     return sha256.hexdigest()
 
 
+def _is_sqlite():
+    return 'sqlite' in settings.DATABASES['default']['ENGINE']
+
+
 def create_backup(backup_type='automatic', user=None):
-    """Create a consistent SQLite backup using the SQLite backup API."""
-    import sqlite3
-
-    db_path = settings.DATABASES['default']['NAME']
-
-    if not os.path.exists(db_path):
-        raise FileNotFoundError(f'Database not found: {db_path}')
-
+    """Create a consistent database backup."""
     now = timezone.localtime()
     sub = 'automatic' if backup_type == 'automatic' else 'manual'
     backup_dir = os.path.join(get_backup_dir(), sub)
     os.makedirs(backup_dir, exist_ok=True)
 
+    if _is_sqlite():
+        return _backup_sqlite(backup_dir, now, backup_type, user)
+    else:
+        return _backup_postgresql(backup_dir, now, backup_type, user)
+
+
+def _backup_sqlite(backup_dir, now, backup_type, user):
+    import sqlite3
+    db_path = settings.DATABASES['default']['NAME']
+    if not os.path.exists(db_path):
+        raise FileNotFoundError(f'Database not found: {db_path}')
+
     filename = f'sales_tracker_backup_{now.strftime("%Y-%m-%d_%H%M")}.sqlite3'
     filepath = os.path.join(backup_dir, filename)
 
-    # Open source database
     source = sqlite3.connect(db_path)
     try:
-        # Create backup using SQLite's backup API (consistent snapshot)
         dest = sqlite3.connect(filepath)
         try:
             source.backup(dest)
@@ -60,6 +72,36 @@ def create_backup(backup_type='automatic', user=None):
     finally:
         source.close()
 
+    return _save_backup_record(filename, filepath, backup_type, user)
+
+
+def _backup_postgresql(backup_dir, now, backup_type, user):
+    db = settings.DATABASES['default']
+    filename = f'sales_tracker_backup_{now.strftime("%Y-%m-%d_%H%M")}.sql'
+    filepath = os.path.join(backup_dir, filename)
+
+    env = os.environ.copy()
+    env['PGPASSWORD'] = db['PASSWORD']
+
+    cmd = [
+        'pg_dump',
+        '-h', db['HOST'],
+        '-p', str(db['PORT']),
+        '-U', db['USER'],
+        '-d', db['NAME'],
+        '-f', filepath,
+        '--no-owner',
+        '--no-privileges',
+    ]
+
+    result = subprocess.run(cmd, env=env, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f'pg_dump failed: {result.stderr}')
+
+    return _save_backup_record(filename, filepath, backup_type, user)
+
+
+def _save_backup_record(filename, filepath, backup_type, user):
     size = os.path.getsize(filepath)
     checksum = compute_checksum(filepath)
 
@@ -72,7 +114,6 @@ def create_backup(backup_type='automatic', user=None):
         checksum=checksum,
         created_by=user,
     )
-
     return backup
 
 
@@ -96,7 +137,7 @@ def cleanup_old_backups(keep=7):
 
 
 class Command(BaseCommand):
-    help = 'Crea un backup consistente de la base de datos SQLite.'
+    help = 'Crea un backup consistente de la base de datos.'
 
     def add_arguments(self, parser):
         parser.add_argument(

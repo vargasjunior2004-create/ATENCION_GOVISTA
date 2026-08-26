@@ -3,12 +3,15 @@ frontend/build/
 data/
 staticfiles/
 .env
+.env.local
 *.log
 .DS_Store
 __pycache__/
 *.pyc
 
-# Datos de clientes (PII) — no subir a repos públicos
+# Datos de clientes (PII) — no subir a repos publicos
 ARCHIVO ATENCION AL CLIENTE*.xlsx
-# Referencia externa clonada (documentación DigitalPlat)
+# Referencia externa clonada (documentacion DigitalPlat)
 FreeDomain/
+*.sqlite3-shm
+*.sqlite3-wal

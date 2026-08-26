@@ -38,7 +38,12 @@ class HealthView(APIView):
         from django.db import connection
         try:
             with connection.cursor() as cursor:
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                engine = connection.settings_dict.get('ENGINE', '')
+                if 'sqlite' in engine:
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                else:
+                    cursor.execute(
+                        "SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
                 tables = [r[0] for r in cursor.fetchall()]
             user_count = User.objects.count()
             plan_count = Plan.objects.count()
@@ -47,7 +52,7 @@ class HealthView(APIView):
                 'tables': tables,
                 'users': user_count,
                 'plans': plan_count,
-                'db': str(connection.settings_dict['NAME']),
+                'db': engine,
             })
         except Exception as e:
             return Response({'status': 'error', 'detail': str(e)}, status=500)
