@@ -18,13 +18,11 @@ application = get_wsgi_application()
 # Entrypoint que usa Wasmer Edge
 app = application
 
-# Bootstrap: migrate + fixture + seed al arrancar (idempotente)
+# Bootstrap: fixture + seed al arrancar (idempotente)
+# migrate ya lo ejecuta after_deploy de Wasmer
 try:
     from django.core.management import call_command
     logger = logging.getLogger('wsgi')
-    logger.info('migrate iniciando...')
-    call_command('migrate', interactive=False, verbosity=0)
-    logger.info('migrate completado')
 
     from core.models import Plan
     if not Plan.objects.exists():

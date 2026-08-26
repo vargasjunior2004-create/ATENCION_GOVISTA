@@ -48,7 +48,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'salestracker.error_middleware.ErrorLoggingMiddleware',
+    'salestracker.db_retry.SQLiteRetryMiddleware',
 ]
 
 ROOT_URLCONF = 'salestracker.urls'
@@ -87,7 +87,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': _db_path,
         'OPTIONS': {
-            'init_command': 'PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;',
+            'init_command': 'PRAGMA journal_mode=WAL; PRAGMA busy_timeout=30000; PRAGMA foreign_keys=ON;',
         },
     }
 }
