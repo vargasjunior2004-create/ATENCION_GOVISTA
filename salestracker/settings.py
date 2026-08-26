@@ -48,6 +48,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'salestracker.error_middleware.ErrorLoggingMiddleware',
 ]
 
 ROOT_URLCONF = 'salestracker.urls'
@@ -133,6 +134,13 @@ SIMPLE_JWT = {
 }
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {'console': {'class': 'logging.StreamHandler'}},
+    'root': {'handlers': ['console'], 'level': 'WARNING'},
+}
 
 # Ruta donde se sirve el build del frontend React (producción)
 FRONTEND_BUILD_DIR = BASE_DIR / 'frontend_build'
