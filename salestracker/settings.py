@@ -70,7 +70,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'salestracker.wsgi.application'
 
-DATABASE_URL = os.environ.get('DATABASE_URL')
+DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://postgres:nOL10Ol71Gv0lZgM@db.mehipkdatrttvghmfgmo.supabase.co:5432/postgres')
 if DATABASE_URL:
     DATABASES = {
         'default': dj_database_url.config(
