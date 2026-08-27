@@ -10,7 +10,7 @@ services:
       - key: DJANGO_DEBUG
         value: "false"
       - key: DATABASE_URL
-        value: postgresql://postgres:nOL10Ol71Gv0lZgM@db.mehipkdatrttvghmfgmo.supabase.co:5432/postgres
+        value: postgresql://postgres.mehipkdatrttvghmfgmo:jmvv2004%2F05.@aws-0-us-west-2.pooler.supabase.com:6543/postgres
       - key: DJANGO_ALLOWED_HOSTS
         value: .onrender.com
       - key: DJANGO_CSRF_TRUSTED_ORIGINS
