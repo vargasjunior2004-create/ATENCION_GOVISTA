@@ -9,7 +9,9 @@ services:
         generateValue: true
       - key: DJANGO_DEBUG
         value: "false"
+      - key: DATABASE_URL
+        value: postgresql://postgres:nOL10Ol71Gv0lZgM@db.mehipkdatrttvghmfgmo.supabase.co:5432/postgres
       - key: DJANGO_ALLOWED_HOSTS
-        value: sales-tracker-11du.onrender.com
+        value: .onrender.com
       - key: DJANGO_CSRF_TRUSTED_ORIGINS
-        value: https://sales-tracker-11du.onrender.com
+        value: https://*.onrender.com

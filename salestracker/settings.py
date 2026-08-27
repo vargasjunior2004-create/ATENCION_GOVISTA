@@ -6,6 +6,7 @@ Backend de la planilla de ventas diarias (SaleStracker).
 """
 
 import os
+import dj_database_url
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -63,24 +64,34 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'salestracker.wsgi.application'
 
-_db_path = os.environ.get('SQLITE_PATH', str(BASE_DIR / 'data' / 'db.sqlite3'))
-try:
-    os.makedirs(os.path.dirname(_db_path), exist_ok=True)
-    _test = os.path.join(os.path.dirname(_db_path), '.write_test')
-    open(_test, 'w').close()
-    os.remove(_test)
-except OSError:
-    _db_path = str(BASE_DIR / 'db.sqlite3')
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': _db_path,
-        'OPTIONS': {
-            'init_command': 'PRAGMA journal_mode=WAL; PRAGMA busy_timeout=30000; PRAGMA foreign_keys=ON;',
-        },
+DATABASE_URL = os.environ.get('DATABASE_URL')
+if DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=DATABASE_URL,
+            conn_max_age=600,
+            ssl_require=True,
+        )
     }
-}
+else:
+    _db_path = os.environ.get('SQLITE_PATH', str(BASE_DIR / 'data' / 'db.sqlite3'))
+    try:
+        os.makedirs(os.path.dirname(_db_path), exist_ok=True)
+        _test = os.path.join(os.path.dirname(_db_path), '.write_test')
+        open(_test, 'w').close()
+        os.remove(_test)
+    except OSError:
+        _db_path = str(BASE_DIR / 'db.sqlite3')
+
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': _db_path,
+            'OPTIONS': {
+                'init_command': 'PRAGMA journal_mode=WAL; PRAGMA busy_timeout=30000; PRAGMA foreign_keys=ON;',
+            },
+        }
+    }
 
 LANGUAGE_CODE = 'es'
 
