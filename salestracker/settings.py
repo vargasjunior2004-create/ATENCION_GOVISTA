@@ -16,17 +16,11 @@ SECRET_KEY = os.environ.get(
 
 DEBUG = os.environ.get('DJANGO_DEBUG', 'true').lower() in ('1', 'true', 'yes')
 
-ALLOWED_HOSTS = [
-    h for h in os.environ.get(
-        'DJANGO_ALLOWED_HOSTS',
-        'localhost,127.0.0.1,.wasmer.app,sales-tracker.wasmer.app,govistaarqueos.wasmer.app').split(',') if h
-]
+_env_hosts = [h.strip() for h in os.environ.get('DJANGO_ALLOWED_HOSTS', '').split(',') if h.strip()]
+ALLOWED_HOSTS = list(set(_env_hosts + ['localhost', '127.0.0.1', '.onrender.com', '.wasmer.app']))
 
-CSRF_TRUSTED_ORIGINS = [
-    o for o in os.environ.get(
-        'DJANGO_CSRF_TRUSTED_ORIGINS',
-        'https://*.wasmer.app').split(',') if o
-]
+_env_origins = [o.strip() for o in os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',') if o.strip()]
+CSRF_TRUSTED_ORIGINS = list(set(_env_origins + ['https://*.onrender.com', 'https://*.wasmer.app']))
 
 INSTALLED_APPS = [
     'django.contrib.admin',
