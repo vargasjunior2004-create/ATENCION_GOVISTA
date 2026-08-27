@@ -2,7 +2,7 @@ services:
   - type: web
     name: salestracker
     runtime: python
-    buildCommand: pip install -r requirements.txt && bash build.sh
+    buildCommand: bash build.sh
     startCommand: gunicorn salestracker.wsgi:application --bind 0.0.0.0:$PORT
     envVars:
       - key: DJANGO_SECRET_KEY
