@@ -7,6 +7,8 @@ staticfiles/
 .DS_Store
 __pycache__/
 *.pyc
+*.sqlite3*
+export_for_pg.json
 
 # Datos de clientes (PII) — no subir a repos públicos
 ARCHIVO ATENCION AL CLIENTE*.xlsx
