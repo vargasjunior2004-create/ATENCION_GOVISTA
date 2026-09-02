@@ -38,7 +38,10 @@ class HealthView(APIView):
         from django.db import connection
         try:
             with connection.cursor() as cursor:
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                if connection.vendor == 'postgresql':
+                    cursor.execute("SELECT tablename FROM pg_tables WHERE schemaname='public'")
+                else:
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
                 tables = [r[0] for r in cursor.fetchall()]
             user_count = User.objects.count()
             plan_count = Plan.objects.count()
@@ -48,7 +51,7 @@ class HealthView(APIView):
                 'users': user_count,
                 'plans': plan_count,
                 'db': str(connection.settings_dict['NAME']),
-                'version': 'v2-tryexcept',
+                'version': 'v3-render',
             })
         except Exception as e:
             return Response({'status': 'error', 'detail': str(e)}, status=500)
@@ -109,6 +112,19 @@ class PlanDetailView(IsAdminMixin, APIView):
             return Plan.objects.get(id=pk)
         except Plan.DoesNotExist:
             return None
+
+    def delete(self, request, pk):
+        error = self.check_admin(request)
+        if error:
+            return error
+        plan = self._get_plan(pk)
+        if not plan:
+            return Response({'error': 'Plan no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        if Sale.objects.filter(plan=plan).exists():
+            return Response({'error': 'No se puede eliminar: tiene ventas asociadas'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        plan.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def put(self, request, pk):
         error = self.check_admin(request)
@@ -190,6 +206,17 @@ class SaleListView(APIView):
 
 
 class SaleDetailView(IsAdminMixin, APIView):
+    def delete(self, request, pk):
+        error = self.check_admin(request)
+        if error:
+            return error
+        try:
+            sale = Sale.objects.get(id=pk)
+        except Sale.DoesNotExist:
+            return Response({'error': 'Venta no encontrada'}, status=status.HTTP_404_NOT_FOUND)
+        sale.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     def put(self, request, pk):
         error = self.check_admin(request)
         if error:
@@ -247,6 +274,20 @@ class UserListView(IsAdminMixin, APIView):
 
 
 class UserDetailView(IsAdminMixin, APIView):
+    def delete(self, request, pk):
+        error = self.check_admin(request)
+        if error:
+            return error
+        try:
+            user = User.objects.get(id=pk)
+        except User.DoesNotExist:
+            return Response({'error': 'Usuario no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+        if user == request.user:
+            return Response({'error': 'No puedes eliminarte a ti mismo'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        user.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     def put(self, request, pk):
         error = self.check_admin(request)
         if error:
