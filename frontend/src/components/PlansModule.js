@@ -13,6 +13,7 @@ export default function PlansModule() {
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
   const [deletingPlan, setDeletingPlan] = useState(null);
+  const [search, setSearch] = useState('');
 
   const loadPlans = useCallback(async () => {
     try { setPlans(await api.getPlans()); } catch (err) { console.error(err); } finally { setLoading(false); }
@@ -60,6 +61,11 @@ export default function PlansModule() {
 
   if (loading) return <p className="text-center text-slate-400 py-20">Cargando...</p>;
 
+  const q = search.toLowerCase();
+  const filtered = plans.filter((p) =>
+    !q || p.code.toLowerCase().includes(q) || p.label.toLowerCase().includes(q) || p.type.toLowerCase().includes(q)
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -69,6 +75,10 @@ export default function PlansModule() {
         </div>
         <Button onClick={openNew}>+ Agregar Plan</Button>
       </div>
+
+      <Card className="p-4">
+        <Input placeholder="Buscar por codigo, nombre o tipo..." value={search} onChange={(e) => setSearch(e.target.value)} />
+      </Card>
 
       {/* Delete confirmation modal */}
       {deletingPlan && (
@@ -142,7 +152,7 @@ export default function PlansModule() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {plans.map((p) => (
+            {filtered.map((p) => (
               <tr key={p.id} className={`hover:bg-brand-50/30 transition-colors ${p.legacy ? 'opacity-50' : ''}`}>
                 <td className="px-4 py-3 font-mono text-xs text-slate-500">{p.code}</td>
                 <td className="px-4 py-3 font-medium text-slate-900">{p.label}</td>
@@ -169,7 +179,7 @@ export default function PlansModule() {
 
       {/* Mobile cards */}
       <div className="md:hidden space-y-3">
-        {plans.map((p) => (
+        {filtered.map((p) => (
           <Card key={p.id} className={`p-4 space-y-2 ${p.legacy ? 'opacity-50' : ''}`}>
             <div className="flex items-start justify-between">
               <div>
