@@ -2,57 +2,42 @@
 
 Sistema web para registro y control de ventas diarias de telecomunicaciones FTTH (GO VISTA, Bolivia).
 
+**Produccion:** https://atencion-govista-2.onrender.com
+
 ## Stack
 
-- **Backend:** Django + Django REST Framework + SQLite
+- **Backend:** Django 5 + Django REST Framework + PostgreSQL (Supabase)
 - **Frontend:** React 18 + Tailwind CSS
 - **Auth:** JWT (roles: admin, ventas)
+- **Hosting:** Render (free tier)
 - **Reportes:** PDF (reportlab), XLSX (openpyxl), PNG (Pillow)
-- **Envío WhatsApp:** wa.me (link con mensaje prellenado)
+- **Envio WhatsApp:** wa.me (link con mensaje prellenado)
 
-> **Arranque limpio:** Al iniciar por primera vez se cargan 33 planes (fixture) y 4 usuarios
+> **Arranque limpio:** Al iniciar por primera vez se cargan 34 planes (fixture) y 4 usuarios
 > (seed). No hay ventas ni arqueos previos.
 
-## Inicio rápido
-
-```bash
-# Instalar dependencias
-pip3 install --break-system-packages -r requirements.txt
-
-# Compilar frontend
-cd frontend && npm install && npm run build && cd ..
-rm -rf frontend_build && cp -r frontend/build frontend_build
-
-# Base de datos
-python3 manage.py migrate
-python3 manage.py loaddata planes
-python3 manage.py seed --users-only
-
-# Iniciar (puerto 4000)
-python3 manage.py runserver 0.0.0.0:4000
-```
-
-### Credenciales de acceso
+## Credenciales de acceso
 
 Login por **nombre de usuario** (no email):
 
-| Usuario | Rol | Contraseña |
+| Usuario | Rol | Contrasena |
 |---------|-----|------------|
 | Administrador | admin | `admin123` |
-| junior | admin | `admin123` |
-| Vendedor | ventas | `vendedor123` |
-| lucas | ventas | `lucas123` |
+| JUNIOR | admin | `admin123` |
+| Juan Perez | ventas | `juan2026` |
+| Maria Rojas | ventas | `maria2026` |
 
 ## Funcionalidades
 
-- **Alta de ventas:** formulario con auto-complete, fecha automática (Bolivia UTC-4), campos en mayúsculas
+- **Alta de ventas:** formulario con auto-complete, fecha automatica (Bolivia UTC-4), campos en mayusculas
 - **Reportes PDF:** tabla con 8 columnas, sin fila TOTAL
-- **Reportes XLSX:** 14 columnas según formato de empresa
+- **Reportes XLSX:** 14 columnas segun formato de empresa
 - **Foto PNG:** imagen del reporte diario para compartir por WhatsApp
-- **Arqueo de caja:** conteo por denominación + salidas de efectivo
-- **Paginación:** 25 registros por página en listados
-- **Sesión segura:** JWT 3 min + inactividad 3 min (solo clicks), auto-logout en 401
+- **Arqueo de caja:** conteo por denominacion + salidas de efectivo
+- **Paginacion:** 25 registros por pagina en listados
+- **Sesion segura:** JWT 5 min + inactividad 5 min (solo clicks), auto-logout en 401
 - **Dashboard:** resumen diario con botones PDF, Excel y Foto
+- **Retiro:** registro con motivo y comentario, reporte PDF con columna "Motivo"
 
 ## Estructura
 
@@ -61,69 +46,69 @@ Sales_Tracker/
 ├── manage.py
 ├── salestracker/             # settings, urls, wsgi
 ├── core/
-│   ├── models.py             # User, Plan, Sale, CashCount, Outflow
+│   ├── models.py             # User, Plan, Sale, CashCount, Outflow, Customer
 │   ├── serializers.py
 │   ├── views.py              # auth, plans, sales, users, cash-count
-│   ├── report_views.py       # PDF/XLSX/PNG + links públicos
-│   ├── reports.py            # generación de PDF, XLSX y PNG
+│   ├── report_views.py       # PDF/XLSX/PNG + links publicos
+│   ├── reports.py            # generacion de PDF, XLSX y PNG
 │   ├── auth.py               # JWT contra core.User
-│   ├── fixtures/planes.json  # 33 planes
+│   ├── fixtures/planes.json  # 34 planes
 │   └── management/commands/
 │       ├── seed.py           # usuarios
-│       └── import_excel.py   # importa catálogo desde Excel
-├── data/                     # db.sqlite3
+│       └── import_excel.py   # importa catalogo desde Excel
 ├── frontend_build/           # build del frontend (servido por Django)
-├── frontend/                 # código fuente React
-├── app.yaml                  # config Wasmer Edge
+├── frontend/                 # codigo fuente React
+├── staticfiles/              # archivos estaticos (WhiteNoise)
+├── build.sh                  # build script Render
+├── render.yaml               # config Render
 ├── requirements.txt
 └── run.sh
 ```
 
 ## API
 
-| Método | Ruta | Auth | Descripción |
+| Metodo | Ruta | Auth | Descripcion |
 |--------|------|------|-------------|
 | POST | /api/auth/login | No | Login por nombre |
-| GET | /api/auth/me | Sí | Usuario actual |
+| GET | /api/auth/me | Si | Usuario actual |
 | GET | /api/plans | Admin | Listar planes |
-| GET | /api/plans/active | Sí | Planes activos |
+| GET | /api/plans/active | Si | Planes activos |
 | POST | /api/plans | Admin | Crear plan |
 | PUT | /api/plans/:id | Admin | Editar plan |
-| GET | /api/sales?from=&to=&page=&page_size= | Sí | Ventas (paginado, 25/pág) |
-| POST | /api/sales | Sí | Crear venta |
+| GET | /api/sales?from=&to=&page=&page_size= | Si | Ventas (paginado, 25/pag) |
+| POST | /api/sales | Si | Crear venta |
 | PUT | /api/sales/:id | Admin | Editar venta |
 | GET | /api/users | Admin | Listar usuarios |
 | POST | /api/users | Admin | Crear usuario |
 | PUT | /api/users/:id | Admin | Editar usuario |
-| GET | /api/cash-count?date= | Sí | Arqueo de caja |
-| POST | /api/cash-count | Sí | Guardar conteo |
-| POST | /api/cash-count/outflows | Sí | Agregar salida |
-| DELETE | /api/cash-count/outflows/:id | Sí | Eliminar salida |
-| GET | /api/reports/pdf?from=&to= | Sí | PDF planilla |
-| GET | /api/reports/xlsx?from=&to= | Sí | XLSX planilla |
-| GET | /api/reports/png?from=&to= | Sí | PNG imagen del reporte |
-| GET | /api/reports/pdf-link?from=&to= | Sí | Link público PDF (1h) |
-| GET | /api/reports/xlsx-link?from=&to= | Sí | Link público XLSX (1h) |
-| GET | /api/cash-count/pdf?date= | Sí | PDF arqueo de caja |
+| GET | /api/cash-count?date= | Si | Arqueo de caja |
+| POST | /api/cash-count | Si | Guardar conteo |
+| POST | /api/cash-count/outflows | Si | Agregar salida |
+| DELETE | /api/cash-count/outflows/:id | Si | Eliminar salida |
+| GET | /api/reports/pdf?from=&to= | Si | PDF planilla |
+| GET | /api/reports/xlsx?from=&to= | Si | XLSX planilla |
+| GET | /api/reports/png?from=&to= | Si | PNG imagen del reporte |
+| GET | /api/reports/pdf-link?from=&to= | Si | Link publico PDF (1h) |
+| GET | /api/reports/xlsx-link?from=&to= | Si | Link publico XLSX (1h) |
+| GET | /api/cash-count/pdf?date= | Si | PDF arqueo de caja |
 
-## Despliegue en Wasmer Edge
+## Despliegue en Render
 
-Django corre como WSGI, SQLite en volumen persistente `/data`, migraciones automáticas en `wsgi.py`.
+- **Hosting:** Render free tier (512MB RAM, 0.1 CPU, 750 hrs/mes)
+- **Database:** Supabase PostgreSQL (pooler endpoint, IPv4)
+- **Estaticos:** WhiteNoise sirve archivos desde `staticfiles/`
+- **Build:** `build.sh` ejecuta `collectstatic`
+- **Inicio:** `gunicorn salestracker.wsgi:application --bind 0.0.0.0:$PORT`
 
-### Pasos
+### Variables de entorno en Render
 
-1. Subir repo a GitHub.
-2. En Wasmer: crear app conectada al repo (rama `main`).
-3. Si hay deploy previo, **borrar volumen `data`**.
-4. Desplegar.
+- `DATABASE_URL` — connection pooler de Supabase (puerto 6543)
+- `DJANGO_SECRET_KEY` — clave secreta
+- `DJANGO_DEBUG` — `false` en produccion
+- `DJANGO_ALLOWED_HOSTS` — `*.onrender.com`
 
-### Dominio personalizado
+### Notas
 
-1. Wasmer → Settings → Domains → Add dominio.
-2. DNS: CNAME en modo **DNS only** (no proxy).
-3. Wasmer → Refresh (HTTPS automático).
-
-Notas:
-- `frontend_build/` va committeado (frontend compilado servido por Django).
-- Volumen `data` persiste la BD.
-- `scaling.mode: single_concurrency` (SQLite un solo escritor).
+- `frontend_build/` y `staticfiles/` van committeados (archivos servidos por WhiteNoise)
+- `wsgi.py` ejecuta migraciones + seed automaticamente si no hay datos
+- Pooler de Supabase usa IPv4, compatible con Render free tier
