@@ -12,6 +12,7 @@ export default function PlansModule() {
   const [form, setForm] = useState({ ...emptyPlan });
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
+  const [deletingPlan, setDeletingPlan] = useState(null);
 
   const loadPlans = useCallback(async () => {
     try { setPlans(await api.getPlans()); } catch (err) { console.error(err); } finally { setLoading(false); }
@@ -45,6 +46,18 @@ export default function PlansModule() {
     try { await api.updatePlan(plan.id, { active: !plan.active }); loadPlans(); } catch (err) { alert(err.error || 'Error'); }
   };
 
+  const handleDeletePlan = async () => {
+    if (!deletingPlan) return;
+    try {
+      await api.deletePlan(deletingPlan.id);
+      setDeletingPlan(null);
+      loadPlans();
+    } catch (err) {
+      alert(err.error || 'Error al eliminar plan');
+      setDeletingPlan(null);
+    }
+  };
+
   if (loading) return <p className="text-center text-slate-400 py-20">Cargando...</p>;
 
   return (
@@ -56,6 +69,32 @@ export default function PlansModule() {
         </div>
         <Button onClick={openNew}>+ Agregar Plan</Button>
       </div>
+
+      {/* Delete confirmation modal */}
+      {deletingPlan && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setDeletingPlan(null)}>
+          <Card className="w-full max-w-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Eliminar plan</h3>
+                <p className="text-sm text-slate-500">Esta accion no se puede deshacer</p>
+              </div>
+            </div>
+            <p className="text-sm text-slate-600">
+              Seguro que deseas eliminar el plan <strong>{deletingPlan.label}</strong> ({deletingPlan.code})?
+            </p>
+            <div className="flex gap-3 pt-2">
+              <Button variant="danger" onClick={handleDeletePlan}>Si, eliminar</Button>
+              <Button variant="secondary" onClick={() => setDeletingPlan(null)}>Cancelar</Button>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* Modal */}
       {showForm && (
@@ -117,6 +156,7 @@ export default function PlansModule() {
                 </td>
                 <td className="px-4 py-3 space-x-1">
                   <Button variant="ghost" size="sm" onClick={() => openEdit(p)}>Editar</Button>
+                  <Button variant="danger" size="sm" onClick={() => setDeletingPlan(p)}>Eliminar</Button>
                   <Button variant={p.active ? 'danger' : 'success'} size="sm" onClick={() => toggleActive(p)}>
                     {p.active ? 'Inhabilitar' : 'Habilitar'}
                   </Button>
@@ -148,6 +188,7 @@ export default function PlansModule() {
             </div>
             <div className="flex gap-2 pt-1">
               <Button variant="ghost" size="sm" onClick={() => openEdit(p)} className="flex-1">Editar</Button>
+              <Button variant="danger" size="sm" onClick={() => setDeletingPlan(p)} className="flex-1">Eliminar</Button>
               <Button variant={p.active ? 'danger' : 'success'} size="sm" onClick={() => toggleActive(p)} className="flex-1">
                 {p.active ? 'Inhabilitar' : 'Habilitar'}
               </Button>
