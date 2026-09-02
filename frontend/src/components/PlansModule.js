@@ -43,7 +43,7 @@ export default function PlansModule() {
   };
 
   const toggleActive = async (plan) => {
-    try { await api.updatePlan(plan.id, { active: !plan.active }); loadPlans(); } catch (err) { alert(err.error || 'Error'); }
+    try { await api.updatePlan(plan.id, { legacy: !plan.legacy }); loadPlans(); } catch (err) { alert(err.error || 'Error'); }
   };
 
   const handleDeletePlan = async () => {
@@ -143,7 +143,7 @@ export default function PlansModule() {
           </thead>
           <tbody className="divide-y divide-slate-50">
             {plans.map((p) => (
-              <tr key={p.id} className={`hover:bg-brand-50/30 transition-colors ${!p.active ? 'opacity-50' : ''}`}>
+              <tr key={p.id} className={`hover:bg-brand-50/30 transition-colors ${p.legacy ? 'opacity-50' : ''}`}>
                 <td className="px-4 py-3 font-mono text-xs text-slate-500">{p.code}</td>
                 <td className="px-4 py-3 font-medium text-slate-900">{p.label}</td>
                 <td className="px-4 py-3"><Badge color={typeColor[p.type]}>{p.type}</Badge></td>
@@ -152,13 +152,13 @@ export default function PlansModule() {
                 <td className="px-4 py-3 text-slate-500 tabular-nums">{parseFloat(p.installation).toFixed(2)}</td>
                 <td className="px-4 py-3 font-bold text-brand-700 tabular-nums">{parseFloat(p.total).toFixed(2)}</td>
                 <td className="px-4 py-3">
-                  <Badge color={p.active ? 'green' : 'red'}>{p.active ? 'Activo' : 'Inactivo'}</Badge>
+                  <Badge color={p.legacy ? 'slate' : 'green'}>{p.legacy ? 'Anterior' : 'Actual'}</Badge>
                 </td>
                 <td className="px-4 py-3 space-x-1">
                   <Button variant="ghost" size="sm" onClick={() => openEdit(p)}>Editar</Button>
                   <Button variant="danger" size="sm" onClick={() => setDeletingPlan(p)}>Eliminar</Button>
-                  <Button variant={p.active ? 'danger' : 'success'} size="sm" onClick={() => toggleActive(p)}>
-                    {p.active ? 'Inhabilitar' : 'Habilitar'}
+                  <Button variant={p.legacy ? 'success' : 'secondary'} size="sm" onClick={() => toggleActive(p)}>
+                    {p.legacy ? 'Marcar como actual' : 'Inhabilitar como actual'}
                   </Button>
                 </td>
               </tr>
@@ -170,7 +170,7 @@ export default function PlansModule() {
       {/* Mobile cards */}
       <div className="md:hidden space-y-3">
         {plans.map((p) => (
-          <Card key={p.id} className={`p-4 space-y-2 ${!p.active ? 'opacity-50' : ''}`}>
+          <Card key={p.id} className={`p-4 space-y-2 ${p.legacy ? 'opacity-50' : ''}`}>
             <div className="flex items-start justify-between">
               <div>
                 <p className="font-semibold text-slate-900">{p.label}</p>
@@ -178,7 +178,7 @@ export default function PlansModule() {
               </div>
               <div className="flex gap-1.5">
                 <Badge color={typeColor[p.type]}>{p.type}</Badge>
-                <Badge color={p.active ? 'green' : 'red'}>{p.active ? 'Activo' : 'Inactivo'}</Badge>
+                <Badge color={p.legacy ? 'slate' : 'green'}>{p.legacy ? 'Anterior' : 'Actual'}</Badge>
               </div>
             </div>
             <div className="text-sm text-slate-500">{p.speed ? `${p.speed} Mbps` : 'Sin velocidad'}</div>
@@ -189,8 +189,8 @@ export default function PlansModule() {
             <div className="flex gap-2 pt-1">
               <Button variant="ghost" size="sm" onClick={() => openEdit(p)} className="flex-1">Editar</Button>
               <Button variant="danger" size="sm" onClick={() => setDeletingPlan(p)} className="flex-1">Eliminar</Button>
-              <Button variant={p.active ? 'danger' : 'success'} size="sm" onClick={() => toggleActive(p)} className="flex-1">
-                {p.active ? 'Inhabilitar' : 'Habilitar'}
+              <Button variant={p.legacy ? 'success' : 'secondary'} size="sm" onClick={() => toggleActive(p)} className="flex-1">
+                {p.legacy ? 'Marcar como actual' : 'Inhabilitar como actual'}
               </Button>
             </div>
           </Card>
