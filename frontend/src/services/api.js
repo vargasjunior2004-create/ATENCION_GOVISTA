@@ -43,6 +43,7 @@ const api = {
   getActivePlans: () => request('/api/plans/active'),
   createPlan: (data) => request('/api/plans', { method: 'POST', body: JSON.stringify(data) }),
   updatePlan: (id, data) => request(`/api/plans/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deletePlan: (id) => request(`/api/plans/${id}`, { method: 'DELETE' }),
 
   // Ventas
   getSales: (from, to, requestType, page = 1, pageSize = 25, serviceType = '') => {
@@ -57,11 +58,13 @@ const api = {
   },
   createSale: (data) => request('/api/sales', { method: 'POST', body: JSON.stringify(data) }),
   updateSale: (id, data) => request(`/api/sales/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteSale: (id) => request(`/api/sales/${id}`, { method: 'DELETE' }),
 
   // Usuarios
   getUsers: () => request('/api/users'),
   createUser: (data) => request('/api/users', { method: 'POST', body: JSON.stringify(data) }),
   updateUser: (id, data) => request(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteUser: (id) => request(`/api/users/${id}`, { method: 'DELETE' }),
 
   // Clientes
   searchCustomers: (q) => {

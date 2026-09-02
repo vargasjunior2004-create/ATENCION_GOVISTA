@@ -34,7 +34,7 @@ const REQUEST_COLOR = {
   retiro: 'red', adicion: 'blue', baja_temporal: 'slate', otro: 'slate',
 };
 
-function SaleCard({ sale, isAdmin, onEdit }) {
+function SaleCard({ sale, isAdmin, onEdit, onDelete }) {
   return (
     <Card className="p-4 space-y-3">
       <div className="flex items-start justify-between">
@@ -51,7 +51,10 @@ function SaleCard({ sale, isAdmin, onEdit }) {
       <div className="flex items-center justify-between pt-2 border-t border-slate-100">
         <span className="text-xs text-slate-400">por {sale.creator?.name || '-'}</span>
         {isAdmin && (
-          <Button variant="ghost" size="sm" onClick={() => onEdit(sale)}>Editar</Button>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={() => onEdit(sale)}>Editar</Button>
+            <Button variant="danger" size="sm" onClick={() => onDelete(sale)}>Eliminar</Button>
+          </div>
         )}
       </div>
     </Card>
@@ -76,6 +79,7 @@ export default function SalesList() {
   const [pagination, setPagination] = useState({ total: 0, total_pages: 1 });
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [msg, setMsg] = useState('');
+  const [deletingSale, setDeletingSale] = useState(null);
 
   const loadSales = useCallback(async (p = 1) => {
     setLoading(true);
@@ -122,6 +126,19 @@ export default function SalesList() {
       loadSales(page);
     } catch (err) {
       setEditError(err.error || 'Error al editar');
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deletingSale) return;
+    try {
+      await api.deleteSale(deletingSale.id);
+      setDeletingSale(null);
+      loadSales(page);
+      setMsg('Venta eliminada correctamente.');
+    } catch (err) {
+      setMsg(err.error || 'Error al eliminar');
+      setDeletingSale(null);
     }
   };
 
@@ -207,6 +224,32 @@ export default function SalesList() {
       </Card>
 
       {msg && <Alert type={msg.includes('Error') ? 'error' : 'success'}>{msg}</Alert>}
+
+      {/* Delete confirmation modal */}
+      {deletingSale && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setDeletingSale(null)}>
+          <Card className="w-full max-w-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Eliminar venta</h3>
+                <p className="text-sm text-slate-500">Esta accion no se puede deshacer</p>
+              </div>
+            </div>
+            <p className="text-sm text-slate-600">
+              Seguro que deseas eliminar la venta de <strong>{deletingSale.clientName}</strong> ({deletingSale.clientCode})?
+            </p>
+            <div className="flex gap-3 pt-2">
+              <Button variant="danger" onClick={handleDelete}>Si, eliminar</Button>
+              <Button variant="secondary" onClick={() => setDeletingSale(null)}>Cancelar</Button>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* Edit modal */}
       {editingSale && (
@@ -301,7 +344,10 @@ export default function SalesList() {
                     <td className="px-5 py-3.5 text-slate-500 text-xs">{s.creator?.name || '-'}</td>
                     {isAdmin && (
                       <td className="px-5 py-3.5">
-                        <Button variant="ghost" size="sm" onClick={() => startEdit(s)}>Editar</Button>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => startEdit(s)}>Editar</Button>
+                          <Button variant="danger" size="sm" onClick={() => setDeletingSale(s)}>Eliminar</Button>
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -313,7 +359,7 @@ export default function SalesList() {
           {/* Mobile cards */}
           <div className="md:hidden space-y-3">
             {sales.map((s) => (
-              <SaleCard key={s.id} sale={s} isAdmin={isAdmin} onEdit={startEdit} />
+              <SaleCard key={s.id} sale={s} isAdmin={isAdmin} onEdit={startEdit} onDelete={(sale) => setDeletingSale(sale)} />
             ))}
           </div>
 
