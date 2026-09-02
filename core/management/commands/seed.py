@@ -15,8 +15,6 @@ from core.models import User, Plan, Sale, CashCount, Outflow
 USERS = [
     ('Administrador', 'admin123', 'admin'),
     ('JUNIOR', 'admin123', 'admin'),
-    ('Juan Pérez', 'juan2026', 'ventas'),
-    ('María Rojas', 'maria2026', 'ventas'),
 ]
 
 PLANS = [
