@@ -108,7 +108,7 @@ Sales_Tracker/
 - **Database:** Supabase PostgreSQL (pooler endpoint, IPv4)
 - **Estaticos:** WhiteNoise sirve archivos desde `staticfiles/`
 - **Build:** `build.sh` ejecuta `collectstatic`
-- **Inicio:** `gunicorn salestracker.wsgi:application --bind 0.0.0.0:$PORT`
+- **Inicio:** `gunicorn salestracker.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 60`
 
 ### Variables de entorno en Render
 
@@ -124,3 +124,4 @@ Sales_Tracker/
 - Pooler de Supabase usa IPv4, compatible con Render free tier
 - Planes legacy no aparecen en el select al registrar nuevos movimientos
 - Admin no puede eliminarse a si mismo
+- 2 workers + 2 threads permite atender usuarios concurrentes (mientras uno genera PDF, otro hace consultas)
