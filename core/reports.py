@@ -136,8 +136,8 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None):
                 service_label, s.get_requestType_display(),
                 s.plan.label,
                 s.changeReason or '-',
-                f'{float(s.plan.monthly):.2f}',
-                f'{float(s.plan.monthly):.2f}',
+                f'{float(s.total):.2f}',
+                f'{float(s.total):.2f}',
                 s.createdBy.name,
             ])
         else:
@@ -146,8 +146,8 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None):
                 s.clientCode, s.clientName,
                 service_label, s.get_requestType_display(),
                 s.plan.label,
-                f'{float(s.plan.monthly):.2f}',
-                f'{float(s.plan.monthly):.2f}',
+                f'{float(s.total):.2f}',
+                f'{float(s.total):.2f}',
                 s.createdBy.name,
             ])
 
@@ -326,8 +326,8 @@ def build_sales_xlsx(from_date, to_date):
             s.get_requestType_display(),
             paq_tv,
             paq_inet,
-            float(s.plan.monthly),
-            float(s.plan.monthly),
+            float(s.total),
+            float(s.total),
             s.createdBy.name,
             s.changeReason if s.requestType == 'cambio_plan' else '',
             '',  # Paquete cambio TV (no aplica por ahora)
@@ -413,7 +413,7 @@ def build_sales_png(from_date, to_date):
             service_label,
             s.get_requestType_display() or '',
             s.plan.label if s.plan else '',
-            f'{float(s.plan.monthly):.2f}',
+            f'{float(s.total):.2f}',
             s.createdBy.name if s.createdBy else '',
         ]
         x = padding
