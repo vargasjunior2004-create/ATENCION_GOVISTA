@@ -3,7 +3,7 @@ services:
     name: salestracker
     runtime: python
     buildCommand: bash build.sh
-    startCommand: gunicorn salestracker.wsgi:application --bind 0.0.0.0:$PORT
+    startCommand: gunicorn salestracker.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 60
     envVars:
       - key: DJANGO_SECRET_KEY
         generateValue: true
