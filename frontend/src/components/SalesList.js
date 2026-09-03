@@ -236,12 +236,12 @@ export default function SalesList() {
                 </svg>
               </div>
               <div>
-                <h3 className="text-lg font-bold text-slate-900">Eliminar venta</h3>
+                <h3 className="text-lg font-bold text-slate-900">Eliminar movimiento</h3>
                 <p className="text-sm text-slate-500">Esta accion no se puede deshacer</p>
               </div>
             </div>
             <p className="text-sm text-slate-600">
-              Seguro que deseas eliminar la venta de <strong>{deletingSale.clientName}</strong> ({deletingSale.clientCode})?
+              Seguro que deseas eliminar el movimiento de <strong>{deletingSale.clientName}</strong> ({deletingSale.clientCode})?
             </p>
             <div className="flex gap-3 pt-2">
               <Button variant="danger" onClick={handleDelete}>Si, eliminar</Button>
