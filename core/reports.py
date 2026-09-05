@@ -179,79 +179,202 @@ def build_cash_pdf(date_str):
     from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
                                     Paragraph, Spacer)
     from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 
     cc = CashCount.objects.filter(date=date_str).first()
     outflows = list(Outflow.objects.filter(date=date_str))
     total_out = sum(float(o.amount) for o in outflows)
 
     styles = getSampleStyleSheet()
+    
+    # Custom styles
+    styles['Title'].fontSize = 16
+    styles['Title'].alignment = TA_CENTER
+    
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
                             leftMargin=15 * mm, rightMargin=15 * mm,
                             topMargin=15 * mm, bottomMargin=15 * mm)
 
     registered_by = cc.createdBy.name if cc and cc.createdBy else None
-    story = _report_header(
-        Paragraph('Arqueo de Caja', styles['Title']),
-        Paragraph(f'Fecha: {date_str}', styles['Normal']),
-    )
-    if registered_by:
-        story.append(Paragraph(
-            f'Registrado por: {registered_by}', styles['Normal']))
-        story.append(Spacer(1, 6))
-    else:
-        story.append(Spacer(1, 6))
-
+    
+    # Generate arqueo number based on date
+    from datetime import datetime
+    date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+    arqueo_num = f"{date_obj.strftime('%Y%m%d')}-001"
+    
+    story = []
+    
+    # Header section
+    header_data = [
+        ['FECHA:', date_obj.strftime('%d/%m/%Y'), 'CAJA:', 'GO VISTA', 'ARQUEO N°:', arqueo_num],
+        ['CAJERO:', registered_by or '—', '', '', '', ''],
+    ]
+    header_table = Table(header_data, colWidths=[20*mm, 35*mm, 15*mm, 40*mm, 25*mm, 35*mm])
+    header_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(header_table)
+    story.append(Spacer(1, 10))
+    
+    # Saldo section
+    saldo_data = [
+        ['SALDO', ''],
+        ['Saldo Inicial', '0.00'],
+    ]
+    saldo_table = Table(saldo_data, colWidths=[60*mm, 40*mm])
+    saldo_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e5e7eb')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+    ]))
+    story.append(saldo_table)
+    story.append(Spacer(1, 10))
+    
+    # Efectivo section
+    story.append(Paragraph('EFECTIVO - EQUIVALENTE DE EFECTIVO', styles['Heading2']))
+    story.append(Spacer(1, 6))
+    
     if cc:
-        rows = [['Denominación', 'Cantidad', 'Subtotal (Bs)']]
-        for label, value in DENOMINATIONS:
-            count = getattr(cc, {
-                'Moneda 0.50': 'coin_050', 'Moneda 1': 'coin_1',
-                'Moneda 2': 'coin_2', 'Moneda 5': 'coin_5',
-                'Billete 10': 'bill_10', 'Billete 20': 'bill_20',
-                'Billete 50': 'bill_50', 'Billete 100': 'bill_100',
-                'Billete 200': 'bill_200',
-            }[label])
-            rows.append([label, str(count), f'{count * value:.2f}'])
-        rows.append(['TOTAL CONTADO', '', f'{float(cc.total):.2f}'])
-        table = Table(rows)
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1d4ed8')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        # Calculate totals
+        coins_total = (cc.coin_050 * 0.50 + cc.coin_1 * 1 + cc.coin_2 * 2 + cc.coin_5 * 5)
+        bills_total = (cc.bill_10 * 10 + cc.bill_20 * 20 + cc.bill_50 * 50 + 
+                      cc.bill_100 * 100 + cc.bill_200 * 200)
+        
+        # Coins section
+        coins_data = [
+            ['MONEDAS', '', f'{coins_total:.2f}'],
+            ['Denominación', 'Cantidad', 'Total'],
+            ['0.50', str(cc.coin_050), f'{cc.coin_050 * 0.50:.2f}'],
+            ['1.00', str(cc.coin_1), f'{cc.coin_1 * 1:.2f}'],
+            ['2.00', str(cc.coin_2), f'{cc.coin_2 * 2:.2f}'],
+            ['5.00', str(cc.coin_5), f'{cc.coin_5 * 5:.2f}'],
+        ]
+        coins_table = Table(coins_data, colWidths=[40*mm, 30*mm, 40*mm])
+        coins_table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#dbeafe')),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f3f4f6')),
+            ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+            ('BACKGROUND', (0, 1), (-1, 1), colors.HexColor('#e5e7eb')),
             ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ALIGN', (1, 0), (2, -1), 'RIGHT'),
         ]))
-        story.append(table)
+        story.append(coins_table)
+        story.append(Spacer(1, 10))
+        
+        # Bills section
+        bills_data = [
+            ['BILLETES', '', f'{bills_total:.2f}'],
+            ['Denominación', 'Cantidad', 'Total'],
+            ['10.00', str(cc.bill_10), f'{cc.bill_10 * 10:.2f}'],
+            ['20.00', str(cc.bill_20), f'{cc.bill_20 * 20:.2f}'],
+            ['50.00', str(cc.bill_50), f'{cc.bill_50 * 50:.2f}'],
+            ['100.00', str(cc.bill_100), f'{cc.bill_100 * 100:.2f}'],
+            ['200.00', str(cc.bill_200), f'{cc.bill_200 * 200:.2f}'],
+        ]
+        bills_table = Table(bills_data, colWidths=[40*mm, 30*mm, 40*mm])
+        bills_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f3f4f6')),
+            ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+            ('BACKGROUND', (0, 1), (-1, 1), colors.HexColor('#e5e7eb')),
+            ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ALIGN', (1, 0), (2, -1), 'RIGHT'),
+        ]))
+        story.append(bills_table)
+        story.append(Spacer(1, 10))
+        
+        # Checks section (empty for now)
+        checks_data = [
+            ['CHEQUES', '', '-'],
+            ['BCP', '', ''],
+        ]
+        checks_table = Table(checks_data, colWidths=[40*mm, 30*mm, 40*mm])
+        checks_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f3f4f6')),
+            ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+            ('BACKGROUND', (0, 1), (-1, 1), colors.HexColor('#e5e7eb')),
+            ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ALIGN', (1, 0), (2, -1), 'RIGHT'),
+        ]))
+        story.append(checks_table)
+        story.append(Spacer(1, 10))
+        
+        # Other items section (outflows grouped by person)
+        otros_data = [
+            ['OTROS (FACTURAS/DEVOLUCIONES)', '', f'{total_out:.2f}'],
+        ]
+        # Group outflows by person
+        person_totals = {}
+        for o in outflows:
+            person = o.personName
+            if person not in person_totals:
+                person_totals[person] = 0
+            person_totals[person] += float(o.amount)
+        
+        for person, amount in person_totals.items():
+            otros_data.append([person, '', f'{amount:.2f}'])
+        
+        otros_table = Table(otros_data, colWidths=[40*mm, 30*mm, 40*mm])
+        otros_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f3f4f6')),
+            ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+            ('BACKGROUND', (0, 1), (-1, 1), colors.HexColor('#e5e7eb')),
+            ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('ALIGN', (1, 0), (2, -1), 'RIGHT'),
+        ]))
+        story.append(otros_table)
+        story.append(Spacer(1, 15))
+        
+        # Totals section
+        total_caja = float(cc.total) + total_out
+        totals_data = [
+            ['', '', '1.- TOTAL CAJA CHICA', f'{total_caja:.2f}'],
+            ['', '', '3.- TOTAL EFECTIVO', f'{float(cc.total):.2f}'],
+        ]
+        totals_table = Table(totals_data, colWidths=[30*mm, 30*mm, 50*mm, 40*mm])
+        totals_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (2, 0), (3, -1), 'RIGHT'),
+            ('LINEBELOW', (2, 0), (3, 0), 1, colors.black),
+            ('LINEBELOW', (2, 1), (3, 1), 1, colors.black),
+        ]))
+        story.append(totals_table)
+        story.append(Spacer(1, 20))
+        
+        # Audit section
+        audit_data = [
+            ['AUDITOR', '________________________', '', 'SALDO _________________'],
+        ]
+        audit_table = Table(audit_data, colWidths=[30*mm, 60*mm, 20*mm, 50*mm])
+        audit_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ]))
+        story.append(audit_table)
+        story.append(Spacer(1, 15))
+        
+        # Final total
+        story.append(Paragraph(f'TOTAL: {total_caja:.2f} Bs', styles['Title']))
     else:
         story.append(Paragraph('No hay arqueo registrado para esta fecha.',
                                styles['Normal']))
-
-    story.append(Spacer(1, 12))
-    story.append(Paragraph('Salidas de Efectivo', styles['Heading2']))
-    if outflows:
-        rows = [['Hora', 'A quién', 'Concepto', 'Monto (Bs)']]
-        for o in outflows:
-            hora = o.created_at.strftime('%H:%M') if o.created_at else '—'
-            rows.append([hora, o.personName, o.concept or '—', f'{float(o.amount):.2f}'])
-        rows.append(['', '', 'TOTAL SALIDAS', f'{total_out:.2f}'])
-        table = Table(rows)
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#dc2626')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#fee2e2')),
-            ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
-        ]))
-        story.append(table)
-    else:
-        story.append(Paragraph('Sin salidas registradas.', styles['Normal']))
-
-    net = (float(cc.total) if cc else 0) + total_out
-    story.append(Spacer(1, 12))
-    story.append(Paragraph(f'EFECTIVO TOTAL: {net:.2f} Bs', styles['Title']))
+    
     doc.build(story)
     buf.seek(0)
     return buf

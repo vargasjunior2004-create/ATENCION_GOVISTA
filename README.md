@@ -11,7 +11,6 @@ Sistema web para registro y control de movimientos diarios de telecomunicaciones
 - **Auth:** JWT (roles: admin, ventas)
 - **Hosting:** Render (free tier)
 - **Reportes:** PDF (reportlab), XLSX (openpyxl), PNG (Pillow)
-- **Envio WhatsApp:** wa.me (link con mensaje prellenado)
 
 > **Arranque limpio:** Al iniciar por primera vez se cargan 34 planes (fixture) y 2 usuarios
 > (seed). No hay movimientos ni arqueos previos.
@@ -32,7 +31,7 @@ Login por **nombre de usuario** (no email):
 - **Vista previa:** confirmacion antes de guardar
 - **Reportes PDF:** tabla con 8 columnas (monto = mensualidad + instalacion)
 - **Reportes XLSX:** 14 columnas segun formato de empresa
-- **Foto PNG:** imagen del reporte diario para compartir por WhatsApp
+- **Foto PNG:** imagen del reporte diario en formato compacto
 - **Arqueo de caja:** conteo por denominacion + salidas de efectivo
 - **Paginacion:** 25 registros por pagina en listados
 - **Sesion segura:** JWT 5 min + inactividad 5 min (solo clicks), auto-logout en 401
