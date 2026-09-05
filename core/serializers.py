@@ -142,7 +142,7 @@ class SaleCreateSerializer(serializers.Serializer):
 class CashCountSerializer(serializers.ModelSerializer):
     class Meta:
         model = CashCount
-        fields = ['id', 'date', 'coin_050', 'coin_1', 'coin_2', 'coin_5',
+        fields = ['id', 'date', 'saldo_inicial', 'coin_050', 'coin_1', 'coin_2', 'coin_5',
                   'bill_10', 'bill_20', 'bill_50', 'bill_100', 'bill_200']
 
 

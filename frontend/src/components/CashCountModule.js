@@ -41,6 +41,7 @@ export default function CashCountModule() {
   const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
   const [date, setDate] = useState(today);
+  const [saldoInicial, setSaldoInicial] = useState('');
   const [counts, setCounts] = useState(zeroCounts);
   const [outflows, setOutflows] = useState([]);
   const [totalOutflows, setTotalOutflows] = useState(0);
@@ -57,10 +58,11 @@ export default function CashCountModule() {
 
   const totalCounted = useMemo(() => computeTotal(counts), [counts]);
   const totalCash = useMemo(() => {
+    const saldo = Number(saldoInicial) || 0;
     const counted = Number(totalCounted) || 0;
     const outflows = Number(totalOutflows) || 0;
-    return counted + outflows;
-  }, [totalCounted, totalOutflows]);
+    return saldo + counted + outflows;
+  }, [saldoInicial, totalCounted, totalOutflows]);
 
   useEffect(() => {
     loadCashCount();
@@ -72,6 +74,7 @@ export default function CashCountModule() {
       const data = await api.getCashCount(date);
       if (data.cashCount) {
         const c = data.cashCount;
+        setSaldoInicial(String(Number(c.saldo_inicial) || 0));
         setCounts({
           coin_050: String(Number(c.coin_050) || 0),
           coin_1: String(Number(c.coin_1) || 0),
@@ -86,6 +89,7 @@ export default function CashCountModule() {
         setCashCountId(c.id);
         setSaved(false);
       } else {
+        setSaldoInicial('');
         setCounts(zeroCounts());
         setCashCountId(null);
         setSaved(false);
@@ -104,7 +108,7 @@ export default function CashCountModule() {
   }
 
   function getSavePayload() {
-    const payload = { date };
+    const payload = { date, saldo_inicial: Number(saldoInicial) || 0 };
     DENOMINATIONS.forEach(d => {
       payload[d.key] = Number(counts[d.key]) || 0;
     });
@@ -218,12 +222,21 @@ export default function CashCountModule() {
       {msg && <Alert type={msg.type}>{msg.text}</Alert>}
 
       <Card className="p-6">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
           <Input
             label="Fecha"
             type="date"
             value={date}
             onChange={e => setDate(e.target.value)}
+          />
+          <Input
+            label="Saldo Inicial (opcional)"
+            type="number"
+            min="0"
+            step="0.01"
+            value={saldoInicial}
+            onChange={e => setSaldoInicial(e.target.value)}
+            placeholder="0.00"
           />
           <Input
             label="Usuario"

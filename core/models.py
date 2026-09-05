@@ -119,6 +119,7 @@ class Sale(models.Model):
 class CashCount(models.Model):
     """Arqueo de caja diario por usuario: conteo de efectivo por denominación."""
     date = models.DateField()
+    saldo_inicial = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     coin_050 = models.PositiveIntegerField(default=0)
     coin_1 = models.PositiveIntegerField(default=0)
     coin_2 = models.PositiveIntegerField(default=0)
