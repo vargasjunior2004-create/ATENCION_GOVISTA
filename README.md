@@ -32,7 +32,7 @@ Login por **nombre de usuario** (no email):
 - **Reportes PDF:** tabla con 8 columnas (monto = mensualidad + instalacion)
 - **Reportes XLSX:** 14 columnas segun formato de empresa
 - **Foto PNG:** imagen del reporte diario en formato compacto
-- **Arqueo de caja:** conteo por denominacion + salidas de efectivo
+- **Arqueo de caja:** PDF profesional con encabezado (fecha, caja, arqueo N°, cajero), secciones MONEDAS/BILLETES/CHEQUES/OTROS, totales y firma de auditor
 - **Paginacion:** 25 registros por pagina en listados
 - **Sesion segura:** JWT 5 min + inactividad 5 min (solo clicks), auto-logout en 401
 - **Dashboard:** resumen diario con botones PDF, Excel y Foto
