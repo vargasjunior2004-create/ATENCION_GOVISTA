@@ -1,4 +1,4 @@
-"""Seed de datos mock: usuarios, planes (7), ventas y arqueos de caja.
+"""Seed de datos mock: usuarios, planes y ventas.
 
 Uso:
     python manage.py seed            # solo si las tablas están vacías
@@ -10,7 +10,7 @@ from datetime import timedelta
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from core.models import User, Plan, Sale, CashCount, Outflow
+from core.models import User, Plan, Sale
 
 USERS = [
     ('Administrador', 'admin123', 'admin'),
@@ -63,7 +63,7 @@ SALES_SPEC = [
 
 
 class Command(BaseCommand):
-    help = 'Carga datos mock de usuarios, planes, ventas y arqueos.'
+    help = 'Carga datos mock de usuarios, planes y ventas.'
 
     def add_arguments(self, parser):
         parser.add_argument('--force', action='store_true',
@@ -93,7 +93,7 @@ class Command(BaseCommand):
             self.stdout.write('Ya existen datos. Usa --force para re-seedear.')
             return
         if force:
-            for model in (Outflow, CashCount, Sale, Plan, User):
+            for model in (Sale, Plan, User):
                 model.objects.all().delete()
 
         users = {}
@@ -122,23 +122,4 @@ class Command(BaseCommand):
                 createdBy=admin if d.weekday() < 3 else seller,
             )
         self.stdout.write(f'Creadas {Sale.objects.count()} ventas')
-
-        # Arqueo de caja para hoy
-        CashCount.objects.create(
-            date=today,
-            coin_050=20, coin_1=40, coin_2=30, coin_5=10,
-            bill_10=25, bill_20=20, bill_50=10, bill_100=5, bill_200=2,
-            createdBy=admin,
-        )
-        Outflow.objects.create(date=today, personName='Bancarización',
-                               amount=300, concept='Depósito parcial',
-                               createdBy=admin)
-        Outflow.objects.create(date=today, personName='Compra materiales',
-                               amount=150, concept='Ferretería',
-                               createdBy=admin)
-        Outflow.objects.create(date=today - timedelta(days=1),
-                               personName='Bancarización',
-                               amount=250, concept='Depósito parcial',
-                               createdBy=admin)
-        self.stdout.write('Creados arqueos de caja y salidas (mock)')
         self.stdout.write(self.style.SUCCESS('Seed completado.'))

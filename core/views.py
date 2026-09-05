@@ -7,14 +7,13 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
-from .models import User, Customer, Plan, Sale, CashCount, Outflow, Backup
+from .models import User, Customer, Plan, Sale, Backup
 from .serializers import (
     UserSerializer, UserWriteSerializer, PlanSerializer,
     PlanPublicSerializer, CustomerSerializer, SaleSerializer,
-    SaleCreateSerializer, CashCountSerializer, OutflowSerializer,
-    BackupSerializer,
+    SaleCreateSerializer, BackupSerializer,
 )
-from .reports import build_sales_pdf, build_sales_xlsx, build_cash_pdf
+from .reports import build_sales_pdf, build_sales_xlsx
 
 
 def _user_payload(user):
@@ -369,107 +368,6 @@ class DashboardStatsView(APIView):
                     'month': {'count': 0, 'total': 0},
                 },
             })
-
-
-class CashCountView(APIView):
-    def get(self, request):
-        try:
-            d = request.query_params.get('date') or timezone.localdate().isoformat()
-            cash_count = CashCount.objects.filter(date=d, createdBy=request.user).first()
-            outflows = list(Outflow.objects.filter(date=d, createdBy=request.user).values('id', 'date', 'personName', 'amount', 'concept', 'created_at'))
-            for o in outflows:
-                if hasattr(o.get('created_at'), 'isoformat'):
-                    o['created_at'] = o['created_at'].isoformat()
-                if hasattr(o.get('date'), 'isoformat'):
-                    o['date'] = o['date'].isoformat()
-                if hasattr(o.get('amount'), '__float__'):
-                    o['amount'] = float(o['amount'])
-            cc_data = None
-            if cash_count:
-                cc_data = {
-                    'id': cash_count.id,
-                    'date': str(cash_count.date),
-                    'coin_050': cash_count.coin_050,
-                    'coin_1': cash_count.coin_1,
-                    'coin_2': cash_count.coin_2,
-                    'coin_5': cash_count.coin_5,
-                    'bill_10': cash_count.bill_10,
-                    'bill_20': cash_count.bill_20,
-                    'bill_50': cash_count.bill_50,
-                    'bill_100': cash_count.bill_100,
-                    'bill_200': cash_count.bill_200,
-                }
-            total_out = Outflow.objects.filter(date=d, createdBy=request.user).aggregate(s=Sum('amount'))['s'] or 0
-            return Response({
-                'cashCount': cc_data,
-                'outflows': outflows,
-                'totalOutflows': float(total_out),
-            })
-        except Exception as e:
-            import traceback
-            return Response({'error': str(e), 'trace': traceback.format_exc()}, status=500)
-
-    def post(self, request):
-        data = request.data
-        d = data.get('date') or timezone.localdate().isoformat()
-        fields = ['coin_050', 'coin_1', 'coin_2', 'coin_5',
-                  'bill_10', 'bill_20', 'bill_50', 'bill_100', 'bill_200']
-        payload = {f: max(0, int(data.get(f, 0) or 0)) for f in fields}
-        cash_count, _ = CashCount.objects.update_or_create(
-            date=d, createdBy=request.user, defaults={**payload, 'createdBy': request.user})
-        return Response(CashCountSerializer(cash_count).data)
-
-
-class OutflowCreateView(APIView):
-    def post(self, request):
-        try:
-            data = request.data
-            d = data.get('date') or timezone.localdate().isoformat()
-            person_name = (data.get('personName') or '').strip()
-            amount = data.get('amount')
-            if not person_name:
-                return Response({'error': 'Nombre requerido'}, status=status.HTTP_400_BAD_REQUEST)
-            if amount is None:
-                return Response({'error': 'Monto requerido'}, status=status.HTTP_400_BAD_REQUEST)
-            outflow = Outflow.objects.create(
-                date=d, personName=person_name,
-                amount=float(amount),
-                concept=data.get('concept', ''),
-                createdBy=request.user,
-            )
-            outflow_data = {
-                'id': outflow.id,
-                'date': outflow.date.isoformat() if hasattr(outflow.date, 'isoformat') else str(outflow.date),
-                'personName': outflow.personName,
-                'amount': float(outflow.amount),
-                'concept': outflow.concept,
-                'created_at': outflow.created_at.isoformat() if outflow.created_at else None,
-            }
-            return Response({
-                'outflow': outflow_data,
-                'totalOutflows': float(_total_outflows(d, request.user)),
-            }, status=status.HTTP_201_CREATED)
-        except Exception as e:
-            import traceback
-            return Response({'error': str(e), 'trace': traceback.format_exc()}, status=500)
-
-
-class OutflowDetailView(APIView):
-    def delete(self, request, pk):
-        try:
-            outflow = Outflow.objects.get(id=pk, createdBy=request.user)
-        except Outflow.DoesNotExist:
-            return Response({'error': 'Salida no encontrada'}, status=status.HTTP_404_NOT_FOUND)
-        d = outflow.date
-        outflow.delete()
-        return Response({'totalOutflows': float(_total_outflows(d, request.user))})
-
-
-def _total_outflows(d, user=None):
-    qs = Outflow.objects.filter(date=d)
-    if user:
-        qs = qs.filter(createdBy=user)
-    return qs.aggregate(s=Sum('amount'))['s'] or 0
 
 
 def _first_error(serializer):

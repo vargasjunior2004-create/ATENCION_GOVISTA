@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import User, Plan, Sale, CashCount, Outflow, Backup
+from .models import User, Plan, Sale, Backup
 
 
 @admin.register(User)
@@ -17,16 +17,6 @@ class PlanAdmin(admin.ModelAdmin):
 class SaleAdmin(admin.ModelAdmin):
     list_display = ('id', 'date', 'clientCode', 'clientName', 'plan',
                     'total', 'createdBy')
-
-
-@admin.register(CashCount)
-class CashCountAdmin(admin.ModelAdmin):
-    list_display = ('id', 'date', 'total')
-
-
-@admin.register(Outflow)
-class OutflowAdmin(admin.ModelAdmin):
-    list_display = ('id', 'date', 'personName', 'amount', 'concept')
 
 
 @admin.register(Backup)

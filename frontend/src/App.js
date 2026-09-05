@@ -8,7 +8,6 @@ import SaleForm from './components/SaleForm';
 import SalesList from './components/SalesList';
 import PlansModule from './components/PlansModule';
 import UsersModule from './components/UsersModule';
-import CashCountModule from './components/CashCountModule';
 import BackupModule from './components/BackupModule';
 
 function ProtectedRoute() {
@@ -32,7 +31,6 @@ function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/nueva-venta" element={<SaleForm />} />
               <Route path="/ventas" element={<SalesList />} />
-              <Route path="/arqueo" element={<CashCountModule />} />
               <Route element={<AdminRoute />}>
                 <Route path="/planes" element={<PlansModule />} />
                 <Route path="/usuarios" element={<UsersModule />} />

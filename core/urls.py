@@ -20,11 +20,6 @@ urlpatterns = [
 
     path('customers', views.CustomerListView.as_view()),
 
-    path('cash-count', views.CashCountView.as_view()),
-    path('arqueo', views.CashCountView.as_view()),
-    path('cash-count/outflows', views.OutflowCreateView.as_view()),
-    path('cash-count/outflows/<int:pk>', views.OutflowDetailView.as_view()),
-
     path('reports/pdf', report_views.SalesPdfView.as_view()),
     path('reports/xlsx', report_views.SalesXlsxView.as_view()),
     path('reports/png', report_views.SalesPngView.as_view()),
@@ -34,10 +29,6 @@ urlpatterns = [
     path('reports/pdf-public/', report_views.SalesPdfPublicView.as_view()),
     path('reports/xlsx-public', report_views.SalesXlsxPublicView.as_view()),
     path('reports/xlsx-public/', report_views.SalesXlsxPublicView.as_view()),
-    path('reports/cash-public', report_views.CashPdfPublicView.as_view()),
-    path('reports/cash-public/', report_views.CashPdfPublicView.as_view()),
-    path('cash-count/pdf', report_views.CashPdfView.as_view()),
-    path('cash-count/pdf-link', report_views.CashPdfLinkView.as_view()),
 
     path('backups', views.BackupListView.as_view()),
     path('backups/<int:pk>/download', views.BackupDownloadView.as_view()),

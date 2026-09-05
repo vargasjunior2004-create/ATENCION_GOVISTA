@@ -116,55 +116,6 @@ class Sale(models.Model):
         return f'{self.date} {self.clientName}'
 
 
-class CashCount(models.Model):
-    """Arqueo de caja diario por usuario: conteo de efectivo por denominación."""
-    date = models.DateField()
-    saldo_inicial = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    coin_050 = models.PositiveIntegerField(default=0)
-    coin_1 = models.PositiveIntegerField(default=0)
-    coin_2 = models.PositiveIntegerField(default=0)
-    coin_5 = models.PositiveIntegerField(default=0)
-    bill_10 = models.PositiveIntegerField(default=0)
-    bill_20 = models.PositiveIntegerField(default=0)
-    bill_50 = models.PositiveIntegerField(default=0)
-    bill_100 = models.PositiveIntegerField(default=0)
-    bill_200 = models.PositiveIntegerField(default=0)
-    createdBy = models.ForeignKey(
-        User, null=True, on_delete=models.SET_NULL)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        unique_together = [('date', 'createdBy')]
-
-    @property
-    def total(self):
-        return (
-            self.coin_050 * 0.50 + self.coin_1 * 1 + self.coin_2 * 2
-            + self.coin_5 * 5 + self.bill_10 * 10 + self.bill_20 * 20
-            + self.bill_50 * 50 + self.bill_100 * 100 + self.bill_200 * 200
-        )
-
-    def __str__(self):
-        return f'Arqueo {self.date}'
-
-
-class Outflow(models.Model):
-    """Salida de efectivo del arqueo de caja."""
-    date = models.DateField()
-    personName = models.CharField(max_length=160)
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
-    concept = models.CharField(max_length=255, blank=True, default='')
-    createdBy = models.ForeignKey(
-        User, null=True, on_delete=models.SET_NULL)
-    created_at = models.DateTimeField(default=timezone.now, null=True, blank=True)
-
-    class Meta:
-        ordering = ['-id']
-
-    def __str__(self):
-        return f'{self.date} {self.personName} -{self.amount}'
-
-
 class Backup(models.Model):
     """Copia de seguridad de la base de datos SQLite."""
     TYPE_CHOICES = [('automatic', 'Automatico'), ('manual', 'Manual')]
