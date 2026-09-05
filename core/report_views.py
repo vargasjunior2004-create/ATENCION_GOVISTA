@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .reports import (
-    build_sales_pdf, build_sales_xlsx, build_sales_png, build_cash_pdf,
+    build_sales_pdf, build_sales_xlsx, build_sales_png,
     sign_report_token, unsign_report_token, REQUEST_TYPE_LABELS,
 )
 
@@ -104,28 +104,3 @@ class SalesXlsxPublicView(APIView):
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = f'attachment; filename="planilla-{from_date}-{to_date}.xlsx"'
         return response
-
-
-class CashPdfView(APIView):
-    def get(self, request):
-        d = request.query_params.get('date') or timezone.localdate().isoformat()
-        return _pdf_response(build_cash_pdf(d), f'arqueo-{d}.pdf')
-
-
-class CashPdfLinkView(APIView):
-    def get(self, request):
-        d = request.query_params.get('date') or date.today().isoformat()
-        token = sign_report_token(f'cash:{d}')
-        return Response({'url': f'/api/reports/cash-public/?token={token}'})
-
-
-class CashPdfPublicView(APIView):
-    permission_classes = [AllowAny]
-
-    def get(self, request):
-        token = request.query_params.get('token', '')
-        payload = unsign_report_token(token)
-        if not payload or not payload.startswith('cash:'):
-            return HttpResponse('Enlace inválido o expirado', status=400)
-        d = payload[5:]
-        return _pdf_response(build_cash_pdf(d), f'arqueo-{d}.pdf')

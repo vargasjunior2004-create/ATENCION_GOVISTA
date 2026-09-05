@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User, Customer, Plan, Sale, CashCount, Outflow, Backup
+from .models import User, Customer, Plan, Sale, Backup
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -137,19 +137,6 @@ class SaleCreateSerializer(serializers.Serializer):
             total=plan.total,
             createdBy=user,
         )
-
-
-class CashCountSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = CashCount
-        fields = ['id', 'date', 'saldo_inicial', 'coin_050', 'coin_1', 'coin_2', 'coin_5',
-                  'bill_10', 'bill_20', 'bill_50', 'bill_100', 'bill_200']
-
-
-class OutflowSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Outflow
-        fields = ['id', 'date', 'personName', 'amount', 'concept', 'created_at']
 
 
 class BackupSerializer(serializers.ModelSerializer):

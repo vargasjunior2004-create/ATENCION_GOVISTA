@@ -95,22 +95,6 @@ const api = {
     return request(`/api/reports/png?${params.toString()}`);
   },
 
-  // Arqueo de caja
-  getCashCount: (date) => {
-    const params = date ? `?date=${date}` : '';
-    return request(`/api/cash-count${params}`);
-  },
-  saveCashCount: (data) =>
-    request('/api/cash-count', { method: 'POST', body: JSON.stringify(data) }),
-  addOutflow: (data) =>
-    request('/api/cash-count/outflows', { method: 'POST', body: JSON.stringify(data) }),
-  deleteOutflow: (id) =>
-    request(`/api/cash-count/outflows/${id}`, { method: 'DELETE' }),
-  getCashPDF: (date) => {
-    const params = date ? `?date=${date}` : '';
-    return request(`/api/cash-count/pdf${params}`);
-  },
-
   // Backups
   getBackups: () => request('/api/backups'),
   createBackup: () => request('/api/backups', { method: 'POST' }),

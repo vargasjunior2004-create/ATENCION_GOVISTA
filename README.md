@@ -32,7 +32,6 @@ Login por **nombre de usuario** (no email):
 - **Reportes PDF:** tabla con 8 columnas (monto = mensualidad + instalacion)
 - **Reportes XLSX:** 14 columnas segun formato de empresa
 - **Foto PNG:** imagen del reporte diario en formato compacto
-- **Arqueo de caja:** PDF profesional con encabezado (fecha, caja, arqueo N°, cajero), secciones MONEDAS/BILLETES/CHEQUES/OTROS, totales y firma de auditor
 - **Paginacion:** 25 registros por pagina en listados
 - **Sesion segura:** JWT 5 min + inactividad 5 min (solo clicks), auto-logout en 401
 - **Dashboard:** resumen diario con botones PDF, Excel y Foto
@@ -90,16 +89,11 @@ Sales_Tracker/
 | POST | /api/users | Admin | Crear usuario |
 | PUT | /api/users/:id | Admin | Editar usuario |
 | DELETE | /api/users/:id | Admin | Eliminar usuario |
-| GET | /api/cash-count?date= | Si | Arqueo de caja |
-| POST | /api/cash-count | Si | Guardar conteo |
-| POST | /api/cash-count/outflows | Si | Agregar salida |
-| DELETE | /api/cash-count/outflows/:id | Si | Eliminar salida |
 | GET | /api/reports/pdf?from=&to= | Si | PDF planilla |
 | GET | /api/reports/xlsx?from=&to= | Si | XLSX planilla |
 | GET | /api/reports/png?from=&to= | Si | PNG imagen del reporte |
 | GET | /api/reports/pdf-link?from=&to= | Si | Link publico PDF (1h) |
 | GET | /api/reports/xlsx-link?from=&to= | Si | Link publico XLSX (1h) |
-| GET | /api/cash-count/pdf?date= | Si | PDF arqueo de caja |
 
 ## Despliegue en Render
 
