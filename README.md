@@ -13,7 +13,7 @@ Sistema web para registro y control de movimientos diarios de telecomunicaciones
 - **Reportes:** PDF (reportlab), XLSX (openpyxl), PNG (Pillow)
 
 > **Arranque limpio:** Al iniciar por primera vez se cargan 34 planes (fixture) y 2 usuarios
-> (seed). No hay movimientos ni arqueos previos.
+> (seed). No hay movimientos previos.
 
 ## Credenciales de acceso
 
@@ -51,9 +51,9 @@ Sales_Tracker/
 ├── manage.py
 ├── salestracker/             # settings, urls, wsgi
 ├── core/
-│   ├── models.py             # User, Plan, Sale, CashCount, Outflow, Customer
+│   ├── models.py             # User, Plan, Sale, Customer, Backup
 │   ├── serializers.py
-│   ├── views.py              # auth, plans, sales, users, cash-count
+│   ├── views.py              # auth, plans, sales, users
 │   ├── report_views.py       # PDF/XLSX/PNG + links publicos
 │   ├── reports.py            # generacion de PDF, XLSX y PNG
 │   ├── auth.py               # JWT contra core.User
