@@ -224,9 +224,10 @@ def build_cash_pdf(date_str):
     story.append(Spacer(1, 10))
     
     # Saldo section
+    saldo_inicial = float(cc.saldo_inicial) if cc and cc.saldo_inicial else 0
     saldo_data = [
         ['SALDO', ''],
-        ['Saldo Inicial', '0.00'],
+        ['Saldo Inicial', f'{saldo_inicial:.2f}'],
     ]
     saldo_table = Table(saldo_data, colWidths=[60*mm, 40*mm])
     saldo_table.setStyle(TableStyle([
@@ -312,39 +313,31 @@ def build_cash_pdf(date_str):
         story.append(checks_table)
         story.append(Spacer(1, 10))
         
-        # Other items section (outflows grouped by person)
+        # Other items section (outflows with concept)
         otros_data = [
-            ['OTROS (FACTURAS/DEVOLUCIONES)', '', f'{total_out:.2f}'],
+            ['OTROS (FACTURAS/DEVOLUCIONES)', '', 'Concepto', f'{total_out:.2f}'],
         ]
-        # Group outflows by person
-        person_totals = {}
         for o in outflows:
-            person = o.personName
-            if person not in person_totals:
-                person_totals[person] = 0
-            person_totals[person] += float(o.amount)
+            concepto = o.concept if o.concept else ''
+            otros_data.append([o.personName, '', concepto, f'{float(o.amount):.2f}'])
         
-        for person, amount in person_totals.items():
-            otros_data.append([person, '', f'{amount:.2f}'])
-        
-        otros_table = Table(otros_data, colWidths=[40*mm, 30*mm, 40*mm])
+        otros_table = Table(otros_data, colWidths=[40*mm, 10*mm, 50*mm, 40*mm])
         otros_table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f3f4f6')),
-            ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
-            ('BACKGROUND', (0, 1), (-1, 1), colors.HexColor('#e5e7eb')),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
             ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
             ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('ALIGN', (1, 0), (2, -1), 'RIGHT'),
+            ('ALIGN', (3, 0), (3, -1), 'RIGHT'),
         ]))
         story.append(otros_table)
         story.append(Spacer(1, 15))
         
         # Totals section
-        total_caja = float(cc.total) + total_out
+        total_caja = saldo_inicial + float(cc.total) + total_out
         totals_data = [
             ['', '', '1.- TOTAL CAJA CHICA', f'{total_caja:.2f}'],
-            ['', '', '3.- TOTAL EFECTIVO', f'{float(cc.total):.2f}'],
+            ['', '', '3.- TOTAL EFECTIVO', f'{saldo_inicial + float(cc.total):.2f}'],
         ]
         totals_table = Table(totals_data, colWidths=[30*mm, 30*mm, 50*mm, 40*mm])
         totals_table.setStyle(TableStyle([

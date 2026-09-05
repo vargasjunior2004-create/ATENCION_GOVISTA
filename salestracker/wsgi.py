@@ -21,14 +21,16 @@ try:
     from django.core.management import call_command
     logger = logging.getLogger('wsgi')
 
+    logger.info('Ejecutando migrate...')
+    call_command('migrate', interactive=False, verbosity=0)
+
     from core.models import Plan
     if not Plan.objects.exists():
-        logger.info('Sin planes — ejecutando migrate + seed...')
-        call_command('migrate', interactive=False, verbosity=0)
+        logger.info('Sin planes — ejecutando seed...')
         call_command('loaddata', 'planes', verbosity=0)
         call_command('seed', users_only=True)
         logger.info('Bootstrap completado')
     else:
-        logger.info('Planes existentes — saltando bootstrap')
+        logger.info('Planes existentes — seed omitido')
 except Exception:
     logging.getLogger('wsgi').exception('Bootstrap en arranque falló')
