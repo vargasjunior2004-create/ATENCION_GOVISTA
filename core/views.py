@@ -311,18 +311,12 @@ class DashboardStatsView(APIView):
 
             all_sales = Sale.objects.all()
             installations = all_sales.filter(requestType='nuevo_contrato')
-            outflows = Outflow.objects.all()
 
             is_admin = getattr(request.user, 'role', '') == 'admin'
 
             def stats(qs, from_date, to_date):
                 filtered = qs.filter(date__gte=from_date, date__lte=to_date)
                 total = filtered.aggregate(s=Sum('total'))['s'] or 0
-                return {'count': filtered.count(), 'total': float(total)}
-
-            def outflow_stats(from_date, to_date):
-                filtered = outflows.filter(date__gte=from_date, date__lte=to_date)
-                total = filtered.aggregate(s=Sum('amount'))['s'] or 0
                 return {'count': filtered.count(), 'total': float(total)}
 
             def retiros_stats(from_date, to_date):
