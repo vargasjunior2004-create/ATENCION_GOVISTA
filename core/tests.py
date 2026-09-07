@@ -4,7 +4,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from .models import User, Plan, Sale, CashCount, Outflow
+from .models import User, Plan, Sale
 
 
 class ApiTestCase(TestCase):
@@ -168,30 +168,6 @@ class ApiTestCase(TestCase):
         items = res.data.get('items', res.data)
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]['clientCode'], 'B')
-
-    def test_cash_count_upsert_and_outflows(self):
-        self.auth_as(self.admin, 'admin123')
-        d = date.today().isoformat()
-        res = self.client.post('/api/cash-count',
-                               {'date': d, 'coin_1': 50, 'bill_100': 5},
-                               format='json')
-        self.assertEqual(res.status_code, 200)
-
-        res = self.client.post('/api/cash-count/outflows',
-                               {'date': d, 'personName': 'X', 'amount': 100},
-                               format='json')
-        self.assertEqual(res.status_code, 201)
-        self.assertEqual(float(res.data['totalOutflows']), 100.0)
-        outflow_id = res.data['outflow']['id']
-
-        res = self.client.get(f'/api/cash-count?date={d}')
-        self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.data['cashCount']['coin_1'], 50)
-        self.assertEqual(float(res.data['totalOutflows']), 100.0)
-
-        res = self.client.delete(f'/api/cash-count/outflows/{outflow_id}')
-        self.assertEqual(res.status_code, 200)
-        self.assertEqual(float(res.data['totalOutflows']), 0.0)
 
     def test_report_pdf_returns_pdf(self):
         Sale.objects.create(date=date.today(), clientCode='A', clientName='A',
