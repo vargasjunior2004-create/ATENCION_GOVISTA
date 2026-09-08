@@ -11,6 +11,7 @@ export default function UsersModule() {
   const [form, setForm] = useState({ ...emptyUser });
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [deletingUser, setDeletingUser] = useState(null);
 
   const loadUsers = useCallback(async () => {
@@ -26,22 +27,24 @@ export default function UsersModule() {
     setForm((p) => ({ ...p, [name]: finalValue }));
   };
 
-  const openNew = () => { setForm({ ...emptyUser }); setEditingId(null); setShowForm(true); setError(''); };
+  const openNew = () => { setForm({ ...emptyUser }); setEditingId(null); setShowForm(true); setError(''); setSuccess(''); };
   const openEdit = (user) => {
     setForm({ name: user.name, password: '', role: user.role });
-    setEditingId(user.id); setShowForm(true); setError('');
+    setEditingId(user.id); setShowForm(true); setError(''); setSuccess('');
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault(); setError('');
+    e.preventDefault(); setError(''); setSuccess('');
     try {
       const payload = { name: form.name, role: form.role };
       if (form.password) payload.password = form.password;
       if (editingId) {
         await api.updateUser(editingId, payload);
+        setSuccess('Usuario actualizado correctamente');
       } else {
         if (!form.password) { setError('La contrasena es requerida para nuevos usuarios'); return; }
         await api.createUser({ ...payload, password: form.password });
+        setSuccess('Usuario creado correctamente');
       }
       setShowForm(false); loadUsers();
     } catch (err) { setError(err.error || 'Error al guardar usuario'); }
@@ -74,6 +77,8 @@ export default function UsersModule() {
         </div>
         <Button onClick={openNew}>+ Agregar Usuario</Button>
       </div>
+
+      {success && <Alert type="success">{success}</Alert>}
 
       {/* Delete confirmation modal */}
       {deletingUser && (

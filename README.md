@@ -28,6 +28,7 @@ Login por **nombre de usuario** (no email):
 
 - **Registro de movimientos:** formulario con auto-complete, fecha automatica (Bolivia UTC-4), campos en mayusculas
 - **Monto:** mensualidad + costo de instalacion (calculado automaticamente)
+- **Retiros:** solo se registra la mensualidad (sin costo de instalacion)
 - **Vista previa:** confirmacion antes de guardar
 - **Reportes PDF:** tabla con 8 columnas (monto = mensualidad + instalacion)
 - **Reportes XLSX:** 14 columnas segun formato de empresa
@@ -38,6 +39,7 @@ Login por **nombre de usuario** (no email):
 - **Retiro:** registro con motivo y comentario, reporte PDF con columna "Motivo"
 - **Planes:** busqueda por codigo/nombre/tipo, inhabilitar como actual (legacy)
 - **Eliminacion:** admin puede eliminar movimientos, planes y usuarios con confirmacion
+- **Notificaciones:** avisos de exito/error al crear o editar usuarios
 
 ## Roles
 
