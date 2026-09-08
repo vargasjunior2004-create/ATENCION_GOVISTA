@@ -122,6 +122,8 @@ class SaleCreateSerializer(serializers.Serializer):
         if customer is None and code:
             customer = Customer(code=code, name=validated_data['clientName'])
             customer.save()
+        is_retiro = validated_data.get('requestType', 'nuevo_contrato') == 'retiro'
+        sale_total = plan.monthly if is_retiro else plan.total
         return Sale.objects.create(
             date=validated_data['date'],
             clientCode=validated_data['clientCode'],
@@ -134,7 +136,7 @@ class SaleCreateSerializer(serializers.Serializer):
             notes=validated_data.get('notes', ''),
             customer=customer,
             plan=plan,
-            total=plan.total,
+            total=sale_total,
             createdBy=user,
         )
 

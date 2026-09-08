@@ -283,7 +283,7 @@ export default function SaleForm() {
                 <div><span className="text-slate-400">Plan:</span></div>
                 <div className="font-medium">{selectedPlan.label}</div>
                 <div><span className="text-slate-400">Monto:</span></div>
-                <div className="font-bold text-brand-700">Bs. {parseFloat(selectedPlan.total).toFixed(2)}</div>
+                <div className="font-bold text-brand-700">Bs. {parseFloat(isRetiro ? selectedPlan.monthly : selectedPlan.total).toFixed(2)}</div>
                 {getMotivoLabel() && (
                   <>
                     <div><span className="text-slate-400">Motivo:</span></div>
@@ -321,7 +321,7 @@ export default function SaleForm() {
                 <div className="flex justify-between"><span className="text-slate-400">Solicitud:</span><span className="font-medium">{getRequestLabel(form.requestType)}</span></div>
                 <div className="flex justify-between"><span className="text-slate-400">Servicio:</span><span className="font-medium">{getServiceLabel(form.serviceType)}</span></div>
                 <div className="flex justify-between"><span className="text-slate-400">Plan:</span><span className="font-medium">{selectedPlan.label}</span></div>
-                <div className="flex justify-between border-t border-slate-200 pt-2"><span className="text-slate-400">Monto:</span><span className="font-bold text-brand-700 text-lg">Bs. {parseFloat(selectedPlan.total).toFixed(2)}</span></div>
+                <div className="flex justify-between border-t border-slate-200 pt-2"><span className="text-slate-400">Monto:</span><span className="font-bold text-brand-700 text-lg">Bs. {parseFloat(isRetiro ? selectedPlan.monthly : selectedPlan.total).toFixed(2)}</span></div>
                 {getMotivoLabel() && (
                   <div className="flex justify-between"><span className="text-slate-400">Motivo:</span><span className="font-medium">{getMotivoLabel()}</span></div>
                 )}
