@@ -50,8 +50,8 @@ const api = {
     const params = new URLSearchParams();
     if (from) params.set('from', from);
     if (to) params.set('to', to);
-    if (requestType) params.set('requestType', requestType);
-    if (serviceType) params.set('serviceType', serviceType);
+    if (requestType && requestType !== 'all') params.set('requestType', requestType);
+    if (serviceType && serviceType !== 'all') params.set('serviceType', serviceType);
     params.set('page', page);
     params.set('page_size', pageSize);
     return request(`/api/sales?${params.toString()}`);
