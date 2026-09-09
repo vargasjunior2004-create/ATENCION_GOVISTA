@@ -87,6 +87,31 @@ class MeView(APIView):
         return Response({'user': _user_payload(request.user)})
 
 
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        current = request.data.get('current_password', '')
+        new_password = request.data.get('new_password', '')
+
+        if not current or not new_password:
+            return Response({'error': 'Completa ambos campos'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if len(new_password) < 6:
+            return Response({'error': 'La nueva contrasena debe tener al menos 6 caracteres'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        user = request.user
+        if not user.check_password(current):
+            return Response({'error': 'La contrasena actual es incorrecta'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(new_password)
+        user.save()
+        return Response({'message': 'Contrasena actualizada correctamente'})
+
+
 class PlanListView(IsAdminMixin, APIView):
     def get(self, request):
         error = self.check_admin(request)
