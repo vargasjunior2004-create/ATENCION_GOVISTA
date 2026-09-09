@@ -7,6 +7,7 @@ const typeColor = { internet: 'blue', tv: 'amber', combo: 'violet' };
 
 const REQUEST_TYPES = [
   { value: '', label: '-- Seleccione --' },
+  { value: 'all', label: 'Todos los movimientos' },
   { value: 'nuevo_contrato', label: 'Nuevo Contrato' },
   { value: 'cambio_plan', label: 'Cambio de Plan' },
   { value: 'recontratacion', label: 'Recontratacion' },
@@ -18,6 +19,7 @@ const REQUEST_TYPES = [
 
 const SERVICE_TYPES = [
   { value: '', label: '-- Seleccione --' },
+  { value: 'all', label: 'Todos los tipos de servicio' },
   { value: 'internet', label: 'Internet' },
   { value: 'tv', label: 'TV Cable' },
   { value: 'tv_digital', label: 'TV Digital' },
@@ -81,7 +83,14 @@ export default function SalesList() {
   const [msg, setMsg] = useState('');
   const [deletingSale, setDeletingSale] = useState(null);
 
+  const hasSelection = requestType !== '' && serviceType !== '';
+
   const loadSales = useCallback(async (p = 1) => {
+    if (!hasSelection) {
+      setSales([]);
+      setPagination({ total: 0, total_pages: 1, page: 1 });
+      return;
+    }
     setLoading(true);
     try {
       const res = await api.getSales(from, to, requestType, p, 25, serviceType);
@@ -93,9 +102,9 @@ export default function SalesList() {
     } finally {
       setLoading(false);
     }
-  }, [from, to, requestType, serviceType]);
+  }, [from, to, requestType, serviceType, hasSelection]);
 
-  useEffect(() => { loadSales(1); }, []);
+  useEffect(() => { loadSales(1); }, [hasSelection]);
   useEffect(() => {
     if (isAdmin) api.getPlans().then(setPlans).catch(() => {});
   }, [isAdmin]);
@@ -212,14 +221,14 @@ export default function SalesList() {
           <Button
             variant="primary"
             onClick={handleGeneratePDF}
-            disabled={!requestType || generatingPdf}
-            className={!requestType ? 'opacity-50 cursor-not-allowed' : ''}
+            disabled={!requestType || !serviceType || generatingPdf}
+            className={(!requestType || !serviceType) ? 'opacity-50 cursor-not-allowed' : ''}
           >
             {generatingPdf ? 'Generando...' : 'Reporte PDF'}
           </Button>
         </div>
-        {!requestType && (
-          <p className="text-xs text-slate-400 mt-2">Selecciona un tipo de movimiento para habilitar el reporte PDF</p>
+        {(!requestType || !serviceType) && (
+          <p className="text-xs text-slate-400 mt-2">Selecciona tipo de movimiento y tipo de servicio para habilitar el reporte PDF</p>
         )}
       </Card>
 
@@ -306,7 +315,15 @@ export default function SalesList() {
       )}
 
       {/* Sales */}
-      {loading ? (
+      {!hasSelection ? (
+        <Card className="p-16 text-center">
+          <svg className="w-12 h-12 text-slate-200 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+          </svg>
+          <p className="text-slate-500 font-medium">Selecciona filtros para mostrar informacion</p>
+          <p className="text-xs text-slate-400 mt-1">Elige tipo de movimiento y tipo de servicio, luego presiona Buscar</p>
+        </Card>
+      ) : loading ? (
         <div className="flex items-center justify-center py-20">
           <div className="flex flex-col items-center gap-3">
             <div className="w-8 h-8 border-2 border-brand-500/20 border-t-brand-500 rounded-full animate-spin" />
