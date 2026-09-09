@@ -26,20 +26,47 @@ Login por **nombre de usuario** (no email):
 
 ## Funcionalidades
 
-- **Registro de movimientos:** formulario con auto-complete, fecha automatica (Bolivia UTC-4), campos en mayusculas
+### Movimientos
+- **Registro:** formulario con auto-complete, fecha automatica (Bolivia UTC-4), campos en mayusculas
 - **Monto:** mensualidad + costo de instalacion (calculado automaticamente)
 - **Retiros:** solo se registra la mensualidad (sin costo de instalacion)
 - **Vista previa:** confirmacion antes de guardar
-- **Reportes PDF:** tabla con 8 columnas (monto = mensualidad + instalacion)
-- **Reportes XLSX:** 14 columnas segun formato de empresa
+- **Edicion:** admin puede editar cualquier movimiento
+- **Eliminacion:** admin puede eliminar con confirmacion
+
+### Filtros de Busqueda
+- **Selects con opciones predeterminadas:**
+  - Tipo de Movimiento: `-- Seleccione --`, `Todos los movimientos`, Nuevo Contrato, Cambio de Plan, Recontratacion, Retiro, Adicion, Baja Temporal, Otro
+  - Tipo de Servicio: `-- Seleccione --`, `Todos los tipos de servicio`, Internet, TV Cable, TV Digital, Internet + TV Analoga, Internet + TV Digital
+- **Boton Buscar:** solo busca al hacer clic (no automatico)
+- **Mensaje profesional:** cuando los selects estan en `-- Seleccione --` se muestra "Selecciona filtros para mostrar informacion"
+- **PDF condicionado:** boton deshabilitado (gris) hasta seleccionar tipo de movimiento Y tipo de servicio
+
+### Reportes
+- **PDF:** tabla con 8 columnas (monto = mensualidad + instalacion)
+- **XLSX:** 14 columnas segun formato de empresa
 - **Foto PNG:** imagen del reporte diario en formato compacto
-- **Paginacion:** 25 registros por pagina en listados
-- **Sesion segura:** JWT 5 min + inactividad 5 min (solo clicks), auto-logout en 401
-- **Dashboard:** resumen diario con botones PDF, Excel y Foto
-- **Retiro:** registro con motivo y comentario, reporte PDF con columna "Motivo"
-- **Planes:** busqueda por codigo/nombre/tipo, inhabilitar como actual (legacy)
-- **Eliminacion:** admin puede eliminar movimientos, planes y usuarios con confirmacion
-- **Notificaciones:** avisos de exito/error al crear o editar usuarios
+- **Links publicos:** PDF y XLSX con vigencia de 1 hora
+
+### Dashboard
+- Resumen diario con botones PDF, Excel y Foto
+- Botones deshabilitados cuando no hay registros del dia
+- Estadisticas: movimientos, instalaciones, retiros (hoy, semana, mes)
+
+### Planes
+- Busqueda por codigo/nombre/tipo
+- Inhabilitar como actual (legacy) — no aparecen en selects de nuevos movimientos
+- Eliminacion con confirmacion
+
+### Usuarios
+- Crear, editar, activar/desactivar, eliminar
+- Notificaciones de exito/error al crear o editar
+- Admin no puede eliminarse a si mismo
+
+### Sesion
+- JWT 5 min + inactividad 5 min (solo clicks)
+- Auto-logout en 401
+- Paginacion: 25 registros por pagina
 
 ## Roles
 
@@ -83,7 +110,7 @@ Sales_Tracker/
 | POST | /api/plans | Admin | Crear plan |
 | PUT | /api/plans/:id | Admin | Editar plan |
 | DELETE | /api/plans/:id | Admin | Eliminar plan |
-| GET | /api/sales?from=&to=&page=&page_size= | Si | Movimientos (paginado, 25/pag) |
+| GET | /api/sales?from=&to=&requestType=&serviceType=&page=&page_size= | Si | Movimientos (paginado, 25/pag) |
 | POST | /api/sales | Si | Crear movimiento |
 | PUT | /api/sales/:id | Admin | Editar movimiento |
 | DELETE | /api/sales/:id | Admin | Eliminar movimiento |
@@ -91,11 +118,11 @@ Sales_Tracker/
 | POST | /api/users | Admin | Crear usuario |
 | PUT | /api/users/:id | Admin | Editar usuario |
 | DELETE | /api/users/:id | Admin | Eliminar usuario |
-| GET | /api/reports/pdf?from=&to= | Si | PDF planilla |
-| GET | /api/reports/xlsx?from=&to= | Si | XLSX planilla |
-| GET | /api/reports/png?from=&to= | Si | PNG imagen del reporte |
-| GET | /api/reports/pdf-link?from=&to= | Si | Link publico PDF (1h) |
-| GET | /api/reports/xlsx-link?from=&to= | Si | Link publico XLSX (1h) |
+| GET | /api/reports/pdf?from=&to=&requestType=&serviceType= | Si | PDF planilla |
+| GET | /api/reports/xlsx?from=&to=&requestType=&serviceType= | Si | XLSX planilla |
+| GET | /api/reports/png?from=&to=&requestType=&serviceType= | Si | PNG imagen del reporte |
+| GET | /api/reports/pdf-link?from=&to=&requestType=&serviceType= | Si | Link publico PDF (1h) |
+| GET | /api/reports/xlsx-link?from=&to=&requestType=&serviceType= | Si | Link publico XLSX (1h) |
 
 ## Despliegue en Render
 
@@ -120,3 +147,5 @@ Sales_Tracker/
 - Planes legacy no aparecen en el select al registrar nuevos movimientos
 - Admin no puede eliminarse a si mismo
 - 2 workers + 2 threads permite atender usuarios concurrentes (mientras uno genera PDF, otro hace consultas)
+- Filtros de busqueda requieren seleccion explicita (no automatico)
+- PDF solo se genera cuando ambos filtros estan seleccionados
