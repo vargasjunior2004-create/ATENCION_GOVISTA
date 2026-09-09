@@ -95,7 +95,7 @@ export default function SalesList() {
     }
   }, [from, to, requestType, serviceType]);
 
-  useEffect(() => { loadSales(1); }, [loadSales]);
+  useEffect(() => { loadSales(1); }, []);
   useEffect(() => {
     if (isAdmin) api.getPlans().then(setPlans).catch(() => {});
   }, [isAdmin]);
