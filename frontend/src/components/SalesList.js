@@ -6,7 +6,7 @@ import { Button, Input, Select, Card, Alert, Badge } from './ui';
 const typeColor = { internet: 'blue', tv: 'amber', combo: 'violet' };
 
 const REQUEST_TYPES = [
-  { value: '', label: 'Todos los movimientos' },
+  { value: '', label: '-- Seleccione --' },
   { value: 'nuevo_contrato', label: 'Nuevo Contrato' },
   { value: 'cambio_plan', label: 'Cambio de Plan' },
   { value: 'recontratacion', label: 'Recontratacion' },
@@ -17,7 +17,7 @@ const REQUEST_TYPES = [
 ];
 
 const SERVICE_TYPES = [
-  { value: '', label: 'Todos los tipos de servicio' },
+  { value: '', label: '-- Seleccione --' },
   { value: 'internet', label: 'Internet' },
   { value: 'tv', label: 'TV Cable' },
   { value: 'tv_digital', label: 'TV Digital' },
