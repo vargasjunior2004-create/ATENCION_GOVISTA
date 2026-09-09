@@ -35,6 +35,12 @@ const api = {
 
   me: () => request('/api/auth/me'),
 
+  changePassword: (current_password, new_password) =>
+    request('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ current_password, new_password }),
+    }),
+
   // Dashboard
   getDashboardStats: () => request('/api/dashboard/stats'),
 

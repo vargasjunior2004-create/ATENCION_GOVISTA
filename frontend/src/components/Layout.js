@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Badge } from './ui';
+import api from '../services/api';
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: (
@@ -62,6 +63,14 @@ export default function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarPinned, setSidebarPinned] = useState(false);
   const [sidebarHover, setSidebarHover] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
 
   const showSidebar = mobileOpen || sidebarHover || sidebarPinned;
 
@@ -79,6 +88,52 @@ export default function Layout() {
      ${isActive
        ? 'bg-vista-accent/15 text-vista-accent shadow-sm'
        : 'text-green-300/60 hover:bg-white/5 hover:text-white'}`;
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordError('Completa todos los campos');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPasswordError('La nueva contrasena debe tener al menos 6 caracteres');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Las contrasenas no coinciden');
+      return;
+    }
+
+    setSavingPassword(true);
+    try {
+      await api.changePassword(currentPassword, newPassword);
+      setPasswordSuccess('Contrasena actualizada correctamente');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => {
+        setShowChangePassword(false);
+        setPasswordSuccess('');
+      }, 2000);
+    } catch (err) {
+      setPasswordError(err.error || 'Error al cambiar contrasena');
+    } finally {
+      setSavingPassword(false);
+    }
+  };
+
+  const openChangePassword = () => {
+    setUserMenuOpen(false);
+    setShowChangePassword(true);
+    setPasswordError('');
+    setPasswordSuccess('');
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -144,27 +199,135 @@ export default function Layout() {
         </nav>
 
         {/* User section */}
-        <div className="px-4 py-4 border-t border-white/5">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-vista-accent/15 flex items-center justify-center text-vista-accent text-xs font-bold">
+        <div className="px-4 py-4 border-t border-white/5 relative">
+          {/* User clickable area */}
+          <button
+            onClick={() => setUserMenuOpen(!userMenuOpen)}
+            className="w-full flex items-center gap-3 mb-3 p-1 -m-1 rounded-xl hover:bg-white/5 transition-colors"
+          >
+            <div className="w-8 h-8 rounded-lg bg-vista-accent/15 flex items-center justify-center text-vista-accent text-xs font-bold shrink-0">
               {user?.name?.charAt(0) || '?'}
             </div>
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 text-left">
               <p className="text-sm text-white font-medium truncate">{user?.name}</p>
               <Badge color={user?.role === 'admin' ? 'amber' : 'blue'} className="text-[9px] mt-0.5">{user?.role}</Badge>
             </div>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold text-red-400/80 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-all duration-200"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+            <svg className={`w-4 h-4 text-white/40 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
             </svg>
-            Cerrar Sesion
           </button>
+
+          {/* Dropdown menu */}
+          {userMenuOpen && (
+            <div className="absolute bottom-full left-4 right-4 mb-2 bg-white rounded-xl shadow-xl border border-slate-100 py-1 z-50">
+              <button
+                onClick={openChangePassword}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                </svg>
+                Cambiar Contrasena
+              </button>
+              <div className="border-t border-slate-100 my-1" />
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+                </svg>
+                Cerrar Sesion
+              </button>
+            </div>
+          )}
         </div>
       </aside>
+
+      {/* Change Password Modal */}
+      {showChangePassword && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-vista-accent/10 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-vista-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Cambiar Contrasena</h3>
+                  <p className="text-[10px] text-slate-400">Actualiza tu contrasena de acceso</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowChangePassword(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleChangePassword} className="px-6 py-5 space-y-4">
+              {passwordError && (
+                <div className="px-3 py-2 bg-red-50 border border-red-100 rounded-xl text-xs text-red-600">
+                  {passwordError}
+                </div>
+              )}
+              {passwordSuccess && (
+                <div className="px-3 py-2 bg-emerald-50 border border-emerald-100 rounded-xl text-xs text-emerald-600">
+                  {passwordSuccess}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Contrasena Actual</label>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-vista-accent/30 focus:border-vista-accent transition-all"
+                  placeholder="Ingresa tu contrasena actual"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Nueva Contrasena</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-vista-accent/30 focus:border-vista-accent transition-all"
+                  placeholder="Minimo 6 caracteres"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Confirmar Nueva Contrasena</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-vista-accent/30 focus:border-vista-accent transition-all"
+                  placeholder="Repite la nueva contrasena"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={savingPassword}
+                className="w-full py-2.5 bg-vista-accent text-white text-sm font-bold rounded-xl hover:bg-vista-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                {savingPassword ? 'Guardando...' : 'Acepto cambiar mi contrasena'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Mobile menu button */}
       <button onClick={() => setMobileOpen(!mobileOpen)}
