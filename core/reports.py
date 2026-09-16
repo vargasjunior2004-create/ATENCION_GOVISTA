@@ -77,6 +77,7 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None):
     from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
                                     Paragraph, Spacer)
     from reportlab.lib.styles import getSampleStyleSheet
+    from datetime import datetime
 
     sales = Sale.objects.select_related('plan', 'createdBy').filter(
         date__gte=from_date, date__lte=to_date).order_by('date', 'id')
@@ -96,8 +97,11 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None):
         'combo_analog': 'INTERNET + TV ANALOGA', 'combo_digital': 'INTERNET + TV DIGITAL',
     }
 
+    title_from = datetime.strptime(from_date, '%Y-%m-%d').strftime('%d/%m/%Y')
+    title_to = datetime.strptime(to_date, '%Y-%m-%d').strftime('%d/%m/%Y')
+
     story = _report_header(
-        Paragraph(f'MOV. CLIENTES {from_date} al {to_date}', styles['Title']),
+        Paragraph(f'MOV. CLIENTES {title_from} al {title_to}', styles['Title']),
         Paragraph('', styles['Normal']),
     )
 
@@ -206,6 +210,7 @@ def build_sales_xlsx(from_date, to_date):
 
 def build_sales_png(from_date, to_date):
     from PIL import Image, ImageDraw, ImageFont
+    from datetime import datetime
 
     sales = Sale.objects.select_related('plan', 'createdBy').filter(
         date__gte=from_date, date__lte=to_date).order_by('date', 'id')
@@ -237,7 +242,9 @@ def build_sales_png(from_date, to_date):
     draw = ImageDraw.Draw(img)
 
     # Title
-    draw.text((padding, 15), f'MOV. CLIENTES  {from_date} al {to_date}', fill='#1D4ED8', font=font_title)
+    title_from = datetime.strptime(from_date, '%Y-%m-%d').strftime('%d/%m/%Y')
+    title_to = datetime.strptime(to_date, '%Y-%m-%d').strftime('%d/%m/%Y')
+    draw.text((padding, 15), f'MOV. CLIENTES  {title_from} al {title_to}', fill='#1D4ED8', font=font_title)
 
     # Header row
     y = title_height
