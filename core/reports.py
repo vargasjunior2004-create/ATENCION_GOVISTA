@@ -85,15 +85,6 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None):
     if service_type:
         sales = sales.filter(serviceType=service_type)
 
-    # Service type mapping
-    service_type_map = {
-        'internet': 'INTERNET',
-        'tv': 'TV ANALOGA',
-        'tv_digital': 'TV DIGITAL',
-        'combo_analog': 'INTERNET + TV ANALOGA',
-        'combo_digital': 'INTERNET + TV DIGITAL',
-    }
-
     styles = getSampleStyleSheet()
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
@@ -104,46 +95,26 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None):
         'internet': 'INTERNET', 'tv': 'TV ANALOGA', 'tv_digital': 'TV DIGITAL',
         'combo_analog': 'INTERNET + TV ANALOGA', 'combo_digital': 'INTERNET + TV DIGITAL',
     }
-    subtitle_parts = []
-    if request_type:
-        subtitle_parts.append(REQUEST_TYPE_LABELS.get(request_type, request_type.upper()))
-    if service_type:
-        subtitle_parts.append(SERVICE_TYPE_LABELS.get(service_type, service_type.upper()))
-    title_label = ' - '.join(subtitle_parts) if subtitle_parts else 'TODOS'
 
     story = _report_header(
-        Paragraph(f'MOV. CLIENTES - {title_label}', styles['Title']),
-        Paragraph(f'Periodo: {from_date} al {to_date}', styles['Normal']),
+        Paragraph(f'MOV. CLIENTES {from_date} al {to_date}', styles['Title']),
+        Paragraph('', styles['Normal']),
     )
 
-    if request_type == 'retiro':
-        header = ['Fecha', 'Kardex', 'Cliente', 'Servicio', 'Solicitud', 'Plan', 'Motivo', 'Monto Ini', 'Dif', 'Operador']
-    else:
-        header = ['Fecha', 'Kardex', 'Cliente', 'Servicio', 'Solicitud', 'Plan', 'Monto Ini', 'Dif', 'Operador']
+    header = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD', 'PLAN', 'MONTO', 'OPERADOR']
     rows = [header]
     for s in sales:
-        service_label = service_type_map.get(s.serviceType, s.serviceType)
-        if request_type == 'retiro':
-            rows.append([
-                s.date.strftime('%d/%m/%Y') if s.date else '',
-                s.clientCode, s.clientName,
-                service_label, s.get_requestType_display(),
-                s.plan.label,
-                s.changeReason or '-',
-                f'{float(s.total):.2f}',
-                f'{float(s.total):.2f}',
-                s.createdBy.name,
-            ])
-        else:
-            rows.append([
-                s.date.strftime('%d/%m/%Y') if s.date else '',
-                s.clientCode, s.clientName,
-                service_label, s.get_requestType_display(),
-                s.plan.label,
-                f'{float(s.total):.2f}',
-                f'{float(s.total):.2f}',
-                s.createdBy.name,
-            ])
+        service_label = SERVICE_TYPE_LABELS.get(s.serviceType, s.serviceType)
+        rows.append([
+            s.date.strftime('%d/%m/%Y') if s.date else '',
+            s.clientCode or '',
+            s.clientName or '',
+            service_label,
+            s.get_requestType_display() or '',
+            s.plan.label if s.plan else '',
+            f'{float(s.total):.2f}',
+            s.createdBy.name if s.createdBy else '',
+        ])
 
     table = Table(rows, repeatRows=1)
     table.setStyle(TableStyle([
@@ -177,15 +148,8 @@ def build_sales_xlsx(from_date, to_date):
     ws = wb.active
     ws.title = 'MOV. CLIENTES'
 
-    # Encabezados exactos como en el Excel original
-    headers = [
-        'FECHA', 'KARDEX', 'NOMBRE CLIENTE', 'TIPO DE SERVICIO', 'TIPO DE SOLICITUD',
-        'PAQUETE TV CABLE', 'PAQUETE INTERNET', 'MONTO INICIAL', 'DIFERENCIA',
-        'CAJERA(O)', 'MOTIVO CAMBIO DE PLAN',
-        'PAQUETE CAMBIO TV CABLE', 'PAQUETE CAMBIO INTERNET', 'COMENTARIOS'
-    ]
+    headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD', 'PLAN', 'MONTO', 'OPERADOR']
 
-    # Estilos
     header_font = Font(bold=True, color='FFFFFF')
     header_fill = PatternFill('solid', fgColor='1D4ED8')
     header_alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
@@ -196,7 +160,6 @@ def build_sales_xlsx(from_date, to_date):
         bottom=Side(style='thin')
     )
 
-    # Escribir encabezados
     for col, header in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col, value=header)
         cell.font = header_font
@@ -204,54 +167,34 @@ def build_sales_xlsx(from_date, to_date):
         cell.alignment = header_alignment
         cell.border = thin_border
 
-    # Service type mapping
-    service_type_map = {
-        'internet': 'INTERNET',
-        'tv': 'TV ANALOGA',
-        'tv_digital': 'TV DIGITAL',
-        'combo_analog': 'INTERNET + TV ANALOGA',
-        'combo_digital': 'INTERNET + TV DIGITAL',
+    SERVICE_TYPE_LABELS = {
+        'internet': 'INTERNET', 'tv': 'TV ANALOGA', 'tv_digital': 'TV DIGITAL',
+        'combo_analog': 'INTERNET + TV ANALOGA', 'combo_digital': 'INTERNET + TV DIGITAL',
     }
 
-    # Escribir datos
     for row_idx, s in enumerate(sales, 2):
-        service_label = service_type_map.get(s.serviceType, s.serviceType)
-        
-        # Determine package TV and Internet based on service type
-        paq_tv = ''
-        paq_inet = ''
-        if 'tv' in s.serviceType or 'combo' in s.serviceType:
-            paq_tv = s.plan.label
-        if 'internet' in s.serviceType or 'combo' in s.serviceType:
-            paq_inet = s.plan.label
+        service_label = SERVICE_TYPE_LABELS.get(s.serviceType, s.serviceType)
 
         data_row = [
             s.date.strftime('%d/%m/%Y') if s.date else '',
-            s.clientCode,
-            s.clientName,
+            s.clientCode or '',
+            s.clientName or '',
             service_label,
-            s.get_requestType_display(),
-            paq_tv,
-            paq_inet,
+            s.get_requestType_display() or '',
+            s.plan.label if s.plan else '',
             float(s.total),
-            float(s.total),
-            s.createdBy.name,
-            s.changeReason if s.requestType == 'cambio_plan' else '',
-            '',  # Paquete cambio TV (no aplica por ahora)
-            '',  # Paquete cambio Internet (no aplica por ahora)
-            s.notes,
+            s.createdBy.name if s.createdBy else '',
         ]
 
         for col, value in enumerate(data_row, 1):
             cell = ws.cell(row=row_idx, column=col, value=value)
             cell.border = thin_border
-            if col in [8, 9]:  # Montos
+            if col == 7:
                 cell.number_format = '#,##0.00'
 
-    # Anchos de columna
-    column_widths = [12, 12, 28, 24, 18, 18, 18, 14, 14, 20, 20, 20, 20, 30]
+    column_widths = [14, 14, 35, 24, 20, 20, 14, 20]
     for i, width in enumerate(column_widths, 1):
-        ws.column_dimensions[chr(64 + i) if i <= 26 else 'A' + chr(64 + i - 26)].width = width
+        ws.column_dimensions[chr(64 + i)].width = width
 
     buf = BytesIO()
     wb.save(buf)
@@ -267,15 +210,12 @@ def build_sales_png(from_date, to_date):
     sales = Sale.objects.select_related('plan', 'createdBy').filter(
         date__gte=from_date, date__lte=to_date).order_by('date', 'id')
 
-    service_type_map = {
-        'internet': 'INTERNET',
-        'tv': 'TV ANALOGA',
-        'tv_digital': 'TV DIGITAL',
-        'combo_analog': 'INTERNET + TV ANALOGA',
-        'combo_digital': 'INTERNET + TV DIGITAL',
+    SERVICE_TYPE_LABELS = {
+        'internet': 'INTERNET', 'tv': 'TV ANALOGA', 'tv_digital': 'TV DIGITAL',
+        'combo_analog': 'INTERNET + TV ANALOGA', 'combo_digital': 'INTERNET + TV DIGITAL',
     }
 
-    headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD', 'PLAN', 'MONTO', 'CAJERA']
+    headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD', 'PLAN', 'MONTO', 'OPERADOR']
     col_widths = [140, 130, 300, 240, 180, 180, 120, 240]
     row_height = 40
     padding = 16
@@ -312,7 +252,7 @@ def build_sales_png(from_date, to_date):
     for idx, s in enumerate(sales):
         bg = '#F8FAFC' if idx % 2 == 0 else '#FFFFFF'
         draw.rectangle([0, y, total_width, y + row_height], fill=bg)
-        service_label = service_type_map.get(s.serviceType, s.serviceType)
+        service_label = SERVICE_TYPE_LABELS.get(s.serviceType, s.serviceType)
         values = [
             s.date.strftime('%d/%m/%Y') if s.date else '',
             s.clientCode or '',
