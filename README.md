@@ -42,10 +42,11 @@ Login por **nombre de usuario** (no email):
 - **Mensaje profesional:** cuando los selects estan en `-- Seleccione --` se muestra "Selecciona filtros para mostrar informacion"
 - **PDF condicionado:** boton deshabilitado (gris) hasta seleccionar tipo de movimiento Y tipo de servicio
 
-### Reportes
-- **PDF:** tabla con 8 columnas (monto = mensualidad + instalacion)
-- **XLSX:** 14 columnas segun formato de empresa
-- **Foto PNG:** imagen del reporte diario en formato compacto
+### Reportes (normalizados)
+- **Formato unico:** todos los reportes (PDF, XLSX, PNG) tienen las mismas 8 columnas:
+  - FECHA | KARDEX | CLIENTE | SERVICIO | SOLICITUD | PLAN | MONTO | OPERADOR
+- **Fecha:** formato DD/MM/YYYY en titulo y datos
+- **Titulo:** `MOV. CLIENTES {fecha_inicio} al {fecha_fin}`
 - **Links publicos:** PDF y XLSX con vigencia de 1 hora
 
 ### Dashboard
@@ -67,6 +68,8 @@ Login por **nombre de usuario** (no email):
 - JWT 5 min + inactividad 5 min (solo clicks)
 - Auto-logout en 401
 - Paginacion: 25 registros por pagina
+- **Menu de usuario:** dropdown con opciones "Cambiar Contrasena" y "Cerrar Sesion"
+- **Cambiar Contrasena:** modal con contrasena actual, nueva contrasena y confirmacion
 
 ## Roles
 
@@ -105,6 +108,7 @@ Sales_Tracker/
 |--------|------|------|-------------|
 | POST | /api/auth/login | No | Login por nombre |
 | GET | /api/auth/me | Si | Usuario actual |
+| POST | /api/auth/change-password | Si | Cambiar contrasena |
 | GET | /api/plans | Admin | Listar planes |
 | GET | /api/plans/active | Si | Planes activos |
 | POST | /api/plans | Admin | Crear plan |
