@@ -21,8 +21,8 @@ Login por **nombre de usuario** (no email):
 
 | Usuario | Rol | Contrasena |
 |---------|-----|------------|
-| Administrador | admin | `admin123` |
-| JUNIOR | admin | `admin123` |
+| Administrador | ADMINISTRADOR | `admin123` |
+| JUNIOR | ADMINISTRADOR | `admin123` |
 
 ## Funcionalidades
 
@@ -75,8 +75,8 @@ Login por **nombre de usuario** (no email):
 
 ## Roles
 
-- **admin:** acceso total (crear, editar, eliminar movimientos, planes, usuarios)
-- **ventas:** solo puede registrar movimientos y ver reportes
+- **ADMINISTRADOR:** acceso total (crear, editar, eliminar movimientos, planes, usuarios)
+- **OPERADOR:** solo puede registrar movimientos y ver reportes
 
 ## Estructura
 
