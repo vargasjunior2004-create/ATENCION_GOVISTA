@@ -79,6 +79,11 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None):
     from reportlab.lib.styles import getSampleStyleSheet
     from datetime import datetime
 
+    SERVICE_TYPE_LABELS = {
+        'internet': 'INTERNET', 'tv': 'TV ANALOGA', 'tv_digital': 'TV DIGITAL',
+        'combo_analog': 'INTERNET + TV ANALOGA', 'combo_digital': 'INTERNET + TV DIGITAL',
+    }
+
     sales = Sale.objects.select_related('plan', 'createdBy').filter(
         date__gte=from_date, date__lte=to_date).order_by('date', 'id')
     if request_type:
@@ -92,16 +97,15 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None):
                             leftMargin=12 * mm, rightMargin=12 * mm,
                             topMargin=12 * mm, bottomMargin=12 * mm)
 
-    SERVICE_TYPE_LABELS = {
-        'internet': 'INTERNET', 'tv': 'TV ANALOGA', 'tv_digital': 'TV DIGITAL',
-        'combo_analog': 'INTERNET + TV ANALOGA', 'combo_digital': 'INTERNET + TV DIGITAL',
-    }
-
     title_from = datetime.strptime(from_date, '%Y-%m-%d').strftime('%d/%m/%Y')
     title_to = datetime.strptime(to_date, '%Y-%m-%d').strftime('%d/%m/%Y')
 
+    request_label = REQUEST_TYPE_LABELS.get(request_type, 'TODOS LOS MOVIMIENTOS')
+    service_label = SERVICE_TYPE_LABELS.get(service_type, 'TODOS LOS SERVICIOS')
+    title = f'MOV. CLIENTES — {request_label} — {service_label}'
+
     story = _report_header(
-        Paragraph(f'MOV. CLIENTES {title_from} al {title_to}', styles['Title']),
+        Paragraph(f'{title}<br/><font size="9">{title_from} al {title_to}</font>', styles['Title']),
         Paragraph('', styles['Normal']),
     )
 
