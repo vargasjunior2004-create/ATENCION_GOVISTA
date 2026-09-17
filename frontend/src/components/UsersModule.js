@@ -121,8 +121,8 @@ export default function UsersModule() {
                 {...(!editingId && { required: true })}
               />
               <Select label="Rol" name="role" value={form.role} onChange={handleChange}>
-                <option value="ventas">Movimientos</option>
-                <option value="admin">Administrador</option>
+                <option value="ventas">OPERADOR</option>
+                <option value="admin">ADMINISTRADOR</option>
               </Select>
               <div className="flex gap-3 pt-2">
                 <Button type="submit">Guardar</Button>
@@ -147,7 +147,7 @@ export default function UsersModule() {
             {users.map((u) => (
               <tr key={u.id} className={`hover:bg-brand-50/30 transition-colors ${!u.active ? 'opacity-50' : ''}`}>
                 <td className="px-5 py-3.5 font-medium text-slate-900">{u.name}</td>
-                <td className="px-4 py-3"><Badge color={u.role === 'admin' ? 'amber' : 'blue'}>{u.role}</Badge></td>
+                <td className="px-4 py-3"><Badge color={u.role === 'admin' ? 'amber' : 'blue'}>{u.role === 'admin' ? 'ADMINISTRADOR' : 'OPERADOR'}</Badge></td>
                 <td className="px-4 py-3">
                   <Badge color={u.active ? 'green' : 'red'}>{u.active ? 'Activo' : 'Inactivo'}</Badge>
                 </td>
@@ -173,7 +173,7 @@ export default function UsersModule() {
                 <p className="font-semibold text-slate-900">{u.name}</p>
               </div>
               <div className="flex gap-1.5">
-                <Badge color={u.role === 'admin' ? 'amber' : 'blue'}>{u.role}</Badge>
+                <Badge color={u.role === 'admin' ? 'amber' : 'blue'}>{u.role === 'admin' ? 'ADMINISTRADOR' : 'OPERADOR'}</Badge>
                 <Badge color={u.active ? 'green' : 'red'}>{u.active ? 'Activo' : 'Inactivo'}</Badge>
               </div>
             </div>

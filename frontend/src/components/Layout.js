@@ -210,7 +210,7 @@ export default function Layout() {
             </div>
             <div className="flex-1 min-w-0 text-left">
               <p className="text-sm text-white font-medium truncate">{user?.name}</p>
-              <Badge color={user?.role === 'admin' ? 'amber' : 'blue'} className="text-[9px] mt-0.5">{user?.role}</Badge>
+              <Badge color={user?.role === 'admin' ? 'amber' : 'blue'} className="text-[9px] mt-0.5">{user?.role === 'admin' ? 'ADMINISTRADOR' : 'OPERADOR'}</Badge>
             </div>
             <svg className={`w-4 h-4 text-white/40 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
