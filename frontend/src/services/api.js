@@ -88,10 +88,12 @@ const api = {
     if (serviceType && serviceType !== 'all') params.set('serviceType', serviceType);
     return request(`/api/reports/pdf?${params.toString()}`);
   },
-  getXLSX: (from, to) => {
+  getXLSX: (from, to, requestType = '', serviceType = '') => {
     const params = new URLSearchParams();
     if (from) params.set('from', from);
     if (to) params.set('to', to);
+    if (requestType && requestType !== 'all') params.set('requestType', requestType);
+    if (serviceType && serviceType !== 'all') params.set('serviceType', serviceType);
     return request(`/api/reports/xlsx?${params.toString()}`);
   },
   getPNG: (from, to) => {
