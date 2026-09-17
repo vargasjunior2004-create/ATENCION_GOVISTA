@@ -145,12 +145,21 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None):
 
 # ---------------------------------------------------------------- XLSX (sales)
 
-def build_sales_xlsx(from_date, to_date):
+def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
+    SERVICE_TYPE_LABELS = {
+        'internet': 'INTERNET', 'tv': 'TV ANALOGA', 'tv_digital': 'TV DIGITAL',
+        'combo_analog': 'INTERNET + TV ANALOGA', 'combo_digital': 'INTERNET + TV DIGITAL',
+    }
+
     sales = Sale.objects.select_related('plan', 'createdBy').filter(
         date__gte=from_date, date__lte=to_date).order_by('date', 'id')
+    if request_type:
+        sales = sales.filter(requestType=request_type)
+    if service_type:
+        sales = sales.filter(serviceType=service_type)
 
     wb = Workbook()
     ws = wb.active
@@ -174,11 +183,6 @@ def build_sales_xlsx(from_date, to_date):
         cell.fill = header_fill
         cell.alignment = header_alignment
         cell.border = thin_border
-
-    SERVICE_TYPE_LABELS = {
-        'internet': 'INTERNET', 'tv': 'TV ANALOGA', 'tv_digital': 'TV DIGITAL',
-        'combo_analog': 'INTERNET + TV ANALOGA', 'combo_digital': 'INTERNET + TV DIGITAL',
-    }
 
     for row_idx, s in enumerate(sales, 2):
         service_label = SERVICE_TYPE_LABELS.get(s.serviceType, s.serviceType)

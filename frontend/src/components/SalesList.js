@@ -176,7 +176,7 @@ export default function SalesList() {
         ext = 'pdf';
         formatLabel = 'PDF';
       } else {
-        blob = await api.getXLSX(from, to);
+        blob = await api.getXLSX(from, to, requestType, serviceType);
         ext = 'xlsx';
         formatLabel = 'Excel';
       }

@@ -38,11 +38,14 @@ class SalesPdfView(APIView):
 class SalesXlsxView(APIView):
     def get(self, request):
         from_date, to_date = _sales_range(request.query_params)
-        buf = build_sales_xlsx(from_date, to_date)
+        request_type = request.query_params.get('requestType') or None
+        service_type = request.query_params.get('serviceType') or None
+        buf = build_sales_xlsx(from_date, to_date, request_type, service_type)
+        suffix = f'-{REQUEST_TYPE_LABELS.get(request_type, "TODOS")}' if request_type else ''
         response = HttpResponse(
             buf.getvalue(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        response['Content-Disposition'] = f'attachment; filename="planilla-{from_date}-{to_date}.xlsx"'
+        response['Content-Disposition'] = f'attachment; filename="planilla{suffix}-{from_date}-{to_date}.xlsx"'
         return response
 
 
