@@ -38,15 +38,17 @@ Login por **nombre de usuario** (no email):
 - **Selects con opciones predeterminadas:**
   - Tipo de Movimiento: `-- Seleccione --`, `Todos los movimientos`, Nuevo Contrato, Cambio de Plan, Recontratacion, Retiro, Adicion, Baja Temporal, Otro
   - Tipo de Servicio: `-- Seleccione --`, `Todos los tipos de servicio`, Internet, TV Cable, TV Digital, Internet + TV Analoga, Internet + TV Digital
+  - Formato: `-- Seleccione --`, PDF, Excel
 - **Boton Buscar:** solo busca al hacer clic (no automatico)
 - **Mensaje profesional:** cuando los selects estan en `-- Seleccione --` se muestra "Selecciona filtros para mostrar informacion"
-- **PDF condicionado:** boton deshabilitado (gris) hasta seleccionar tipo de movimiento Y tipo de servicio
+- **Reporte condicionado:** boton deshabilitado (gris) hasta seleccionar los 3 filtros (movimiento, servicio y formato)
 
 ### Reportes (normalizados)
-- **Formato unico:** todos los reportes (PDF, XLSX, PNG) tienen las mismas 8 columnas:
+- **Formato desde filtros:** usuario elige PDF o Excel antes de generar
+- **Columnas unificadas:** todos los reportes tienen las mismas 8 columnas:
   - FECHA | KARDEX | CLIENTE | SERVICIO | SOLICITUD | PLAN | MONTO | OPERADOR
 - **Fecha:** formato DD/MM/YYYY en titulo y datos
-- **Titulo:** `MOV. CLIENTES {fecha_inicio} al {fecha_fin}`
+- **Titulo PDF:** `MOV. CLIENTES — TIPO MOVIMIENTO — TIPO SERVICIO` + fechas
 - **Links publicos:** PDF y XLSX con vigencia de 1 hora
 
 ### Dashboard
