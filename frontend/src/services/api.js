@@ -84,8 +84,8 @@ const api = {
     const params = new URLSearchParams();
     if (from) params.set('from', from);
     if (to) params.set('to', to);
-    if (requestType) params.set('requestType', requestType);
-    if (serviceType) params.set('serviceType', serviceType);
+    if (requestType && requestType !== 'all') params.set('requestType', requestType);
+    if (serviceType && serviceType !== 'all') params.set('serviceType', serviceType);
     return request(`/api/reports/pdf?${params.toString()}`);
   },
   getXLSX: (from, to) => {
