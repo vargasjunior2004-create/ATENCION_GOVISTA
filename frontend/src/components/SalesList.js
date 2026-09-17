@@ -71,6 +71,7 @@ export default function SalesList() {
   const [to, setTo] = useState(today);
   const [requestType, setRequestType] = useState('');
   const [serviceType, setServiceType] = useState('');
+  const [reportFormat, setReportFormat] = useState('');
   const [sales, setSales] = useState([]);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -79,11 +80,11 @@ export default function SalesList() {
   const [editError, setEditError] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, total_pages: 1 });
-  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [generatingReport, setGeneratingReport] = useState(false);
   const [msg, setMsg] = useState('');
   const [deletingSale, setDeletingSale] = useState(null);
 
-  const hasSelection = requestType !== '' && serviceType !== '';
+  const hasSelection = requestType !== '' && serviceType !== '' && reportFormat !== '';
 
   const loadSales = useCallback(async (p = 1) => {
     if (!hasSelection) {
@@ -164,26 +165,35 @@ export default function SalesList() {
   const currentPlans = filteredPlans.filter((p) => !p.legacy);
   const legacyPlans = filteredPlans.filter((p) => p.legacy);
 
-  const handleGeneratePDF = async () => {
-    if (!requestType) return;
-    setGeneratingPdf(true);
+  const handleGenerateReport = async () => {
+    if (!requestType || !serviceType || !reportFormat) return;
+    setGeneratingReport(true);
     setMsg('');
     try {
-      const blob = await api.getPDF(from, to, requestType, serviceType);
+      let blob, ext, typeName, formatLabel;
+      if (reportFormat === 'pdf') {
+        blob = await api.getPDF(from, to, requestType, serviceType);
+        ext = 'pdf';
+        formatLabel = 'PDF';
+      } else {
+        blob = await api.getXLSX(from, to);
+        ext = 'xlsx';
+        formatLabel = 'Excel';
+      }
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      const typeName = REQUEST_TYPES.find(t => t.value === requestType)?.label || requestType;
-      a.download = `reporte-${typeName}-${from}-${to}.pdf`;
+      typeName = REQUEST_TYPES.find(t => t.value === requestType)?.label || requestType;
+      a.download = `reporte-${typeName}-${from}-${to}.${ext}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      setMsg('PDF generado correctamente.');
+      setMsg(`Reporte ${formatLabel} generado correctamente.`);
     } catch (err) {
-      setMsg(err.error || 'Error al generar PDF');
+      setMsg(err.error || 'Error al generar reporte');
     } finally {
-      setGeneratingPdf(false);
+      setGeneratingReport(false);
     }
   };
 
@@ -217,19 +227,28 @@ export default function SalesList() {
               ))}
             </Select>
           </div>
+          <div>
+            <Select label="Formato" value={reportFormat} onChange={(e) => setReportFormat(e.target.value)}>
+              <option value="">-- Seleccione --</option>
+              <option value="pdf">PDF</option>
+              <option value="xlsx">Excel</option>
+            </Select>
+          </div>
           <Button variant="secondary" onClick={() => loadSales(1)}>Buscar</Button>
+        </div>
+        <div className="flex items-center gap-3 mt-3">
           <Button
             variant="primary"
-            onClick={handleGeneratePDF}
-            disabled={!requestType || !serviceType || generatingPdf}
-            className={(!requestType || !serviceType) ? 'opacity-50 cursor-not-allowed' : ''}
+            onClick={handleGenerateReport}
+            disabled={!hasSelection || generatingReport}
+            className={(!hasSelection) ? 'opacity-50 cursor-not-allowed' : ''}
           >
-            {generatingPdf ? 'Generando...' : 'Reporte PDF'}
+            {generatingReport ? 'Generando...' : 'Reporte'}
           </Button>
+          {!hasSelection && (
+            <p className="text-xs text-slate-400">Selecciona todos los filtros para habilitar el reporte</p>
+          )}
         </div>
-        {(!requestType || !serviceType) && (
-          <p className="text-xs text-slate-400 mt-2">Selecciona tipo de movimiento y tipo de servicio para habilitar el reporte PDF</p>
-        )}
       </Card>
 
       {msg && <Alert type={msg.includes('Error') ? 'error' : 'success'}>{msg}</Alert>}
