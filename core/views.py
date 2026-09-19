@@ -299,6 +299,7 @@ class ActivePromotionsView(APIView):
         today = tz.localdate()
         promos = Promotion.objects.filter(
             plan_id=plan_id, active=True,
+            plan__active=True, plan__legacy=False,
             start_date__lte=today, end_date__gte=today,
         ).order_by('-start_date')
         return Response(PromotionSerializer(promos, many=True).data)

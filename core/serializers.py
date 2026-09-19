@@ -88,10 +88,10 @@ class PromotionWriteSerializer(serializers.Serializer):
     def validate(self, attrs):
         plan_id = attrs.get('plan')
         try:
-            plan = Plan.objects.get(id=plan_id, active=True)
+            plan = Plan.objects.get(id=plan_id, active=True, legacy=False)
         except Plan.DoesNotExist:
             raise serializers.ValidationError(
-                {'plan': 'Plan no encontrado o inactivo'})
+                {'plan': 'Plan no encontrado, inactivo o anterior'})
         attrs['plan'] = plan
 
         if not attrs.get('apply_installation') and not attrs.get('apply_monthly'):
