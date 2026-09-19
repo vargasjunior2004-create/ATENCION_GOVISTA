@@ -21,6 +21,7 @@ async function request(path, options = {}) {
     const err = await res.json().catch(() => ({ error: 'Error del servidor' }));
     throw err;
   }
+  if (res.status === 204) return null;
   // Endpoints que devuelven archivos binarios (PDF, XLSX)
   const ct = res.headers.get('content-type');
   if (ct && (ct.includes('application/pdf') || ct.includes('spreadsheetml') || ct.includes('octet-stream') || ct.includes('image/png') || ct.includes('image/'))) {
