@@ -231,7 +231,16 @@ class PromotionDetailView(IsAdminMixin, APIView):
         if not promo:
             return Response({'error': 'Promocion no encontrada'},
                             status=status.HTTP_404_NOT_FOUND)
-        serializer = PromotionWriteSerializer(data=request.data, partial=True)
+
+        data = request.data
+
+        # Simple toggle (active only) — skip full serializer
+        if set(data.keys()) <= {'active'}:
+            promo.active = data.get('active', promo.active)
+            promo.save()
+            return Response(PromotionSerializer(promo).data)
+
+        serializer = PromotionWriteSerializer(data=data, partial=True)
         if not serializer.is_valid():
             return Response({'error': _first_error(serializer)},
                             status=status.HTTP_400_BAD_REQUEST)
