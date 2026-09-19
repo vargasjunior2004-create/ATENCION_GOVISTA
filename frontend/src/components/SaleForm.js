@@ -133,8 +133,8 @@ export default function SaleForm() {
 
   const getEffectivePrices = () => {
     if (!selectedPlan) return { installation: 0, monthly: 0, total: 0 };
-    const installation = selectedPlan.installation;
-    const monthly = selectedPlan.monthly;
+    const installation = parseFloat(selectedPlan.installation) || 0;
+    const monthly = parseFloat(selectedPlan.monthly) || 0;
     if (priceMode === 'promo' && selectedPromotion) {
       const promoInst = selectedPromotion.apply_installation
         ? parseFloat(selectedPromotion.installation_price)
@@ -151,7 +151,7 @@ export default function SaleForm() {
     return {
       installation,
       monthly,
-      total: isRetiro ? monthly : parseFloat(selectedPlan.total),
+      total: isRetiro ? monthly : installation + monthly,
     };
   };
 
