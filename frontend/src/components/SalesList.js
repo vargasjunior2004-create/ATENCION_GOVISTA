@@ -50,6 +50,17 @@ function SaleCard({ sale, isAdmin, onEdit, onDelete }) {
         <span className="text-slate-500">{sale.Plan?.label || '-'}</span>
         <span className="font-bold text-brand-700 tabular-nums">{parseFloat(sale.total).toFixed(2)} Bs</span>
       </div>
+      {sale.promotion_name && (
+        <div className="flex items-center gap-2 text-xs">
+          <Badge color="emerald">Promo: {sale.promotion_name}</Badge>
+          {sale.applied_installation != null && (
+            <span className="text-slate-500">Inst: {parseFloat(sale.applied_installation).toFixed(2)}</span>
+          )}
+          {sale.applied_monthly != null && (
+            <span className="text-slate-500">Mensual: {parseFloat(sale.applied_monthly).toFixed(2)}</span>
+          )}
+        </div>
+      )}
       <div className="flex items-center justify-between pt-2 border-t border-slate-100">
         <span className="text-xs text-slate-400">por {sale.creator?.name || '-'}</span>
         {isAdmin && (

@@ -7,11 +7,12 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
-from .models import User, Customer, Plan, Sale, Backup
+from .models import User, Customer, Plan, Promotion, Sale, Backup
 from .serializers import (
     UserSerializer, UserWriteSerializer, PlanSerializer,
     PlanPublicSerializer, CustomerSerializer, SaleSerializer,
     SaleCreateSerializer, BackupSerializer,
+    PromotionSerializer, PromotionWriteSerializer,
 )
 from .reports import build_sales_pdf, build_sales_xlsx
 
@@ -168,6 +169,139 @@ class ActivePlansView(APIView):
     def get(self, request):
         plans = Plan.objects.filter(active=True).order_by('type', 'code')
         return Response(PlanPublicSerializer(plans, many=True).data)
+
+
+class PromotionListView(IsAdminMixin, APIView):
+    def get(self, request):
+        error = self.check_admin(request)
+        if error:
+            return error
+        plan_id = request.query_params.get('plan_id')
+        qs = Promotion.objects.select_related('plan').all().order_by('-start_date', '-id')
+        if plan_id:
+            qs = qs.filter(plan_id=plan_id)
+        return Response(PromotionSerializer(qs, many=True).data)
+
+    def post(self, request):
+        error = self.check_admin(request)
+        if error:
+            return error
+        serializer = PromotionWriteSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({'error': _first_error(serializer)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        data = serializer.validated_data
+        plan = data.pop('plan')
+
+        # Check for conflicting promotions
+        conflict = Promotion.objects.filter(
+            plan=plan, active=True,
+            start_date__lte=data['end_date'],
+            end_date__gte=data['start_date'],
+        )
+        if data.get('apply_installation'):
+            conflict = conflict.filter(apply_installation=True)
+        elif data.get('apply_monthly'):
+            conflict = conflict.filter(apply_monthly=True)
+        if conflict.exists():
+            return Response(
+                {'error': 'Ya existe una promocion activa para este concepto en el periodo seleccionado'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        promo = Promotion.objects.create(
+            plan=plan,
+            created_by=request.user,
+            **data,
+        )
+        return Response(PromotionSerializer(promo).data, status=status.HTTP_201_CREATED)
+
+
+class PromotionDetailView(IsAdminMixin, APIView):
+    def _get_promo(self, pk):
+        try:
+            return Promotion.objects.get(id=pk)
+        except Promotion.DoesNotExist:
+            return None
+
+    def put(self, request, pk):
+        error = self.check_admin(request)
+        if error:
+            return error
+        promo = self._get_promo(pk)
+        if not promo:
+            return Response({'error': 'Promocion no encontrada'},
+                            status=status.HTTP_404_NOT_FOUND)
+        serializer = PromotionWriteSerializer(data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response({'error': _first_error(serializer)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        data = serializer.validated_data
+        plan = data.pop('plan', promo.plan)
+
+        # Check conflicts excluding current promo
+        start = data.get('start_date', promo.start_date)
+        end = data.get('end_date', promo.end_date)
+        apply_inst = data.get('apply_installation', promo.apply_installation)
+        apply_month = data.get('apply_monthly', promo.apply_monthly)
+        conflict = Promotion.objects.filter(
+            plan=plan, active=True, id__ne=promo.id,
+            start_date__lte=end, end_date__gte=start,
+        )
+        if apply_inst:
+            conflict = conflict.filter(apply_installation=True)
+        elif apply_month:
+            conflict = conflict.filter(apply_monthly=True)
+        if conflict.exists():
+            return Response(
+                {'error': 'Ya existe una promocion activa para este concepto en el periodo seleccionado'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        if 'name' in data:
+            promo.name = data['name']
+        promo.plan = plan
+        if 'apply_installation' in data:
+            promo.apply_installation = data['apply_installation']
+        if 'apply_monthly' in data:
+            promo.apply_monthly = data['apply_monthly']
+        if 'installation_price' in data:
+            promo.installation_price = data['installation_price']
+        if 'monthly_price' in data:
+            promo.monthly_price = data['monthly_price']
+        if 'start_date' in data:
+            promo.start_date = data['start_date']
+        if 'end_date' in data:
+            promo.end_date = data['end_date']
+        if 'active' in data:
+            promo.active = data['active']
+        promo.save()
+        return Response(PromotionSerializer(promo).data)
+
+    def delete(self, request, pk):
+        error = self.check_admin(request)
+        if error:
+            return error
+        promo = self._get_promo(pk)
+        if not promo:
+            return Response({'error': 'Promocion no encontrada'},
+                            status=status.HTTP_404_NOT_FOUND)
+        promo.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ActivePromotionsView(APIView):
+    """Promociones vigentes para un plan (cualquier usuario autenticado)."""
+    def get(self, request):
+        plan_id = request.query_params.get('plan_id')
+        if not plan_id:
+            return Response({'error': 'plan_id requerido'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        from django.utils import timezone as tz
+        today = tz.localdate()
+        promos = Promotion.objects.filter(
+            plan_id=plan_id, active=True,
+            start_date__lte=today, end_date__gte=today,
+        ).order_by('-start_date')
+        return Response(PromotionSerializer(promos, many=True).data)
 
 
 class CustomerListView(APIView):

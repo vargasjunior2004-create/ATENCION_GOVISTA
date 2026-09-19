@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User, Customer, Plan, Sale, Backup
+from .models import User, Customer, Plan, Promotion, Sale, Backup
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -56,6 +56,73 @@ class PlanPublicSerializer(serializers.ModelSerializer):
                   'monthly', 'installation', 'total', 'legacy']
 
 
+class PromotionSerializer(serializers.ModelSerializer):
+    planLabel = serializers.SerializerMethodField()
+    is_current = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = Promotion
+        fields = ['id', 'name', 'plan', 'planLabel',
+                  'apply_installation', 'apply_monthly',
+                  'installation_price', 'monthly_price',
+                  'start_date', 'end_date', 'active',
+                  'created_at', 'is_current']
+
+    def get_planLabel(self, obj):
+        return f'{obj.plan.code} - {obj.plan.label}'
+
+
+class PromotionWriteSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=120)
+    plan = serializers.IntegerField()
+    apply_installation = serializers.BooleanField(default=False)
+    apply_monthly = serializers.BooleanField(default=False)
+    installation_price = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False, allow_null=True)
+    monthly_price = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False, allow_null=True)
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    active = serializers.BooleanField(default=True)
+
+    def validate(self, attrs):
+        plan_id = attrs.get('plan')
+        try:
+            plan = Plan.objects.get(id=plan_id, active=True)
+        except Plan.DoesNotExist:
+            raise serializers.ValidationError(
+                {'plan': 'Plan no encontrado o inactivo'})
+        attrs['plan'] = plan
+
+        if not attrs.get('apply_installation') and not attrs.get('apply_monthly'):
+            raise serializers.ValidationError(
+                'Debe seleccionar al menos un concepto (instalacion o mensualidad)')
+
+        if attrs.get('apply_installation'):
+            price = attrs.get('installation_price')
+            if price is None:
+                raise serializers.ValidationError(
+                    {'installation_price': 'Precio de instalacion requerido'})
+            if price < 0:
+                raise serializers.ValidationError(
+                    {'installation_price': 'El precio no puede ser negativo'})
+
+        if attrs.get('apply_monthly'):
+            price = attrs.get('monthly_price')
+            if price is None:
+                raise serializers.ValidationError(
+                    {'monthly_price': 'Precio de mensualidad requerido'})
+            if price < 0:
+                raise serializers.ValidationError(
+                    {'monthly_price': 'El precio no puede ser negativo'})
+
+        if attrs['start_date'] > attrs['end_date']:
+            raise serializers.ValidationError(
+                'La fecha de fin debe ser mayor o igual a la fecha de inicio')
+
+        return attrs
+
+
 class SaleSerializer(serializers.ModelSerializer):
     """Respuesta de venta con las claves exactas que consume el frontend:
     sale.Plan.label y sale.creator.name."""
@@ -67,7 +134,9 @@ class SaleSerializer(serializers.ModelSerializer):
         model = Sale
         fields = ['id', 'date', 'clientCode', 'clientName', 'serviceType',
                   'requestType', 'changeReason', 'planFrom', 'totalFrom',
-                  'notes', 'planId', 'total', 'Plan', 'creator']
+                  'notes', 'planId', 'total', 'Plan', 'creator',
+                  'promotion', 'promotion_name',
+                  'applied_installation', 'applied_monthly']
 
     def get_Plan(self, obj):
         return {'id': obj.plan.id, 'label': obj.plan.label, 'code': obj.plan.code}
@@ -92,6 +161,7 @@ class SaleCreateSerializer(serializers.Serializer):
         max_digits=12, decimal_places=2, required=False, allow_null=True)
     notes = serializers.CharField(required=False, allow_blank=True)
     planId = serializers.IntegerField()
+    promotionId = serializers.IntegerField(required=False, allow_null=True)
 
     def validate(self, attrs):
         try:
@@ -111,19 +181,49 @@ class SaleCreateSerializer(serializers.Serializer):
         if plan.type != expected_type:
             raise serializers.ValidationError(
                 {'serviceType': 'El plan no pertenece al tipo de servicio seleccionado'})
+
+        # Validate promotion if provided
+        promotion = None
+        promotion_id = attrs.get('promotionId')
+        if promotion_id:
+            from django.utils import timezone as tz
+            today = tz.localdate()
+            try:
+                promotion = Promotion.objects.get(
+                    id=promotion_id, plan=plan, active=True,
+                    start_date__lte=today, end_date__gte=today)
+            except Promotion.DoesNotExist:
+                raise serializers.ValidationError(
+                    {'promotionId': 'Promocion no valida, vencida o no pertenece al plan'})
         attrs['plan'] = plan
+        attrs['promotion'] = promotion
         return attrs
 
     def create(self, validated_data):
         user = self.context['user']
         plan = validated_data.pop('plan')
+        promotion = validated_data.pop('promotion', None)
         code = validated_data.get('clientCode', '')
         customer = Customer.objects.filter(code=code).first()
         if customer is None and code:
             customer = Customer(code=code, name=validated_data['clientName'])
             customer.save()
         is_retiro = validated_data.get('requestType', 'nuevo_contrato') == 'retiro'
-        sale_total = plan.monthly if is_retiro else plan.total
+
+        # Calculate prices
+        if promotion:
+            installation = (promotion.installation_price
+                            if promotion.apply_installation
+                            else plan.installation)
+            monthly = (promotion.monthly_price
+                       if promotion.apply_monthly
+                       else plan.monthly)
+        else:
+            installation = plan.installation
+            monthly = plan.monthly
+
+        sale_total = monthly if is_retiro else monthly + installation
+
         return Sale.objects.create(
             date=validated_data['date'],
             clientCode=validated_data['clientCode'],
@@ -137,6 +237,10 @@ class SaleCreateSerializer(serializers.Serializer):
             customer=customer,
             plan=plan,
             total=sale_total,
+            promotion=promotion,
+            promotion_name=promotion.name if promotion else '',
+            applied_installation=installation,
+            applied_monthly=monthly,
             createdBy=user,
         )
 

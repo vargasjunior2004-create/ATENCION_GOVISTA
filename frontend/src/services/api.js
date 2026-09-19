@@ -52,6 +52,21 @@ const api = {
   updatePlan: (id, data) => request(`/api/plans/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deletePlan: (id) => request(`/api/plans/${id}`, { method: 'DELETE' }),
 
+  // Promociones
+  getPromotions: (planId) => {
+    const params = new URLSearchParams();
+    if (planId) params.set('plan_id', planId);
+    return request(`/api/promotions?${params.toString()}`);
+  },
+  getActivePromotions: (planId) => {
+    const params = new URLSearchParams();
+    if (planId) params.set('plan_id', planId);
+    return request(`/api/promotions/active?${params.toString()}`);
+  },
+  createPromotion: (data) => request('/api/promotions', { method: 'POST', body: JSON.stringify(data) }),
+  updatePromotion: (id, data) => request(`/api/promotions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deletePromotion: (id) => request(`/api/promotions/${id}`, { method: 'DELETE' }),
+
   // Ventas
   getSales: (from, to, requestType, page = 1, pageSize = 25, serviceType = '') => {
     const params = new URLSearchParams();
