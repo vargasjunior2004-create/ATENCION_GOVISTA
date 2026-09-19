@@ -90,7 +90,7 @@ class Promotion(models.Model):
     @property
     def is_current(self):
         from django.utils import timezone as tz
-        today = tz.localdate().date() if callable(tz.localdate) else tz.localdate()
+        today = tz.localdate()
         return self.active and self.start_date <= today <= self.end_date
 
 

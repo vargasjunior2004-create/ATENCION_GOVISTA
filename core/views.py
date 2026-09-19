@@ -244,9 +244,9 @@ class PromotionDetailView(IsAdminMixin, APIView):
         apply_inst = data.get('apply_installation', promo.apply_installation)
         apply_month = data.get('apply_monthly', promo.apply_monthly)
         conflict = Promotion.objects.filter(
-            plan=plan, active=True, id__ne=promo.id,
+            plan=plan, active=True,
             start_date__lte=end, end_date__gte=start,
-        )
+        ).exclude(id=promo.id)
         if apply_inst:
             conflict = conflict.filter(apply_installation=True)
         elif apply_month:
