@@ -145,7 +145,7 @@ export default function SalesList() {
       await api.deleteSale(deletingSale.id);
       setDeletingSale(null);
       loadSales(page);
-      setMsg('Venta eliminada correctamente.');
+      setMsg('Movimiento eliminado correctamente.');
     } catch (err) {
       setMsg(err.error || 'Error al eliminar');
       setDeletingSale(null);
