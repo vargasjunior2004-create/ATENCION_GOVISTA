@@ -54,6 +54,46 @@ class Plan(models.Model):
         return f'{self.code} - {self.label}'
 
 
+class Promotion(models.Model):
+    """Promocion asociada a un plan. Permite ofrecer precios especiales
+    durante un periodo de vigencia sin crear planes duplicados."""
+    name = models.CharField(max_length=120)
+    plan = models.ForeignKey(Plan, on_delete=models.CASCADE, related_name='promotions')
+
+    apply_installation = models.BooleanField(
+        default=False, help_text='Si aplica precio promocional a instalacion')
+    apply_monthly = models.BooleanField(
+        default=False, help_text='Si aplica precio promocional a mensualidad')
+
+    installation_price = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text='Precio promocional de instalacion (solo si apply_installation)')
+    monthly_price = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text='Precio promocional de mensualidad (solo si apply_monthly)')
+
+    start_date = models.DateField()
+    end_date = models.DateField()
+    active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='promotions_created')
+
+    class Meta:
+        ordering = ['-start_date', '-id']
+
+    def __str__(self):
+        return f'{self.name} ({self.plan.code})'
+
+    @property
+    def is_current(self):
+        from django.utils import timezone as tz
+        today = tz.localdate().date() if callable(tz.localdate) else tz.localdate()
+        return self.active and self.start_date <= today <= self.end_date
+
+
 class Customer(models.Model):
     """Cliente maestro (KARDEX). Clave natural: code."""
     code = models.CharField(max_length=40, unique=True)
@@ -101,6 +141,18 @@ class Sale(models.Model):
         max_digits=12, decimal_places=2, null=True, blank=True)
     notes = models.CharField(max_length=255, blank=True, default='')
     total = models.DecimalField(max_digits=12, decimal_places=2)
+    promotion = models.ForeignKey(
+        Promotion, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='sales', help_text='Promocion utilizada (snapshot)')
+    promotion_name = models.CharField(
+        max_length=120, blank=True, default='',
+        help_text='Nombre de la promocion al momento del registro')
+    applied_installation = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text='Precio de instalacion aplicado')
+    applied_monthly = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text='Mensualidad aplicada')
     createdBy = models.ForeignKey(
         User, on_delete=models.PROTECT, related_name='sales_created')
     lastEditedBy = models.ForeignKey(

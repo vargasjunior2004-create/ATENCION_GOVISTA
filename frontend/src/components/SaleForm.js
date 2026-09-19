@@ -58,6 +58,11 @@ export default function SaleForm() {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const dropdownRef = useRef(null);
 
+  // Promotion state
+  const [promotions, setPromotions] = useState([]);
+  const [selectedPromotion, setSelectedPromotion] = useState(null);
+  const [priceMode, setPriceMode] = useState('normal');
+
   useEffect(() => {
     api.getActivePlans().then(setPlans).catch(() => {});
   }, []);
@@ -107,10 +112,50 @@ export default function SaleForm() {
     if (form.planId) {
       const p = plans.find((pl) => String(pl.id) === String(form.planId));
       setSelectedPlan(p || null);
+      // Fetch active promotions for this plan
+      api.getActivePromotions(form.planId)
+        .then(setPromotions)
+        .catch(() => setPromotions([]));
+      setPriceMode('normal');
+      setSelectedPromotion(null);
     } else {
       setSelectedPlan(null);
+      setPromotions([]);
+      setSelectedPromotion(null);
+      setPriceMode('normal');
     }
   }, [form.planId, plans]);
+
+  const handlePriceModeChange = (mode, promo) => {
+    setPriceMode(mode);
+    setSelectedPromotion(mode === 'promo' ? promo : null);
+  };
+
+  const getEffectivePrices = () => {
+    if (!selectedPlan) return { installation: 0, monthly: 0, total: 0 };
+    const installation = selectedPlan.installation;
+    const monthly = selectedPlan.monthly;
+    if (priceMode === 'promo' && selectedPromotion) {
+      const promoInst = selectedPromotion.apply_installation
+        ? parseFloat(selectedPromotion.installation_price)
+        : installation;
+      const promoMonthly = selectedPromotion.apply_monthly
+        ? parseFloat(selectedPromotion.monthly_price)
+        : monthly;
+      return {
+        installation: promoInst,
+        monthly: promoMonthly,
+        total: isRetiro ? promoMonthly : promoMonthly + promoInst,
+      };
+    }
+    return {
+      installation,
+      monthly,
+      total: isRetiro ? monthly : parseFloat(selectedPlan.total),
+    };
+  };
+
+  const effectivePrices = getEffectivePrices();
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -129,7 +174,7 @@ export default function SaleForm() {
     setSuccess('');
     setLoading(true);
     try {
-      await api.createSale({
+      const payload = {
         date: form.date,
         clientCode: form.clientCode,
         clientName: form.clientName,
@@ -138,10 +183,15 @@ export default function SaleForm() {
         changeReason: isCambio ? form.changeReason : (isRetiro ? form.retiroReason : ''),
         notes: form.notes,
         planId: Number(form.planId),
-      });
+      };
+      if (selectedPromotion) {
+        payload.promotionId = selectedPromotion.id;
+      }
+      await api.createSale(payload);
       setSuccess('Registro guardado correctamente');
       setForm({ date: today, clientCode: '', clientName: '', serviceType: 'internet', requestType: 'nuevo_contrato', changeReason: '', retiroReason: '', notes: '', planId: '' });
       setSelectedPlan(null); setSelectedCustomer(null); setQuery(''); setCustomers([]);
+      setPromotions([]); setSelectedPromotion(null); setPriceMode('normal');
       setShowPreview(false);
     } catch (err) {
       setError(err.error || 'Error al registrar');
@@ -266,6 +316,70 @@ export default function SaleForm() {
 
           <Input label="Comentarios (opcional)" name="notes" value={form.notes} onChange={handleChange} placeholder="Notas internas" />
 
+          {/* Price mode selection */}
+          {selectedPlan && promotions.length > 0 && (
+            <div className="bg-slate-50 rounded-2xl p-5 space-y-3 border border-slate-100">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Modalidad de precio</h3>
+              <div className="space-y-2">
+                <label className="flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all hover:bg-white"
+                  style={{ borderColor: priceMode === 'normal' ? 'rgb(99 102 241)' : 'rgb(226 232 240)' }}>
+                  <input type="radio" name="priceMode" value="normal"
+                    checked={priceMode === 'normal'}
+                    onChange={() => handlePriceModeChange('normal', null)}
+                    className="mt-0.5 text-brand-600 focus:ring-brand-500" />
+                  <div className="flex-1">
+                    <div className="font-semibold text-sm text-slate-900">Precio normal</div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      Instalacion: {parseFloat(selectedPlan.installation).toFixed(2)} Bs
+                      {' | '}
+                      Mensualidad: {parseFloat(selectedPlan.monthly).toFixed(2)} Bs
+                    </div>
+                  </div>
+                  <div className="font-bold text-sm text-slate-700">
+                    {parseFloat(isRetiro ? selectedPlan.monthly : selectedPlan.total).toFixed(2)} Bs
+                  </div>
+                </label>
+                {promotions.map((promo) => {
+                  const promoInst = promo.apply_installation
+                    ? parseFloat(promo.installation_price)
+                    : parseFloat(selectedPlan.installation);
+                  const promoMonthly = promo.apply_monthly
+                    ? parseFloat(promo.monthly_price)
+                    : parseFloat(selectedPlan.monthly);
+                  const promoTotal = isRetiro ? promoMonthly : promoMonthly + promoInst;
+                  const concepts = [];
+                  if (promo.apply_installation) concepts.push(`Inst: ${parseFloat(promo.installation_price).toFixed(2)} Bs`);
+                  if (promo.apply_monthly) concepts.push(`Mensual: ${parseFloat(promo.monthly_price).toFixed(2)} Bs`);
+                  return (
+                    <label key={promo.id}
+                      className="flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all hover:bg-white"
+                      style={{ borderColor: priceMode === 'promo' && selectedPromotion?.id === promo.id ? 'rgb(99 102 241)' : 'rgb(226 232 240)' }}>
+                      <input type="radio" name="priceMode" value={`promo-${promo.id}`}
+                        checked={priceMode === 'promo' && selectedPromotion?.id === promo.id}
+                        onChange={() => handlePriceModeChange('promo', promo)}
+                        className="mt-0.5 text-brand-600 focus:ring-brand-500" />
+                      <div className="flex-1">
+                        <div className="font-semibold text-sm text-slate-900">Promocion {promo.name}</div>
+                        <div className="text-xs text-emerald-600 font-medium mt-0.5">
+                          {concepts.join(' | ')}
+                        </div>
+                        <div className="text-xs text-slate-500 mt-1">
+                          Instalacion: {promoInst.toFixed(2)} Bs
+                          {' | '}
+                          Mensualidad: {promoMonthly.toFixed(2)} Bs
+                        </div>
+                      </div>
+                      <div className="font-bold text-sm text-emerald-700">
+                        {promoTotal.toFixed(2)} Bs
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Preview */}
           {selectedPlan && (
             <div className="bg-slate-50 rounded-2xl p-5 space-y-3 border border-slate-100">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Vista Previa</h3>
@@ -282,8 +396,18 @@ export default function SaleForm() {
                 <div className="font-medium">{getServiceLabel(form.serviceType)}</div>
                 <div><span className="text-slate-400">Plan:</span></div>
                 <div className="font-medium">{selectedPlan.label}</div>
+                {selectedPromotion && (
+                  <>
+                    <div><span className="text-slate-400">Promocion:</span></div>
+                    <div className="font-medium text-emerald-600">{selectedPromotion.name}</div>
+                  </>
+                )}
+                <div><span className="text-slate-400">Instalacion:</span></div>
+                <div className="font-medium">{effectivePrices.installation.toFixed(2)} Bs</div>
+                <div><span className="text-slate-400">Mensualidad:</span></div>
+                <div className="font-medium">{effectivePrices.monthly.toFixed(2)} Bs</div>
                 <div><span className="text-slate-400">Monto:</span></div>
-                <div className="font-bold text-brand-700">Bs. {parseFloat(isRetiro ? selectedPlan.monthly : selectedPlan.total).toFixed(2)}</div>
+                <div className="font-bold text-brand-700">Bs. {effectivePrices.total.toFixed(2)}</div>
                 {getMotivoLabel() && (
                   <>
                     <div><span className="text-slate-400">Motivo:</span></div>
@@ -321,7 +445,12 @@ export default function SaleForm() {
                 <div className="flex justify-between"><span className="text-slate-400">Solicitud:</span><span className="font-medium">{getRequestLabel(form.requestType)}</span></div>
                 <div className="flex justify-between"><span className="text-slate-400">Servicio:</span><span className="font-medium">{getServiceLabel(form.serviceType)}</span></div>
                 <div className="flex justify-between"><span className="text-slate-400">Plan:</span><span className="font-medium">{selectedPlan.label}</span></div>
-                <div className="flex justify-between border-t border-slate-200 pt-2"><span className="text-slate-400">Monto:</span><span className="font-bold text-brand-700 text-lg">Bs. {parseFloat(isRetiro ? selectedPlan.monthly : selectedPlan.total).toFixed(2)}</span></div>
+                {selectedPromotion && (
+                  <div className="flex justify-between"><span className="text-slate-400">Promocion:</span><span className="font-medium text-emerald-600">{selectedPromotion.name}</span></div>
+                )}
+                <div className="flex justify-between"><span className="text-slate-400">Instalacion:</span><span className="font-medium">{effectivePrices.installation.toFixed(2)} Bs</span></div>
+                <div className="flex justify-between"><span className="text-slate-400">Mensualidad:</span><span className="font-medium">{effectivePrices.monthly.toFixed(2)} Bs</span></div>
+                <div className="flex justify-between border-t border-slate-200 pt-2"><span className="text-slate-400">Monto:</span><span className="font-bold text-brand-700 text-lg">Bs. {effectivePrices.total.toFixed(2)}</span></div>
                 {getMotivoLabel() && (
                   <div className="flex justify-between"><span className="text-slate-400">Motivo:</span><span className="font-medium">{getMotivoLabel()}</span></div>
                 )}
