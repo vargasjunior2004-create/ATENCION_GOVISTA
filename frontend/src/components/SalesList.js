@@ -300,7 +300,9 @@ export default function SalesList() {
                 <Select label="Tipo" name="serviceType" value={editForm.serviceType} onChange={handleEditChange}>
                   <option value="internet">Internet</option>
                   <option value="tv">TV Cable</option>
-                  <option value="combo">Combo</option>
+                  <option value="tv_digital">TV Digital</option>
+                  <option value="combo_analog">Internet + TV Analoga</option>
+                  <option value="combo_digital">Internet + TV Digital</option>
                 </Select>
               </div>
               <Select label="Plan" name="planId" value={editForm.planId} onChange={handleEditChange} required>
