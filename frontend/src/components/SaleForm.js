@@ -99,7 +99,10 @@ export default function SaleForm() {
 
   const filteredPlans = plans.filter((p) => {
     if (form.requestType === 'adicion') return p.type === 'combo';
-    if (form.requestType === 'cambio_plan') return p.active && !p.legacy;
+    if (form.requestType === 'cambio_plan') {
+      const typeMap = { 'internet': 'internet', 'tv': 'tv', 'tv_digital': 'tv', 'combo_analog': 'combo', 'combo_digital': 'combo' };
+      return p.active && !p.legacy && p.type === typeMap[form.serviceType];
+    }
     const typeMap = {
       'internet': 'internet',
       'tv': 'tv',
