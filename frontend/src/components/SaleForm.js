@@ -101,7 +101,7 @@ export default function SaleForm() {
     if (form.requestType === 'adicion') return p.type === 'combo';
     if (form.requestType === 'cambio_plan') {
       const typeMap = { 'internet': 'internet', 'tv': 'tv', 'tv_digital': 'tv', 'combo_analog': 'combo', 'combo_digital': 'combo' };
-      return p.active && !p.legacy && p.type === typeMap[form.serviceType];
+      return p.active && p.type === typeMap[form.serviceType];
     }
     const typeMap = {
       'internet': 'internet',
@@ -114,8 +114,12 @@ export default function SaleForm() {
   });
 
   const previousPlans = plans.filter((p) => true);
-  const currentPlans = filteredPlans.filter((p) => !p.legacy);
-  const legacyPlans = filteredPlans.filter((p) => p.legacy);
+  const currentPlans = form.requestType === 'cambio_plan'
+    ? filteredPlans.filter((p) => !p.legacy)
+    : filteredPlans.filter((p) => !p.legacy);
+  const legacyPlans = form.requestType === 'cambio_plan'
+    ? filteredPlans.filter((p) => p.legacy)
+    : filteredPlans.filter((p) => p.legacy);
   const isRetiro = form.requestType === 'retiro';
   const isCambio = form.requestType === 'cambio_plan';
   const isAdicion = form.requestType === 'adicion';
@@ -312,31 +316,14 @@ export default function SaleForm() {
             </Select>
           )}
 
-          {form.requestType === 'cambio_plan' && (() => {
-            const typeMap = { 'internet': 'internet', 'tv': 'tv', 'tv_digital': 'tv', 'combo_analog': 'combo', 'combo_digital': 'combo' };
-            const planType = typeMap[form.serviceType];
-            const prevActive = plans.filter(p => p.active && !p.legacy && p.type === planType);
-            const prevLegacy = plans.filter(p => p.legacy && p.type === planType);
-            return (
-              <Select label="Plan Anterior *" name="planFromId" value={form.planFromId} onChange={handleChange} required>
-                <option value="">--Seleccione plan anterior--</option>
-                {prevActive.length > 0 && (
-                  <optgroup label="Planes activos">
-                    {prevActive.map((p) => (
-                      <option key={p.id} value={p.id}>{p.code} - {p.label}</option>
-                    ))}
-                  </optgroup>
-                )}
-                {prevLegacy.length > 0 && (
-                  <optgroup label="Planes anteriores (legacy)">
-                    {prevLegacy.map((p) => (
-                      <option key={p.id} value={p.id}>{p.code} - {p.label}</option>
-                    ))}
-                  </optgroup>
-                )}
-              </Select>
-            );
-          })()}
+          {isCambio && (
+            <Select label="Plan Anterior *" name="planFromId" value={form.planFromId} onChange={handleChange} required>
+              <option value="">--Seleccione plan anterior--</option>
+              {filteredPlans.map((p) => (
+                <option key={p.id} value={p.id}>{p.code} - {p.label} {p.legacy ? '(Anterior)' : ''}</option>
+              ))}
+            </Select>
+          )}
 
           <Select label="Paquete / Plan *" name="planId" value={form.planId} onChange={handleChange} required>
             <option value="">Seleccionar plan...</option>
