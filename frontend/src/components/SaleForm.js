@@ -159,15 +159,15 @@ export default function SaleForm() {
         ? parseFloat(selectedPromotion.monthly_price)
         : monthly;
       return {
-        installation: isAdicion ? 0 : promoInst,
+        installation: (isAdicion || isCambio) ? 0 : promoInst,
         monthly: promoMonthly,
-        total: isRetiro || isAdicion ? promoMonthly : promoMonthly + promoInst,
+        total: isRetiro || isAdicion || isCambio ? promoMonthly : promoMonthly + promoInst,
       };
     }
     return {
-      installation: isAdicion ? 0 : installation,
+      installation: (isAdicion || isCambio) ? 0 : installation,
       monthly,
-      total: isRetiro || isAdicion ? monthly : installation + monthly,
+      total: isRetiro || isAdicion || isCambio ? monthly : installation + monthly,
     };
   };
 
@@ -371,13 +371,13 @@ export default function SaleForm() {
                   <div className="flex-1">
                     <div className="font-semibold text-sm text-slate-900">Precio normal</div>
                     <div className="text-xs text-slate-500 mt-1">
-                      Instalacion: {isAdicion ? '0.00' : parseFloat(selectedPlan.installation).toFixed(2)} Bs
+                      Instalacion: {(isAdicion || isCambio) ? '0.00' : parseFloat(selectedPlan.installation).toFixed(2)} Bs
                       {' | '}
                       Mensualidad: {parseFloat(selectedPlan.monthly).toFixed(2)} Bs
                     </div>
                   </div>
                   <div className="font-bold text-sm text-slate-700">
-                    {parseFloat(isRetiro || isAdicion ? selectedPlan.monthly : selectedPlan.total).toFixed(2)} Bs
+                    {parseFloat(isRetiro || isAdicion || isCambio ? selectedPlan.monthly : selectedPlan.total).toFixed(2)} Bs
                   </div>
                 </label>
                 {promotions.map((promo) => {
@@ -405,7 +405,7 @@ export default function SaleForm() {
                           {concepts.join(' | ')}
                         </div>
                         <div className="text-xs text-slate-500 mt-1">
-                          Instalacion: {isAdicion ? '0.00' : promoInst.toFixed(2)} Bs
+                          Instalacion: {(isAdicion || isCambio) ? '0.00' : promoInst.toFixed(2)} Bs
                           {' | '}
                           Mensualidad: {promoMonthly.toFixed(2)} Bs
                         </div>
