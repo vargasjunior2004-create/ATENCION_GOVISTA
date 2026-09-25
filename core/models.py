@@ -143,6 +143,9 @@ class Sale(models.Model):
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='sales')
     changeReason = models.CharField(max_length=120, blank=True, default='')
     planFrom = models.CharField(max_length=60, blank=True, default='')
+    planFromId = models.ForeignKey(
+        Plan, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='sales_from', help_text='Plan anterior (cambio de plan)')
     totalFrom = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True)
     notes = models.CharField(max_length=255, blank=True, default='')

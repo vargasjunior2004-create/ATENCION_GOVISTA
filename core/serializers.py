@@ -129,6 +129,7 @@ class SaleSerializer(serializers.ModelSerializer):
     planId = serializers.IntegerField(source='plan_id', read_only=True)
     Plan = serializers.SerializerMethodField()
     creator = serializers.SerializerMethodField()
+    previousPlan = serializers.SerializerMethodField()
 
     class Meta:
         model = Sale
@@ -136,10 +137,16 @@ class SaleSerializer(serializers.ModelSerializer):
                   'requestType', 'additionType', 'changeReason', 'planFrom',
                   'totalFrom', 'notes', 'planId', 'total', 'Plan', 'creator',
                   'promotion', 'promotion_name',
-                  'applied_installation', 'applied_monthly']
+                  'applied_installation', 'applied_monthly', 'previousPlan']
 
     def get_Plan(self, obj):
         return {'id': obj.plan.id, 'label': obj.plan.label, 'code': obj.plan.code}
+
+    def get_previousPlan(self, obj):
+        pf = getattr(obj, 'planFromId', None) or getattr(obj, 'planfromid', None)
+        if pf:
+            return {'id': pf.id, 'label': pf.label, 'code': pf.code}
+        return None
 
     def get_creator(self, obj):
         return {'id': obj.createdBy.id, 'name': obj.createdBy.name}
@@ -165,6 +172,7 @@ class SaleCreateSerializer(serializers.Serializer):
     additionType = serializers.ChoiceField(
         choices=[c[0] for c in Sale.ADDITION_TYPE_CHOICES],
         required=False, allow_blank=True, default='')
+    planFromId = serializers.IntegerField(required=False, allow_null=True)
 
     def validate(self, attrs):
         try:
@@ -192,6 +200,20 @@ class SaleCreateSerializer(serializers.Serializer):
                     {'additionType': 'Debe seleccionar el tipo de adicion (Internet o TV)'})
         else:
             attrs['additionType'] = ''
+
+        # cambio_plan: planFromId requerido
+        plan_from = None
+        if attrs.get('requestType') == 'cambio_plan':
+            pf_id = attrs.get('planFromId')
+            if not pf_id:
+                raise serializers.ValidationError(
+                    {'planFromId': 'Debe seleccionar el plan anterior'})
+            try:
+                plan_from = Plan.objects.get(id=pf_id)
+            except Plan.DoesNotExist:
+                raise serializers.ValidationError(
+                    {'planFromId': 'Plan anterior no encontrado'})
+        attrs['planFromPlan'] = plan_from
 
         # Validate promotion if provided
         promotion = None
@@ -248,6 +270,7 @@ class SaleCreateSerializer(serializers.Serializer):
             additionType=validated_data.get('additionType', ''),
             changeReason=validated_data.get('changeReason', ''),
             planFrom=validated_data.get('planFrom', ''),
+            planFromId=validated_data.get('planFromPlan'),
             totalFrom=validated_data.get('totalFrom'),
             notes=validated_data.get('notes', ''),
             customer=customer,

@@ -46,7 +46,11 @@ function SaleCard({ sale, isAdmin, onEdit, onDelete }) {
         <Badge color={REQUEST_COLOR[sale.requestType] || 'slate'}>{sale.requestType === 'adicion' && sale.additionType ? (sale.additionType === 'adicion_internet' ? 'ADICION INTERNET' : 'ADICION TV') : (REQUEST_LABEL[sale.requestType] || sale.requestType)}</Badge>
       </div>
       <div className="flex items-center justify-between text-sm">
-        <span className="text-slate-500">{sale.Plan?.label || '-'}</span>
+        <span className="text-slate-500">
+          {sale.requestType === 'cambio_plan' && sale.previousPlan
+            ? <>{sale.previousPlan.label} <span className="text-amber-500">&rarr;</span> {sale.Plan?.label || '-'}</>
+            : (sale.Plan?.label || '-')}
+        </span>
         <span className="font-bold text-brand-700 tabular-nums">{parseFloat(sale.total).toFixed(2)} Bs</span>
       </div>
       {sale.promotion_name && (
@@ -122,7 +126,7 @@ export default function SalesList() {
 
   const startEdit = (sale) => {
     setEditingSale(sale);
-    setEditForm({ date: sale.date, clientCode: sale.clientCode, clientName: sale.clientName, serviceType: sale.serviceType, requestType: sale.requestType, additionType: sale.additionType || '', planId: sale.planId, changeReason: sale.changeReason || '', notes: sale.notes || '' });
+    setEditForm({ date: sale.date, clientCode: sale.clientCode, clientName: sale.clientName, serviceType: sale.serviceType, requestType: sale.requestType, additionType: sale.additionType || '', planFromId: sale.previousPlan?.id || '', planId: sale.planId, changeReason: sale.changeReason || '', notes: sale.notes || '' });
     setEditError('');
   };
 
@@ -134,6 +138,7 @@ export default function SalesList() {
       const next = { ...prev, [name]: finalValue };
       if (name === 'serviceType') next.planId = '';
       if (name === 'requestType' && value !== 'adicion') next.additionType = '';
+      if (name === 'requestType' && value !== 'cambio_plan') next.planFromId = '';
       return next;
     });
   };
@@ -142,7 +147,7 @@ export default function SalesList() {
     e.preventDefault();
     setEditError('');
     try {
-      await api.updateSale(editingSale.id, { date: editForm.date, clientCode: editForm.clientCode, clientName: editForm.clientName, serviceType: editForm.serviceType, requestType: editForm.requestType, additionType: editForm.requestType === 'adicion' ? editForm.additionType : '', planId: Number(editForm.planId), changeReason: editForm.changeReason, notes: editForm.notes });
+      await api.updateSale(editingSale.id, { date: editForm.date, clientCode: editForm.clientCode, clientName: editForm.clientName, serviceType: editForm.serviceType, requestType: editForm.requestType, additionType: editForm.requestType === 'adicion' ? editForm.additionType : '', planFromId: editForm.requestType === 'cambio_plan' && editForm.planFromId ? Number(editForm.planFromId) : null, planId: Number(editForm.planId), changeReason: editForm.changeReason, notes: editForm.notes });
       setEditingSale(null);
       loadSales(page);
     } catch (err) {
@@ -323,6 +328,21 @@ export default function SalesList() {
                   <option value="adicion_tv">ADICION TV</option>
                 </Select>
               )}
+              {editForm.requestType === 'cambio_plan' && (
+                <Select label="Plan Anterior" name="planFromId" value={editForm.planFromId} onChange={handleEditChange} required>
+                  <option value="">--Seleccione plan anterior--</option>
+                  <optgroup label="Planes activos">
+                    {plans.filter(p => p.active && !p.legacy).map((p) => (
+                      <option key={p.id} value={p.id}>{p.code} - {p.label}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Planes anteriores (legacy)">
+                    {plans.filter(p => p.legacy).map((p) => (
+                      <option key={p.id} value={p.id}>{p.code} - {p.label}</option>
+                    ))}
+                  </optgroup>
+                </Select>
+              )}
               <Select label="Plan" name="planId" value={editForm.planId} onChange={handleEditChange} required>
                 <option value="">Seleccionar...</option>
                 <optgroup label="Planes vigentes">
@@ -395,7 +415,11 @@ export default function SalesList() {
                     <td className="px-5 py-3.5 text-slate-500 font-mono text-xs">{s.clientCode}</td>
                     <td className="px-5 py-3.5 font-medium text-slate-900">{s.clientName}</td>
                     <td className="px-5 py-3.5"><Badge color={REQUEST_COLOR[s.requestType] || 'slate'}>{s.requestType === 'adicion' && s.additionType ? (s.additionType === 'adicion_internet' ? 'ADICION INTERNET' : 'ADICION TV') : (REQUEST_LABEL[s.requestType] || s.requestType)}</Badge></td>
-                    <td className="px-5 py-3.5 text-slate-500">{s.Plan?.label || '-'}</td>
+                    <td className="px-5 py-3.5 text-slate-500">
+                      {s.requestType === 'cambio_plan' && s.previousPlan
+                        ? <>{s.previousPlan.label} <span className="text-amber-500">&rarr;</span> {s.Plan?.label || '-'}</>
+                        : (s.Plan?.label || '-')}
+                    </td>
                     <td className="px-5 py-3.5 text-right font-bold text-brand-700 tabular-nums">{parseFloat(s.total).toFixed(2)} Bs</td>
                     <td className="px-5 py-3.5 text-slate-500 text-xs">{s.creator?.name || '-'}</td>
                     {isAdmin && (

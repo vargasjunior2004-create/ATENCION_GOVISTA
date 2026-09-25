@@ -412,6 +412,14 @@ class SaleDetailView(IsAdminMixin, APIView):
         sale.notes = data.get('notes', sale.notes)
         sale.plan = plan
         sale.total = plan.total
+        # cambio_plan: actualizar plan anterior
+        if data.get('planFromId'):
+            from .models import Plan as PlanModel
+            pf = PlanModel.objects.filter(id=data['planFromId']).first()
+            if pf:
+                sale.planFromId = pf
+                sale.planFrom = pf.code
+                sale.totalFrom = pf.total
         sale.lastEditedBy = request.user
         sale.lastEditedAt = timezone.now()
         sale.save()
