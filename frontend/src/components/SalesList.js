@@ -44,7 +44,7 @@ function SaleCard({ sale, isAdmin, onEdit, onDelete }) {
           <p className="font-semibold text-slate-900">{sale.clientName}</p>
           <p className="text-sm text-slate-400">{sale.clientCode} &middot; {sale.date}</p>
         </div>
-        <Badge color={REQUEST_COLOR[sale.requestType] || 'slate'}>{REQUEST_LABEL[sale.requestType] || sale.requestType}</Badge>
+        <Badge color={REQUEST_COLOR[sale.requestType] || 'slate'}>{sale.requestType === 'adicion' && sale.additionType ? (sale.additionType === 'adicion_internet' ? 'ADICION INTERNET' : 'ADICION TV') : (REQUEST_LABEL[sale.requestType] || sale.requestType)}</Badge>
       </div>
       <div className="flex items-center justify-between text-sm">
         <span className="text-slate-500">{sale.Plan?.label || '-'}</span>
@@ -123,7 +123,7 @@ export default function SalesList() {
 
   const startEdit = (sale) => {
     setEditingSale(sale);
-    setEditForm({ date: sale.date, clientCode: sale.clientCode, clientName: sale.clientName, serviceType: sale.serviceType, requestType: sale.requestType, planId: sale.planId, changeReason: sale.changeReason || '', notes: sale.notes || '' });
+    setEditForm({ date: sale.date, clientCode: sale.clientCode, clientName: sale.clientName, serviceType: sale.serviceType, requestType: sale.requestType, additionType: sale.additionType || '', planId: sale.planId, changeReason: sale.changeReason || '', notes: sale.notes || '' });
     setEditError('');
   };
 
@@ -134,6 +134,7 @@ export default function SalesList() {
     setEditForm((prev) => {
       const next = { ...prev, [name]: finalValue };
       if (name === 'serviceType') next.planId = '';
+      if (name === 'requestType' && value !== 'adicion') next.additionType = '';
       return next;
     });
   };
@@ -142,7 +143,7 @@ export default function SalesList() {
     e.preventDefault();
     setEditError('');
     try {
-      await api.updateSale(editingSale.id, { date: editForm.date, clientCode: editForm.clientCode, clientName: editForm.clientName, serviceType: editForm.serviceType, requestType: editForm.requestType, planId: Number(editForm.planId), changeReason: editForm.changeReason, notes: editForm.notes });
+      await api.updateSale(editingSale.id, { date: editForm.date, clientCode: editForm.clientCode, clientName: editForm.clientName, serviceType: editForm.serviceType, requestType: editForm.requestType, additionType: editForm.requestType === 'adicion' ? editForm.additionType : '', planId: Number(editForm.planId), changeReason: editForm.changeReason, notes: editForm.notes });
       setEditingSale(null);
       loadSales(page);
     } catch (err) {
@@ -316,6 +317,13 @@ export default function SalesList() {
                   <option value="combo_digital">Internet + TV Digital</option>
                 </Select>
               </div>
+              {editForm.requestType === 'adicion' && (
+                <Select label="Tipo de Adicion" name="additionType" value={editForm.additionType} onChange={handleEditChange} required>
+                  <option value="">--Seleccione--</option>
+                  <option value="adicion_internet">ADICION INTERNET</option>
+                  <option value="adicion_tv">ADICION TV</option>
+                </Select>
+              )}
               <Select label="Plan" name="planId" value={editForm.planId} onChange={handleEditChange} required>
                 <option value="">Seleccionar...</option>
                 <optgroup label="Planes vigentes">
@@ -387,7 +395,7 @@ export default function SalesList() {
                     <td className="px-5 py-3.5 text-slate-500">{s.date}</td>
                     <td className="px-5 py-3.5 text-slate-500 font-mono text-xs">{s.clientCode}</td>
                     <td className="px-5 py-3.5 font-medium text-slate-900">{s.clientName}</td>
-                    <td className="px-5 py-3.5"><Badge color={REQUEST_COLOR[s.requestType] || 'slate'}>{REQUEST_LABEL[s.requestType] || s.requestType}</Badge></td>
+                    <td className="px-5 py-3.5"><Badge color={REQUEST_COLOR[s.requestType] || 'slate'}>{s.requestType === 'adicion' && s.additionType ? (s.additionType === 'adicion_internet' ? 'ADICION INTERNET' : 'ADICION TV') : (REQUEST_LABEL[s.requestType] || s.requestType)}</Badge></td>
                     <td className="px-5 py-3.5 text-slate-500">{s.Plan?.label || '-'}</td>
                     <td className="px-5 py-3.5 text-right font-bold text-brand-700 tabular-nums">{parseFloat(s.total).toFixed(2)} Bs</td>
                     <td className="px-5 py-3.5 text-slate-500 text-xs">{s.creator?.name || '-'}</td>

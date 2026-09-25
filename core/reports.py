@@ -17,6 +17,18 @@ REQUEST_TYPE_LABELS = {
     'otro': 'OTROS',
 }
 
+ADDITION_TYPE_LABELS = {
+    'adicion_internet': 'ADICION INTERNET',
+    'adicion_tv': 'ADICION TV',
+}
+
+
+def get_request_label(sale):
+    """Label de solicitud para la columna SOLICITUD del reporte."""
+    if sale.requestType == 'adicion' and sale.additionType:
+        return ADDITION_TYPE_LABELS.get(sale.additionType, 'ADICION')
+    return REQUEST_TYPE_LABELS.get(sale.requestType, sale.requestType or sale.get_requestType_display())
+
 LOGO_PATH = Path(__file__).resolve().parent / 'logo.png'
 
 
@@ -118,7 +130,7 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None):
             s.clientCode or '',
             s.clientName or '',
             service_label,
-            s.get_requestType_display() or '',
+            get_request_label(s),
             s.plan.label if s.plan else '',
             f'{float(s.total):.2f}',
             s.createdBy.name if s.createdBy else '',
@@ -192,7 +204,7 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None):
             s.clientCode or '',
             s.clientName or '',
             service_label,
-            s.get_requestType_display() or '',
+            get_request_label(s),
             s.plan.label if s.plan else '',
             float(s.total),
             s.createdBy.name if s.createdBy else '',
@@ -273,7 +285,7 @@ def build_sales_png(from_date, to_date):
             s.clientCode or '',
             s.clientName or '',
             service_label,
-            s.get_requestType_display() or '',
+            get_request_label(s),
             s.plan.label if s.plan else '',
             f'{float(s.total):.2f}',
             s.createdBy.name if s.createdBy else '',

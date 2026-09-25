@@ -133,8 +133,8 @@ class SaleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Sale
         fields = ['id', 'date', 'clientCode', 'clientName', 'serviceType',
-                  'requestType', 'changeReason', 'planFrom', 'totalFrom',
-                  'notes', 'planId', 'total', 'Plan', 'creator',
+                  'requestType', 'additionType', 'changeReason', 'planFrom',
+                  'totalFrom', 'notes', 'planId', 'total', 'Plan', 'creator',
                   'promotion', 'promotion_name',
                   'applied_installation', 'applied_monthly']
 
@@ -162,6 +162,9 @@ class SaleCreateSerializer(serializers.Serializer):
     notes = serializers.CharField(required=False, allow_blank=True)
     planId = serializers.IntegerField()
     promotionId = serializers.IntegerField(required=False, allow_null=True)
+    additionType = serializers.ChoiceField(
+        choices=[c[0] for c in Sale.ADDITION_TYPE_CHOICES],
+        required=False, allow_blank=True, default='')
 
     def validate(self, attrs):
         try:
@@ -181,6 +184,14 @@ class SaleCreateSerializer(serializers.Serializer):
         if plan.type != expected_type:
             raise serializers.ValidationError(
                 {'serviceType': 'El plan no pertenece al tipo de servicio seleccionado'})
+
+        # additionType requerido cuando requestType = adicion
+        if attrs.get('requestType') == 'adicion':
+            if not attrs.get('additionType'):
+                raise serializers.ValidationError(
+                    {'additionType': 'Debe seleccionar el tipo de adicion (Internet o TV)'})
+        else:
+            attrs['additionType'] = ''
 
         # Validate promotion if provided
         promotion = None
@@ -230,6 +241,7 @@ class SaleCreateSerializer(serializers.Serializer):
             clientName=validated_data['clientName'],
             serviceType=validated_data['serviceType'],
             requestType=validated_data.get('requestType', 'nuevo_contrato'),
+            additionType=validated_data.get('additionType', ''),
             changeReason=validated_data.get('changeReason', ''),
             planFrom=validated_data.get('planFrom', ''),
             totalFrom=validated_data.get('totalFrom'),
