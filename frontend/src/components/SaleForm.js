@@ -312,21 +312,31 @@ export default function SaleForm() {
             </Select>
           )}
 
-          {form.requestType === 'cambio_plan' && (
-            <Select label="Plan Anterior *" name="planFromId" value={form.planFromId} onChange={handleChange} required>
-              <option value="">--Seleccione plan anterior--</option>
-              <optgroup label="Planes activos">
-                {plans.filter(p => p.active && !p.legacy).map((p) => (
-                  <option key={p.id} value={p.id}>{p.code} - {p.label}</option>
-                ))}
-              </optgroup>
-              <optgroup label="Planes anteriores (legacy)">
-                {plans.filter(p => p.legacy).map((p) => (
-                  <option key={p.id} value={p.id}>{p.code} - {p.label}</option>
-                ))}
-              </optgroup>
-            </Select>
-          )}
+          {form.requestType === 'cambio_plan' && (() => {
+            const typeMap = { 'internet': 'internet', 'tv': 'tv', 'tv_digital': 'tv', 'combo_analog': 'combo', 'combo_digital': 'combo' };
+            const planType = typeMap[form.serviceType];
+            const prevActive = plans.filter(p => p.active && !p.legacy && p.type === planType);
+            const prevLegacy = plans.filter(p => p.legacy && p.type === planType);
+            return (
+              <Select label="Plan Anterior *" name="planFromId" value={form.planFromId} onChange={handleChange} required>
+                <option value="">--Seleccione plan anterior--</option>
+                {prevActive.length > 0 && (
+                  <optgroup label="Planes activos">
+                    {prevActive.map((p) => (
+                      <option key={p.id} value={p.id}>{p.code} - {p.label}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {prevLegacy.length > 0 && (
+                  <optgroup label="Planes anteriores (legacy)">
+                    {prevLegacy.map((p) => (
+                      <option key={p.id} value={p.id}>{p.code} - {p.label}</option>
+                    ))}
+                  </optgroup>
+                )}
+              </Select>
+            );
+          })()}
 
           <Select label="Paquete / Plan *" name="planId" value={form.planId} onChange={handleChange} required>
             <option value="">Seleccionar plan...</option>
