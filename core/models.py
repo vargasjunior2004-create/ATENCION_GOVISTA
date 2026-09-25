@@ -121,7 +121,6 @@ class Sale(models.Model):
         ('recontratacion', 'RECONTRATACION'),
         ('retiro', 'RETIRO'),
         ('adicion', 'ADICION'),
-        ('baja_temporal', 'BAJA TEMPORAL'),
         ('otro', 'OTRO'),
     ]
     ADDITION_TYPE_CHOICES = [

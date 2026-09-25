@@ -13,7 +13,6 @@ REQUEST_TYPE_LABELS = {
     'recontratacion': 'RECONTRATACION',
     'retiro': 'RETIROS',
     'adicion': 'ADICION',
-    'baja_temporal': 'BAJA TEMPORAL',
     'otro': 'OTROS',
 }
 

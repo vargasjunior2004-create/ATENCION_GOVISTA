@@ -13,7 +13,6 @@ const REQUEST_TYPES = [
   { value: 'recontratacion', label: 'Recontratacion' },
   { value: 'retiro', label: 'Retiro' },
   { value: 'adicion', label: 'Adicion' },
-  { value: 'baja_temporal', label: 'Baja Temporal' },
   { value: 'otro', label: 'Otro' },
 ];
 
