@@ -220,6 +220,7 @@ class SaleCreateSerializer(serializers.Serializer):
             customer = Customer(code=code, name=validated_data['clientName'])
             customer.save()
         is_retiro = validated_data.get('requestType', 'nuevo_contrato') == 'retiro'
+        is_adicion = validated_data.get('requestType', 'nuevo_contrato') == 'adicion'
 
         # Calculate prices
         if promotion:
@@ -233,7 +234,10 @@ class SaleCreateSerializer(serializers.Serializer):
             installation = plan.installation
             monthly = plan.monthly
 
-        sale_total = monthly if is_retiro else monthly + installation
+        # Adicion: solo mensualidad (sin instalacion)
+        if is_adicion:
+            installation = 0
+        sale_total = monthly if is_retiro or is_adicion else monthly + installation
 
         return Sale.objects.create(
             date=validated_data['date'],
