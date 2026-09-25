@@ -53,7 +53,7 @@ function SaleCard({ sale, isAdmin, onEdit, onDelete }) {
       {sale.promotion_name && (
         <div className="flex items-center gap-2 text-xs">
           <Badge color="emerald">Promo: {sale.promotion_name}</Badge>
-          {sale.applied_installation != null && (
+          {sale.applied_installation != null && sale.requestType !== 'adicion' && (
             <span className="text-slate-500">Inst: {parseFloat(sale.applied_installation).toFixed(2)}</span>
           )}
           {sale.applied_monthly != null && (
