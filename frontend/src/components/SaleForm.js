@@ -113,6 +113,7 @@ export default function SaleForm() {
   const legacyPlans = filteredPlans.filter((p) => p.legacy);
   const isRetiro = form.requestType === 'retiro';
   const isCambio = form.requestType === 'cambio_plan';
+  const isAdicion = form.requestType === 'adicion';
 
   useEffect(() => {
     if (form.planId) {
@@ -149,15 +150,15 @@ export default function SaleForm() {
         ? parseFloat(selectedPromotion.monthly_price)
         : monthly;
       return {
-        installation: promoInst,
+        installation: isAdicion ? 0 : promoInst,
         monthly: promoMonthly,
-        total: isRetiro ? promoMonthly : promoMonthly + promoInst,
+        total: isRetiro || isAdicion ? promoMonthly : promoMonthly + promoInst,
       };
     }
     return {
-      installation,
+      installation: isAdicion ? 0 : installation,
       monthly,
-      total: isRetiro ? monthly : installation + monthly,
+      total: isRetiro || isAdicion ? monthly : installation + monthly,
     };
   };
 
@@ -350,13 +351,13 @@ export default function SaleForm() {
                   <div className="flex-1">
                     <div className="font-semibold text-sm text-slate-900">Precio normal</div>
                     <div className="text-xs text-slate-500 mt-1">
-                      Instalacion: {parseFloat(selectedPlan.installation).toFixed(2)} Bs
+                      Instalacion: {isAdicion ? '0.00' : parseFloat(selectedPlan.installation).toFixed(2)} Bs
                       {' | '}
                       Mensualidad: {parseFloat(selectedPlan.monthly).toFixed(2)} Bs
                     </div>
                   </div>
                   <div className="font-bold text-sm text-slate-700">
-                    {parseFloat(isRetiro ? selectedPlan.monthly : selectedPlan.total).toFixed(2)} Bs
+                    {parseFloat(isRetiro || isAdicion ? selectedPlan.monthly : selectedPlan.total).toFixed(2)} Bs
                   </div>
                 </label>
                 {promotions.map((promo) => {
@@ -366,7 +367,7 @@ export default function SaleForm() {
                   const promoMonthly = promo.apply_monthly
                     ? parseFloat(promo.monthly_price)
                     : parseFloat(selectedPlan.monthly);
-                  const promoTotal = isRetiro ? promoMonthly : promoMonthly + promoInst;
+                  const promoTotal = isRetiro || isAdicion ? promoMonthly : promoMonthly + promoInst;
                   const concepts = [];
                   if (promo.apply_installation) concepts.push(`Inst: ${parseFloat(promo.installation_price).toFixed(2)} Bs`);
                   if (promo.apply_monthly) concepts.push(`Mensual: ${parseFloat(promo.monthly_price).toFixed(2)} Bs`);
@@ -384,7 +385,7 @@ export default function SaleForm() {
                           {concepts.join(' | ')}
                         </div>
                         <div className="text-xs text-slate-500 mt-1">
-                          Instalacion: {promoInst.toFixed(2)} Bs
+                          Instalacion: {isAdicion ? '0.00' : promoInst.toFixed(2)} Bs
                           {' | '}
                           Mensualidad: {promoMonthly.toFixed(2)} Bs
                         </div>
