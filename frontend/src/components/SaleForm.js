@@ -47,8 +47,8 @@ export default function SaleForm() {
   const [plans, setPlans] = useState([]);
   const [form, setForm] = useState({
     date: today, clientCode: '', clientName: '', serviceType: 'internet',
-    requestType: 'nuevo_contrato', additionType: '', changeReason: '',
-    retiroReason: '', notes: '', planId: '',
+    requestType: 'nuevo_contrato', additionType: '', planFromId: '',
+    changeReason: '', retiroReason: '', notes: '', planId: '',
   });
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [error, setError] = useState('');
@@ -99,6 +99,7 @@ export default function SaleForm() {
 
   const filteredPlans = plans.filter((p) => {
     if (form.requestType === 'adicion') return p.type === 'combo';
+    if (form.requestType === 'cambio_plan') return p.active && !p.legacy;
     const typeMap = {
       'internet': 'internet',
       'tv': 'tv',
@@ -108,6 +109,8 @@ export default function SaleForm() {
     };
     return p.type === typeMap[form.serviceType];
   });
+
+  const previousPlans = plans.filter((p) => true);
   const currentPlans = filteredPlans.filter((p) => !p.legacy);
   const legacyPlans = filteredPlans.filter((p) => p.legacy);
   const isRetiro = form.requestType === 'retiro';
@@ -171,6 +174,7 @@ export default function SaleForm() {
       const next = { ...prev, [name]: finalValue };
       if (name === 'serviceType' || name === 'requestType') next.planId = '';
       if (name === 'requestType' && value !== 'adicion') next.additionType = '';
+      if (name === 'requestType' && value !== 'cambio_plan') next.planFromId = '';
       return next;
     });
   };
@@ -188,6 +192,7 @@ export default function SaleForm() {
         serviceType: form.serviceType,
         requestType: form.requestType,
         additionType: form.requestType === 'adicion' ? form.additionType : '',
+        planFromId: form.requestType === 'cambio_plan' && form.planFromId ? Number(form.planFromId) : null,
         changeReason: isCambio ? form.changeReason : (isRetiro ? form.retiroReason : ''),
         notes: form.notes,
         planId: Number(form.planId),
@@ -197,7 +202,7 @@ export default function SaleForm() {
       }
       await api.createSale(payload);
       setSuccess('Registro guardado correctamente');
-      setForm({ date: today, clientCode: '', clientName: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', changeReason: '', retiroReason: '', notes: '', planId: '' });
+      setForm({ date: today, clientCode: '', clientName: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', changeReason: '', retiroReason: '', notes: '', planId: '' });
       setSelectedPlan(null); setSelectedCustomer(null); setQuery(''); setCustomers([]);
       setPromotions([]); setSelectedPromotion(null); setPriceMode('normal');
       setShowPreview(false);
@@ -301,6 +306,22 @@ export default function SaleForm() {
               {ADDITION_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
+            </Select>
+          )}
+
+          {form.requestType === 'cambio_plan' && (
+            <Select label="Plan Anterior *" name="planFromId" value={form.planFromId} onChange={handleChange} required>
+              <option value="">--Seleccione plan anterior--</option>
+              <optgroup label="Planes activos">
+                {plans.filter(p => p.active && !p.legacy).map((p) => (
+                  <option key={p.id} value={p.id}>{p.code} - {p.label}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Planes anteriores (legacy)">
+                {plans.filter(p => p.legacy).map((p) => (
+                  <option key={p.id} value={p.id}>{p.code} - {p.label}</option>
+                ))}
+              </optgroup>
             </Select>
           )}
 
@@ -464,6 +485,9 @@ export default function SaleForm() {
                 <div className="flex justify-between"><span className="text-slate-400">Cliente:</span><span className="font-medium">{form.clientName}</span></div>
                 <div className="flex justify-between"><span className="text-slate-400">Solicitud:</span><span className="font-medium">{getRequestLabel(form.requestType)}</span></div>
                 <div className="flex justify-between"><span className="text-slate-400">Servicio:</span><span className="font-medium">{getServiceLabel(form.serviceType)}</span></div>
+                {isCambio && form.planFromId && (
+                  <div className="flex justify-between"><span className="text-slate-400">Plan Anterior:</span><span className="font-medium text-amber-600">{plans.find(p => String(p.id) === String(form.planFromId))?.label || '-'}</span></div>
+                )}
                 <div className="flex justify-between"><span className="text-slate-400">Plan:</span><span className="font-medium">{selectedPlan.label}</span></div>
                 {selectedPromotion && (
                   <div className="flex justify-between"><span className="text-slate-400">Promocion:</span><span className="font-medium text-emerald-600">{selectedPromotion.name}</span></div>

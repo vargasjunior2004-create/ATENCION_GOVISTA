@@ -124,13 +124,17 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None):
     rows = [header]
     for s in sales:
         service_label = SERVICE_TYPE_LABELS.get(s.serviceType, s.serviceType)
+        # Plan display: cambio_plan shows "anterior → nuevo"
+        plan_label = s.plan.label if s.plan else ''
+        if s.requestType == 'cambio_plan' and hasattr(s, 'planFromId') and s.planFromId:
+            plan_label = f'{s.planFromId.label} → {s.plan.label}'
         rows.append([
             s.date.strftime('%d/%m/%Y') if s.date else '',
             s.clientCode or '',
             s.clientName or '',
             service_label,
             get_request_label(s),
-            s.plan.label if s.plan else '',
+            plan_label,
             f'{float(s.total):.2f}',
             s.createdBy.name if s.createdBy else '',
         ])
@@ -197,6 +201,9 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None):
 
     for row_idx, s in enumerate(sales, 2):
         service_label = SERVICE_TYPE_LABELS.get(s.serviceType, s.serviceType)
+        plan_label = s.plan.label if s.plan else ''
+        if s.requestType == 'cambio_plan' and hasattr(s, 'planFromId') and s.planFromId:
+            plan_label = f'{s.planFromId.label} → {s.plan.label}'
 
         data_row = [
             s.date.strftime('%d/%m/%Y') if s.date else '',
@@ -204,7 +211,7 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None):
             s.clientName or '',
             service_label,
             get_request_label(s),
-            s.plan.label if s.plan else '',
+            plan_label,
             float(s.total),
             s.createdBy.name if s.createdBy else '',
         ]
@@ -279,13 +286,16 @@ def build_sales_png(from_date, to_date):
         bg = '#F8FAFC' if idx % 2 == 0 else '#FFFFFF'
         draw.rectangle([0, y, total_width, y + row_height], fill=bg)
         service_label = SERVICE_TYPE_LABELS.get(s.serviceType, s.serviceType)
+        plan_label = s.plan.label if s.plan else ''
+        if s.requestType == 'cambio_plan' and hasattr(s, 'planFromId') and s.planFromId:
+            plan_label = f'{s.planFromId.label} → {s.plan.label}'
         values = [
             s.date.strftime('%d/%m/%Y') if s.date else '',
             s.clientCode or '',
             s.clientName or '',
             service_label,
             get_request_label(s),
-            s.plan.label if s.plan else '',
+            plan_label,
             f'{float(s.total):.2f}',
             s.createdBy.name if s.createdBy else '',
         ]
