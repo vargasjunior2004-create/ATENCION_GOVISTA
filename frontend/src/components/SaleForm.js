@@ -30,6 +30,11 @@ const RETIRO_REASONS = [
   'NO UTILIZA EL SERVICIO', 'FUERA DE AREA', 'VIAJE', 'OTROS',
 ];
 
+const ADDITION_TYPES = [
+  { value: 'adicion_internet', label: 'ADICION INTERNET' },
+  { value: 'adicion_tv', label: 'ADICION TV' },
+];
+
 export default function SaleForm() {
   const getToday = () => {
     const now = new Date();
@@ -43,8 +48,8 @@ export default function SaleForm() {
   const [plans, setPlans] = useState([]);
   const [form, setForm] = useState({
     date: today, clientCode: '', clientName: '', serviceType: 'internet',
-    requestType: 'nuevo_contrato', changeReason: '', retiroReason: '',
-    notes: '', planId: '',
+    requestType: 'nuevo_contrato', additionType: '', changeReason: '',
+    retiroReason: '', notes: '', planId: '',
   });
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [error, setError] = useState('');
@@ -164,6 +169,7 @@ export default function SaleForm() {
     setForm((prev) => {
       const next = { ...prev, [name]: finalValue };
       if (name === 'serviceType' || name === 'requestType') next.planId = '';
+      if (name === 'requestType' && value !== 'adicion') next.additionType = '';
       return next;
     });
   };
@@ -180,6 +186,7 @@ export default function SaleForm() {
         clientName: form.clientName,
         serviceType: form.serviceType,
         requestType: form.requestType,
+        additionType: form.requestType === 'adicion' ? form.additionType : '',
         changeReason: isCambio ? form.changeReason : (isRetiro ? form.retiroReason : ''),
         notes: form.notes,
         planId: Number(form.planId),
@@ -189,7 +196,7 @@ export default function SaleForm() {
       }
       await api.createSale(payload);
       setSuccess('Registro guardado correctamente');
-      setForm({ date: today, clientCode: '', clientName: '', serviceType: 'internet', requestType: 'nuevo_contrato', changeReason: '', retiroReason: '', notes: '', planId: '' });
+      setForm({ date: today, clientCode: '', clientName: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', changeReason: '', retiroReason: '', notes: '', planId: '' });
       setSelectedPlan(null); setSelectedCustomer(null); setQuery(''); setCustomers([]);
       setPromotions([]); setSelectedPromotion(null); setPriceMode('normal');
       setShowPreview(false);
@@ -207,6 +214,9 @@ export default function SaleForm() {
   };
 
   const getRequestLabel = (val) => {
+    if (val === 'adicion' && form.additionType) {
+      return form.additionType === 'adicion_internet' ? 'ADICION INTERNET' : 'ADICION TV';
+    }
     const found = REQUEST_TYPES.find(t => t.value === val);
     return found ? found.label : val;
   };
@@ -283,6 +293,15 @@ export default function SaleForm() {
               ))}
             </Select>
           </div>
+
+          {form.requestType === 'adicion' && (
+            <Select label="Tipo de Adicion *" name="additionType" value={form.additionType} onChange={handleChange} required>
+              <option value="">--Seleccione--</option>
+              {ADDITION_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </Select>
+          )}
 
           <Select label="Paquete / Plan *" name="planId" value={form.planId} onChange={handleChange} required>
             <option value="">Seleccionar plan...</option>

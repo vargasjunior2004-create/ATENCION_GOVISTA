@@ -407,6 +407,7 @@ class SaleDetailView(IsAdminMixin, APIView):
         sale.clientName = data.get('clientName', sale.clientName)
         sale.serviceType = data.get('serviceType', sale.serviceType)
         sale.requestType = data.get('requestType', sale.requestType)
+        sale.additionType = data.get('additionType', sale.additionType)
         sale.changeReason = data.get('changeReason', sale.changeReason)
         sale.notes = data.get('notes', sale.notes)
         sale.plan = plan

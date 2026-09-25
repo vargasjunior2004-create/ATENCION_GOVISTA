@@ -124,6 +124,10 @@ class Sale(models.Model):
         ('baja_temporal', 'BAJA TEMPORAL'),
         ('otro', 'OTRO'),
     ]
+    ADDITION_TYPE_CHOICES = [
+        ('adicion_internet', 'ADICION INTERNET'),
+        ('adicion_tv', 'ADICION TV'),
+    ]
 
     date = models.DateField()
     clientCode = models.CharField(max_length=40)
@@ -134,6 +138,9 @@ class Sale(models.Model):
     serviceType = models.CharField(max_length=20, choices=TYPE_CHOICES)
     requestType = models.CharField(
         max_length=20, choices=REQUEST_CHOICES, default='nuevo_contrato')
+    additionType = models.CharField(
+        max_length=20, choices=ADDITION_TYPE_CHOICES, blank=True, default='',
+        help_text='Sub-tipo de adicion: internet o tv')
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='sales')
     changeReason = models.CharField(max_length=120, blank=True, default='')
     planFrom = models.CharField(max_length=60, blank=True, default='')
