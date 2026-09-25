@@ -401,9 +401,6 @@ class SaleDetailView(IsAdminMixin, APIView):
             if not plan:
                 return Response({'error': 'Plan no encontrado o inactivo'},
                                 status=status.HTTP_400_BAD_REQUEST)
-            if plan.type != data.get('serviceType', sale.serviceType):
-                return Response({'error': 'El plan no pertenece al tipo de servicio'},
-                                status=status.HTTP_400_BAD_REQUEST)
 
         sale.date = data.get('date', sale.date)
         sale.clientCode = data.get('clientCode', sale.clientCode)
@@ -479,7 +476,7 @@ class DashboardStatsView(APIView):
             month_start = today.replace(day=1)
 
             all_sales = Sale.objects.all()
-            installations = all_sales.filter(requestType='nuevo_contrato')
+            installations = all_sales.filter(requestType__in=['nuevo_contrato', 'recontratacion'])
 
             is_admin = getattr(request.user, 'role', '') == 'admin'
 
