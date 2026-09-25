@@ -99,6 +99,7 @@ export default function SaleForm() {
   }, []);
 
   const filteredPlans = plans.filter((p) => {
+    if (form.requestType === 'adicion') return p.type === 'combo';
     const typeMap = {
       'internet': 'internet',
       'tv': 'tv',
