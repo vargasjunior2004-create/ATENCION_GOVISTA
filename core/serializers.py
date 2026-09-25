@@ -53,7 +53,7 @@ class PlanPublicSerializer(serializers.ModelSerializer):
     class Meta:
         model = Plan
         fields = ['id', 'code', 'label', 'type', 'speed',
-                  'monthly', 'installation', 'total', 'legacy']
+                  'monthly', 'installation', 'total', 'legacy', 'active']
 
 
 class PromotionSerializer(serializers.ModelSerializer):
