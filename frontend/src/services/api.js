@@ -121,14 +121,29 @@ const api = {
 
   // Backups
   getBackups: () => request('/api/backups'),
-  createBackup: () => request('/api/backups', { method: 'POST' }),
-  downloadBackup: (id) => {
+  // Genera el respaldo y devuelve el archivo .dump directamente.
+  // El servidor lo borra tras la transmision: no queda almacenado en Render.
+  createBackup: () => {
     const token = localStorage.getItem('token');
-    return fetch(`${API_URL}/api/backups/${id}/download`, {
-      headers: { 'Authorization': `Bearer ${token}` },
-    }).then(res => {
-      if (!res.ok) throw new Error('Error al descargar');
-      return res.blob();
+    return fetch(`${API_URL}/api/backups`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    }).then(async (res) => {
+      if (!res.ok) {
+        let msg = 'No se pudo generar el respaldo.';
+        try {
+          const data = await res.json();
+          if (data && data.error) msg = data.error;
+        } catch (e) { /* respuesta sin cuerpo JSON */ }
+        throw new Error(msg);
+      }
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      const filename = match ? match[1] : 'govista_backup.dump';
+      return { blob: await res.blob(), filename };
     });
   },
   deleteBackup: (id) => request(`/api/backups/${id}`, { method: 'DELETE' }),

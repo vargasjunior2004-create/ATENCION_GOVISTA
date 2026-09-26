@@ -9,8 +9,18 @@ services:
         generateValue: true
       - key: DJANGO_DEBUG
         value: "false"
-      - key: DATABASE_URL
-        value: postgresql://postgres.mehipkdatrttvghmfgmo:jmvv2004%2F05.@aws-0-us-west-2.pooler.supabase.com:6543/postgres
+      # DATABASE_URL NO se define aqui a proposito: la credencial vive
+      # unicamente en el panel de Render (Environment). Definirla en este
+      # archivo haria que el Blueprint sobrescriba el valor del panel.
+      # La app puede usar el transaction pooler (6543), que es lo recomendado
+      # para un backend web.
+      #
+      # BACKUP_DATABASE_URL es OBLIGATORIA para los respaldos: pg_dump
+      # necesita una sesion estable y el transaction pooler reparte cada
+      # sentencia en una conexion distinta, por lo que fallaria.
+      # Debe apuntar al Session pooler (puerto 5432) y usar el usuario
+      # con formato postgres.<project-ref>. Se define manualmente en el
+      # panel de Render, junto a DATABASE_URL.
       - key: DJANGO_ALLOWED_HOSTS
         value: .onrender.com
       - key: DJANGO_CSRF_TRUSTED_ORIGINS

@@ -2,7 +2,7 @@ from django.test import TestCase, Client
 from django.utils import timezone
 from decimal import Decimal
 
-from .models import User, Plan, Sale, CashCount, Outflow
+from .models import User, Plan, Sale
 
 
 def _json(response):
@@ -84,6 +84,12 @@ class SaleTests(TestCase):
             type='internet', code='P001', label='Plan 150',
             monthly=150, speed='20', active=True,
             installation=Decimal('0'))
+        # Un cambio de plan exige indicar el plan anterior (validado en
+        # SaleSerializer), asi que hace falta un segundo plan.
+        self.previous_plan = Plan.objects.create(
+            type='internet', code='P000', label='Plan 100',
+            monthly=100, speed='10', active=True,
+            installation=Decimal('0'))
 
     def _token(self, user, pw):
         r = self.c.post('/api/auth/login', {'name': user.name, 'password': pw},
@@ -144,7 +150,7 @@ class SaleTests(TestCase):
         r = self.c.post('/api/sales', {
             'clientCode': 'K020', 'clientName': 'F1',
             'serviceType': 'internet', 'requestType': 'cambio_plan',
-            'planId': self.plan.id
+            'planId': self.plan.id, 'planFromId': self.previous_plan.id
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r.status_code, 201)
         r2 = self.c.get(f'/api/sales?from={today}&to={today}',
@@ -255,103 +261,6 @@ class DashboardTests(TestCase):
         self.assertEqual(r.status_code, 401)
 
 
-class CashCountTests(TestCase):
-    def setUp(self):
-        self.c = Client()
-        self.admin = _create_user('admin3', 'pass1', 'admin')
-
-    def _token(self):
-        r = self.c.post('/api/auth/login', {'name': 'admin3', 'password': 'pass1'},
-                        content_type='application/json')
-        return _json(r)['token']
-
-    def test_save_cash_count(self):
-        token = self._token()
-        r = self.c.post('/api/cash-count', {
-            'date': timezone.localdate().isoformat(),
-            'coin_1': 10, 'bill_10': 5, 'bill_20': 2
-        }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
-        self.assertEqual(r.status_code, 200)
-        data = _json(r)
-        self.assertEqual(data['coin_1'], 10)
-
-    def test_load_cash_count(self):
-        token = self._token()
-        today = timezone.localdate().isoformat()
-        self.c.post('/api/cash-count', {
-            'date': today, 'bill_50': 3
-        }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
-        r = self.c.get(f'/api/cash-count?date={today}',
-                       HTTP_AUTHORIZATION=f'Bearer {token}')
-        self.assertEqual(r.status_code, 200)
-        data = _json(r)
-        self.assertIsNotNone(data['cashCount'])
-        self.assertEqual(data['cashCount']['bill_50'], 3)
-
-    def test_add_outflow(self):
-        token = self._token()
-        r = self.c.post('/api/cash-count/outflows', {
-            'date': timezone.localdate().isoformat(),
-            'personName': 'TEST PERSON', 'amount': 50, 'concept': 'PRUEBA'
-        }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
-        self.assertEqual(r.status_code, 201)
-        data = _json(r)
-        self.assertEqual(data['outflow']['personName'], 'TEST PERSON')
-        self.assertEqual(data['outflow']['amount'], 50.0)
-
-    def test_add_outflow_missing_person(self):
-        token = self._token()
-        r = self.c.post('/api/cash-count/outflows', {
-            'date': timezone.localdate().isoformat(),
-            'amount': 50
-        }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
-        self.assertEqual(r.status_code, 400)
-
-    def test_add_outflow_missing_amount(self):
-        token = self._token()
-        r = self.c.post('/api/cash-count/outflows', {
-            'date': timezone.localdate().isoformat(),
-            'personName': 'X'
-        }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
-        self.assertEqual(r.status_code, 400)
-
-    def test_delete_outflow(self):
-        token = self._token()
-        r = self.c.post('/api/cash-count/outflows', {
-            'date': timezone.localdate().isoformat(),
-            'personName': 'DEL ME', 'amount': 25
-        }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
-        outflow_id = _json(r)['outflow']['id']
-        r2 = self.c.delete(f'/api/cash-count/outflows/{outflow_id}',
-                           HTTP_AUTHORIZATION=f'Bearer {token}')
-        self.assertEqual(r2.status_code, 200)
-
-    def test_delete_nonexistent_outflow(self):
-        token = self._token()
-        r = self.c.delete('/api/cash-count/outflows/99999',
-                          HTTP_AUTHORIZATION=f'Bearer {token}')
-        self.assertEqual(r.status_code, 404)
-
-    def test_cash_count_no_auth(self):
-        r = self.c.get('/api/cash-count')
-        self.assertEqual(r.status_code, 401)
-
-    def test_cash_count_total(self):
-        token = self._token()
-        self.c.post('/api/cash-count/outflows', {
-            'date': timezone.localdate().isoformat(),
-            'personName': 'A', 'amount': 100
-        }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
-        self.c.post('/api/cash-count/outflows', {
-            'date': timezone.localdate().isoformat(),
-            'personName': 'B', 'amount': 200
-        }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
-        r = self.c.get(f'/api/cash-count?date={timezone.localdate().isoformat()}',
-                       HTTP_AUTHORIZATION=f'Bearer {token}')
-        data = _json(r)
-        self.assertEqual(data['totalOutflows'], 300.0)
-
-
 class ReportTests(TestCase):
     def setUp(self):
         self.c = Client()
@@ -395,12 +304,6 @@ class ReportTests(TestCase):
     def test_png_empty(self):
         token = self._token()
         r = self.c.get('/api/reports/png?from=2026-01-01&to=2026-01-01',
-                       HTTP_AUTHORIZATION=f'Bearer {token}')
-        self.assertEqual(r.status_code, 200)
-
-    def test_cash_pdf(self):
-        token = self._token()
-        r = self.c.get('/api/cash-count/pdf',
                        HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r.status_code, 200)
 

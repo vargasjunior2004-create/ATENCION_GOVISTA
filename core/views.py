@@ -1,4 +1,8 @@
+import os
+import threading
+
 from django.db.models import Sum, Q
+from django.http import FileResponse
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -15,6 +19,52 @@ from .serializers import (
     PromotionSerializer, PromotionWriteSerializer,
 )
 from .reports import build_sales_pdf, build_sales_xlsx
+
+# Evita que dos respaldos corran a la vez. Con gunicorn --workers 2 este
+# lock es por proceso, lo cual es suficiente para el caso de un unico
+# administrador y evita agotar la CPU del plan gratuito.
+_backup_lock = threading.Lock()
+_backup_in_progress = False
+
+
+class _BackupFileResponse(FileResponse):
+    """FileResponse que borra el archivo temporal cuando la respuesta
+    termina de enviarse.
+
+    Django captura file.close al construir la respuesta, asi que no se
+    puede parchear el archivo: hay que sobrescribir close(), que el
+    servidor WSGI invoca en el finally tras completar el streaming.
+    """
+
+    def __init__(self, *args, filepath=None, **kwargs):
+        self._backup_filepath = filepath
+        super().__init__(*args, **kwargs)
+
+    def close(self):
+        try:
+            super().close()
+        finally:
+            path = self._backup_filepath
+            if path and os.path.exists(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+
+
+def _stream_backup_file(filepath, filename, checksum=''):
+    """Transmite el archivo al navegador; se elimina al terminar."""
+    handle = open(filepath, 'rb')
+    response = _BackupFileResponse(
+        handle,
+        content_type='application/octet-stream',
+        as_attachment=True,
+        filename=filename,
+        filepath=filepath,
+    )
+    if checksum:
+        response['X-Content-SHA256'] = checksum
+    return response
 
 
 def _user_payload(user):
@@ -550,61 +600,76 @@ def _first_error(serializer):
 
 
 class BackupListView(IsAdminMixin, APIView):
+    """Historial de respaldos. Solo metadatos: el archivo nunca se conserva."""
+
     def get(self, request):
         error = self.check_admin(request)
         if error:
             return error
-        backups = Backup.objects.all()
+        backups = Backup.objects.all()[:50]
         serializer = BackupSerializer(backups, many=True)
         return Response(serializer.data)
 
     def post(self, request):
+        global _backup_in_progress
         error = self.check_admin(request)
         if error:
             return error
+
+        # Mutex: la base de datos garantiza un unico respaldo 'running'
+        # (restriccion backup_unico_en_proceso). Se usa eso en vez de un
+        # bloqueo consultivo porque el transaction pooler de Supabase no
+        # los soporta, y el mutex en memoria no sirve entre workers.
+        with _backup_lock:
+            if _backup_in_progress:
+                return Response(
+                    {'error': 'Ya hay un respaldo en proceso. Intente en un momento.'},
+                    status=status.HTTP_409_CONFLICT)
+            _backup_in_progress = True
+
+        backup = None
+        filepath = None
+        response = None
         try:
-            from .management.commands.backup_database import create_backup, cleanup_old_backups
-            backup = create_backup(backup_type='manual', user=request.user)
-            deleted = cleanup_old_backups(keep=7)
-            return Response({
-                'backup': BackupSerializer(backup).data,
-                'deleted_count': deleted,
-            }, status=status.HTTP_201_CREATED)
-        except FileNotFoundError as e:
-            return Response(
-                {'error': f'Base de datos no encontrada: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        except Exception as e:
-            return Response(
-                {'error': f'Error al crear backup: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            from .management.commands.backup_database import (
+                create_backup, cleanup_old_backups, BackupError,
+            )
+            try:
+                backup, filepath = create_backup(
+                    backup_type='manual', user=request.user)
+            except BackupError as e:
+                # El mensaje ya viene saneado por el comando.
+                if 'en proceso' in str(e):
+                    return Response(
+                        {'error': str(e)},
+                        status=status.HTTP_409_CONFLICT)
+                return Response({'error': str(e)},
+                                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            except Exception:
+                return Response(
+                    {'error': 'No se pudo generar el respaldo. Intente nuevamente.'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+            cleanup_old_backups(keep=12)
 
-class BackupDownloadView(IsAdminMixin, APIView):
-    def get(self, request, pk):
-        error = self.check_admin(request)
-        if error:
-            return error
-        try:
-            backup = Backup.objects.get(id=pk)
-        except Backup.DoesNotExist:
-            return Response(
-                {'error': 'Backup no encontrado'},
-                status=status.HTTP_404_NOT_FOUND)
-
-        import os
-        if not backup.storage_path or not os.path.exists(backup.storage_path):
-            return Response(
-                {'error': 'Archivo de backup no encontrado en disco'},
-                status=status.HTTP_404_NOT_FOUND)
-
-        from django.http import FileResponse
-        response = FileResponse(
-            open(backup.storage_path, 'rb'),
-            content_type='application/octet-stream')
-        response['Content-Disposition'] = (
-            f'attachment; filename="{backup.filename}"')
-        return response
+            # El archivo se transmite y lo borra _BackupFileResponse al
+            # terminar la respuesta: en el servidor no queda nada.
+            response = _stream_backup_file(
+                filepath, backup.filename, backup.checksum)
+            return response
+        finally:
+            # Si nunca se llego a construir la respuesta, el archivo se
+            # elimina aqui para no dejar residuos.
+            if response is None and filepath and os.path.exists(filepath):
+                try:
+                    os.remove(filepath)
+                except OSError:
+                    pass
+            if backup:
+                backup.storage_path = ''
+                backup.save(update_fields=['storage_path'])
+            with _backup_lock:
+                _backup_in_progress = False
 
 
 class BackupDeleteView(IsAdminMixin, APIView):
@@ -619,7 +684,6 @@ class BackupDeleteView(IsAdminMixin, APIView):
                 {'error': 'Backup no encontrado'},
                 status=status.HTTP_404_NOT_FOUND)
 
-        import os
         if backup.storage_path and os.path.exists(backup.storage_path):
             try:
                 os.remove(backup.storage_path)

@@ -119,6 +119,23 @@ Login por **nombre de usuario** (no email):
 - **Menu de usuario:** dropdown con opciones "Cambiar Contrasena" y "Cerrar Sesion"
 - **Cambiar Contrasena:** modal con contrasena actual, nueva contrasena y confirmacion
 
+### Copias de Seguridad
+
+Respaldo **manual** de PostgreSQL. Solo administradores.
+
+- Un solo boton: **Generar y Descargar** — no hay seleccion de fecha, tamano ni formato
+- Usa `pg_dump` en formato custom (`.dump`), comprimido y restaurable con `pg_restore`
+- Solo se respalda el esquema `public` (los esquemas internos de Supabase no se incluyen)
+- El archivo viaja al navegador y **se elimina del servidor** al terminar la descarga
+- En el historial queda solo metadata: fecha, operador, tamano, SHA-256, duracion y estado
+- Integridad verificada: se calcula el SHA-256 al generar y se comprueba contra el archivo entregado
+- No se puede generar un respaldo mientras otro esta en curso (restriccion en base de datos)
+- Sin cifrado: el archivo contiene datos legibles
+
+> **Recomendacion:** genera uno por mes y guardalo en la carpeta `GO_VISTA_BACKUPS`.
+> Como no va cifrado, esa carpeta debe estar protegida y, si el equipo es Portatil,
+> con BitLocker activado.
+
 ## Roles
 
 - **ADMINISTRADOR:** acceso total (crear, editar, eliminar movimientos, planes, usuarios, promociones)
@@ -140,7 +157,8 @@ Sales_Tracker/
 │   ├── fixtures/planes.json  # 34 planes
 │   └── management/commands/
 │       ├── seed.py           # usuarios
-│       └── import_excel.py   # importa catalogo desde Excel
+│       ├── import_excel.py   # importa catalogo desde Excel
+│       └── backup_database.py # genera el respaldo (pg_dump / SQLite)
 ├── frontend_build/           # build del frontend (servido por Django)
 ├── frontend/                 # codigo fuente React
 ├── staticfiles/              # archivos estaticos (WhiteNoise)
@@ -181,21 +199,57 @@ Sales_Tracker/
 | GET | /api/reports/png?from=&to=&requestType=&serviceType= | Si | PNG imagen del reporte |
 | GET | /api/reports/pdf-link?from=&to=&requestType=&serviceType= | Si | Link publico PDF (1h) |
 | GET | /api/reports/xlsx-link?from=&to=&requestType=&serviceType= | Si | Link publico XLSX (1h) |
+| GET | /api/health | No | Estado del servicio y de la base de datos |
+| GET | /api/backups | Admin | Historial de respaldos (solo metadata) |
+| POST | /api/backups | Admin | Genera el respaldo y lo descarga (409 si ya hay uno en curso) |
+| DELETE | /api/backups/:id | Admin | Elimina el registro del historial |
 
 ## Despliegue en Render
 
 - **Hosting:** Render free tier (512MB RAM, 0.1 CPU, 750 hrs/mes)
-- **Database:** Supabase PostgreSQL (pooler endpoint, IPv4)
+- **Database:** Supabase PostgreSQL 17.6
 - **Estaticos:** WhiteNoise sirve archivos desde `staticfiles/`
-- **Build:** `build.sh` ejecuta `collectstatic`
+- **Build:** `build.sh` instala `postgresql-client-17` (PGDG) y ejecuta `collectstatic`
 - **Inicio:** `gunicorn salestracker.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 60`
 
 ### Variables de entorno en Render
 
-- `DATABASE_URL` — connection pooler de Supabase (puerto 6543)
+- `DATABASE_URL` — coneccion de la app. Usa el **transaction pooler** (puerto 6543)
+- `BACKUP_DATABASE_URL` — coneccion exclusiva de `pg_dump`. **Session pooler** (puerto 5432)
 - `DJANGO_SECRET_KEY` — clave secreta
 - `DJANGO_DEBUG` — `false` en produccion
 - `DJANGO_ALLOWED_HOSTS` — `*.onrender.com`
+
+> **Por que hacen falta dos conexiones:** el transaction pooler reparte cada
+> sentencia entre distintas conexiones de PostgreSQL y no mantiene el estado de
+> sesion. La app funciona bien asi, pero `pg_dump` necesita una sesion estable
+> para el snapshot: contra el puerto 6543 falla de forma inconsistente. Por eso
+> los respaldos usan su propia cadena en el puerto 5432.
+
+> **Ojo con el usuario:** en el Session pooler el usuario no es `postgres`, sino
+> `postgres.<project-ref>`. La contraseña es la misma de la app.
+
+### Restaurar un respaldo
+
+El `.dump` se genera en formato custom. Para restaurarlo:
+
+```bash
+# Crear una base vacia en el destino
+createdb -h HOST -p 5432 -U postgres.<ref> restauracion
+
+# Restaurar (--clean --if-exists es necesario: sin esto falla con
+# "ya existe el esquema public")
+pg_restore -h HOST -p 5432 -U postgres.<ref> -d restauracion \
+  --clean --if-exists --no-owner --no-privileges respaldo.dump
+```
+
+Verifica el checksum antes de restaurar:
+
+```bash
+sha256sum respaldo.dump
+```
+
+Y comparalo con el campo `checksum` del historial en la app.
 
 ### Notas
 
@@ -211,3 +265,9 @@ Sales_Tracker/
 - Cambio de plan y adicion solo cobran mensualidad (sin costo de instalacion)
 - Retiro usa la mensualidad del plan como monto
 - Dashboard cuenta recontratacion junto con nuevo contrato como instalaciones
+- Los respaldos son manuales: no hay scheduler automatico
+- El `.dump` no va cifrado; en produccion solo existe en el servidor mientras se descarga
+- Un respaldo pendiente de un proceso que muere queda en estado `running`: se puede borrar desde el historial
+- `pg_dump` debe ser igual o mas nuevo que el servidor; `build.sh` instala la version 17 y el comando verifica la compatibilidad antes de respaldar
+- El historial guarda metadata, nunca el archivo
+- `core/tests.py` y `core/tests_full.py` cubren permisos, generacion, streaming, integridad, concurrencia y el ciclo `pg_dump` → `pg_restore`
