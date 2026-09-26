@@ -178,23 +178,54 @@ class Sale(models.Model):
 
 
 class Backup(models.Model):
-    """Copia de seguridad de la base de datos SQLite."""
+    """Metadatos de una copia de seguridad. NUNCA almacena el archivo:
+    el dump se genera en un temporal, se transmite al navegador y se
+    borra. Aqui solo queda constancia de la operacion."""
     TYPE_CHOICES = [('automatic', 'Automatico'), ('manual', 'Manual')]
-    STATUS_CHOICES = [('success', 'Correcto'), ('failed', 'Fallido')]
+    STATUS_CHOICES = [
+        ('pending', 'Pendiente'),
+        ('running', 'En proceso'),
+        ('success', 'Completado'),
+        ('failed', 'Fallido'),
+    ]
+    FORMAT_CHOICES = [
+        ('dump', 'PostgreSQL dump (pg_dump)'),
+        ('sqlite3', 'SQLite'),
+        ('json', 'JSON (solo desarrollo)'),
+    ]
 
     filename = models.CharField(max_length=255)
     backup_type = models.CharField(max_length=10, choices=TYPE_CHOICES)
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='success')
+    status = models.CharField(
+        max_length=10, choices=STATUS_CHOICES, default='pending')
+    backup_format = models.CharField(
+        max_length=10, choices=FORMAT_CHOICES, default='dump')
     created_at = models.DateTimeField(auto_now_add=True)
-    created_by = models.ForeignKey(
-        User, null=True, blank=True, on_delete=models.SET_NULL,
-        related_name='backups')
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
     size = models.BigIntegerField(default=0)
     storage_path = models.CharField(max_length=500, blank=True, default='')
     checksum = models.CharField(max_length=64, blank=True, default='')
+    verified = models.BooleanField(
+        default=False,
+        help_text='La integridad del archivo fue verificada tras generarse')
+    error_message = models.CharField(max_length=500, blank=True, default='')
+    created_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='backups')
 
     class Meta:
         ordering = ['-created_at']
+        constraints = [
+            # Garantiza un solo respaldo en curso. Es la unica proteccion
+            # fiable: el transaction pooler de Supabase (puerto 6543) no
+            # soporta bloqueos consultivos, y Render usa 2 workers.
+            models.UniqueConstraint(
+                fields=['status'],
+                condition=models.Q(status='running'),
+                name='backup_unico_en_proceso',
+            ),
+        ]
 
     def __str__(self):
         return f'{self.filename} ({self.get_backup_type_display()})'

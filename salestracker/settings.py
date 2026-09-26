@@ -64,13 +64,21 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'salestracker.wsgi.application'
 
-DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://postgres.mehipkdatrttvghmfgmo:jmvv2004%2F05.@aws-0-us-west-2.pooler.supabase.com:6543/postgres')
+# La credencial de la base de datos SOLO se lee de variables de entorno.
+# Nunca se escribe una credencial real en el repositorio.
+DATABASE_URL = os.environ.get('DATABASE_URL')
 if DATABASE_URL:
+    # El SSL es obligatorio por defecto (Supabase lo exige). Solo se relaja
+    # si se define DB_SSL_DISABLE=1, usado exclusivamente para levantar un
+    # PostgreSQL local de pruebas que no tiene certificado.
+    _db_ssl_disable = os.environ.get('DB_SSL_DISABLE', '').lower() in (
+        '1', 'true', 'yes')
+
     DATABASES = {
         'default': dj_database_url.config(
             default=DATABASE_URL,
             conn_max_age=600,
-            ssl_require=True,
+            ssl_require=not _db_ssl_disable,
         )
     }
 else:

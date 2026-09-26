@@ -36,6 +36,5 @@ urlpatterns = [
     path('reports/xlsx-public/', report_views.SalesXlsxPublicView.as_view()),
 
     path('backups', views.BackupListView.as_view()),
-    path('backups/<int:pk>/download', views.BackupDownloadView.as_view()),
     path('backups/<int:pk>', views.BackupDeleteView.as_view()),
 ]

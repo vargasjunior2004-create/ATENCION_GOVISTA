@@ -291,9 +291,12 @@ class BackupSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Backup
-        fields = ['id', 'filename', 'backup_type', 'status', 'created_at',
-                  'created_by', 'size', 'size_display', 'storage_path',
-                  'checksum', 'creator']
+        # 'storage_path' queda fuera a proposito: expone rutas del
+        # sistema de archivos del servidor.
+        fields = ['id', 'filename', 'backup_type', 'status', 'backup_format',
+                  'created_at', 'started_at', 'finished_at', 'created_by',
+                  'size', 'size_display', 'checksum', 'verified',
+                  'error_message', 'creator']
 
     def get_creator(self, obj):
         if obj.created_by:
