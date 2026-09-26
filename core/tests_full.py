@@ -245,6 +245,11 @@ class DashboardTests(TestCase):
             'planId': self.plan.id
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.c.post('/api/sales', {
+            'clientCode': 'D003', 'clientName': 'DASH3',
+            'serviceType': 'internet', 'requestType': 'recontratacion',
+            'planId': self.plan.id
+        }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.c.post('/api/sales', {
             'clientCode': 'D002', 'clientName': 'DASH2',
             'serviceType': 'internet', 'requestType': 'retiro',
             'planId': self.plan.id
@@ -252,9 +257,25 @@ class DashboardTests(TestCase):
 
         r = self.c.get('/api/dashboard/stats', HTTP_AUTHORIZATION=f'Bearer {token}')
         data = _json(r)
-        self.assertEqual(data['movimientos']['today']['count'], 2)
-        self.assertEqual(data['instalaciones']['today']['count'], 1)
+        self.assertEqual(data['movimientos']['today']['count'], 3)
+        # Aqui si se agrupan: nuevo contrato + recontratacion = instalaciones
+        self.assertEqual(data['instalaciones']['today']['count'], 2)
         self.assertEqual(data['retiros']['today']['count'], 1)
+
+    def test_dashboard_no_agrupa_cambio_plan_ni_adicion(self):
+        """La agrupacion de instalaciones es solo nuevo contrato + recontratacion."""
+        token = self._token()
+        for code, tipo in (('E001', 'cambio_plan'), ('E002', 'adicion'), ('E003', 'otro')):
+            Sale.objects.create(
+                date=timezone.localdate(), clientCode=code,
+                clientName=f'DASH_{tipo}', serviceType='internet',
+                requestType=tipo, plan=self.plan, total=Decimal('100'),
+                createdBy=self.admin)
+
+        r = self.c.get('/api/dashboard/stats', HTTP_AUTHORIZATION=f'Bearer {token}')
+        data = _json(r)
+        self.assertEqual(data['movimientos']['today']['count'], 3)
+        self.assertEqual(data['instalaciones']['today']['count'], 0)
 
     def test_dashboard_no_auth(self):
         r = self.c.get('/api/dashboard/stats')
@@ -310,6 +331,54 @@ class ReportTests(TestCase):
     def test_report_no_auth(self):
         r = self.c.get('/api/reports/pdf?from=2026-01-01&to=2026-01-01')
         self.assertEqual(r.status_code, 401)
+
+    def test_labels_respetan_tipo_de_movimiento(self):
+        """Cada tipo de movimiento conserva su propia etiqueta en el reporte.
+
+        Un 'nuevo contrato' no debe aparecer como INSTALACIONES: la agrupacion
+        de instalaciones es exclusiva del dashboard.
+        """
+        from .models import Sale as SaleModel
+        from .reports import REQUEST_TYPE_LABELS, get_request_label
+
+        esperado = dict(SaleModel.REQUEST_CHOICES)
+        self.assertEqual(REQUEST_TYPE_LABELS, esperado)
+
+        for value, label in esperado.items():
+            with self.subTest(tipo=value):
+                sale = SaleModel(requestType=value, serviceType='internet')
+                self.assertEqual(get_request_label(sale), label)
+
+        # La agrupacion de instalaciones no debe aparecer en ningun reporte.
+        self.assertNotIn('INSTALACIONES', REQUEST_TYPE_LABELS.values())
+        self.assertNotEqual(REQUEST_TYPE_LABELS['nuevo_contrato'],
+                            REQUEST_TYPE_LABELS['recontratacion'])
+
+    def test_adicion_mantiene_subtipo(self):
+        from .models import Sale as SaleModel
+        from .reports import get_request_label
+
+        internet = SaleModel(requestType='adicion', additionType='adicion_internet')
+        tv = SaleModel(requestType='adicion', additionType='adicion_tv')
+        self.assertEqual(get_request_label(internet), 'ADICION INTERNET')
+        self.assertEqual(get_request_label(tv), 'ADICION TV')
+
+    def test_nombre_de_archivo_usa_el_tipo_de_movimiento(self):
+        """El PDF/XLSX descargado no debe llamarse INSTALACIONES."""
+        token = self._token()
+        today = timezone.localdate().isoformat()
+
+        for tipo, esperado in (('nuevo_contrato', 'NUEVO CONTRATO'),
+                               ('recontratacion', 'RECONTRATACION'),
+                               ('retiro', 'RETIRO')):
+            with self.subTest(tipo=tipo):
+                for url in (f'/api/reports/pdf?from={today}&to={today}&requestType={tipo}',
+                            f'/api/reports/xlsx?from={today}&to={today}&requestType={tipo}'):
+                    r = self.c.get(url, HTTP_AUTHORIZATION=f'Bearer {token}')
+                    self.assertEqual(r.status_code, 200)
+                    nombre = r.get('Content-Disposition', '')
+                    self.assertIn(esperado, nombre)
+                    self.assertNotIn('INSTALACIONES', nombre)
 
 
 class PlanTests(TestCase):

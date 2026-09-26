@@ -8,12 +8,12 @@ from .models import Sale
 SIGNER = TimestampSigner()
 
 REQUEST_TYPE_LABELS = {
-    'nuevo_contrato': 'INSTALACIONES',
+    'nuevo_contrato': 'NUEVO CONTRATO',
     'cambio_plan': 'CAMBIO DE PLAN',
     'recontratacion': 'RECONTRATACION',
-    'retiro': 'RETIROS',
+    'retiro': 'RETIRO',
     'adicion': 'ADICION',
-    'otro': 'OTROS',
+    'otro': 'OTRO',
 }
 
 ADDITION_TYPE_LABELS = {
