@@ -143,8 +143,13 @@ class Sale(models.Model):
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='sales')
     changeReason = models.CharField(max_length=120, blank=True, default='')
     planFrom = models.CharField(max_length=60, blank=True, default='')
+    serviceTypeFrom = models.CharField(
+        max_length=20, choices=TYPE_CHOICES, null=True, blank=True,
+        help_text='Servicio anterior (cambio de plan entre servicios)')
+    # PROTECT y no SET_NULL a proposito: si el plan anterior se borrara del
+    # catalogo, el movimiento historico perderia su origen sin avisar.
     planFromId = models.ForeignKey(
-        Plan, null=True, blank=True, on_delete=models.SET_NULL,
+        Plan, null=True, blank=True, on_delete=models.PROTECT,
         related_name='sales_from', help_text='Plan anterior (cambio de plan)')
     totalFrom = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True)

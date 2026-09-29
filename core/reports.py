@@ -4,22 +4,12 @@ from pathlib import Path
 from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
 
 from .models import Sale
+from .domain import (
+    ADDITION_TYPE_LABELS, REQUEST_TYPE_LABELS, SERVICE_TYPE_LABELS,
+    SERVICE_TYPE_TO_PLAN_TYPE, sale_service_label,
+)
 
 SIGNER = TimestampSigner()
-
-REQUEST_TYPE_LABELS = {
-    'nuevo_contrato': 'NUEVO CONTRATO',
-    'cambio_plan': 'CAMBIO DE PLAN',
-    'recontratacion': 'RECONTRATACION',
-    'retiro': 'RETIRO',
-    'adicion': 'ADICION',
-    'otro': 'OTRO',
-}
-
-ADDITION_TYPE_LABELS = {
-    'adicion_internet': 'ADICION INTERNET',
-    'adicion_tv': 'ADICION TV',
-}
 
 
 def get_request_label(sale):
@@ -81,7 +71,42 @@ def _report_header(title, subtitle):
 
 # ---------------------------------------------------------------- PDF (sales)
 
-def build_sales_pdf(from_date, to_date, request_type=None, service_type=None):
+def _sales_queryset(from_date, to_date, request_type=None, service_type=None,
+                    service_type_from=None):
+    """Movimientos del rango con los filtros aplicados, en una sola regla."""
+    from django.db.models import Q
+
+    qs = Sale.objects.select_related('plan', 'planFromId', 'createdBy').filter(
+        date__gte=from_date, date__lte=to_date)
+    if request_type:
+        qs = qs.filter(requestType=request_type)
+    if service_type:
+        qs = qs.filter(serviceType=service_type)
+    if service_type_from:
+        family = SERVICE_TYPE_TO_PLAN_TYPE.get(service_type_from)
+        if family:
+            qs = qs.filter(
+                Q(serviceTypeFrom=service_type_from)
+                | Q(serviceTypeFrom__isnull=True, planFromId__type=family))
+        else:
+            qs = qs.filter(serviceTypeFrom=service_type_from)
+    return qs.order_by('date', 'id')
+
+
+def _service_filter_label(service_type=None, service_type_from=None):
+    """Texto del filtro de servicio para el titulo del reporte."""
+    parts = []
+    if service_type:
+        parts.append(SERVICE_TYPE_LABELS.get(service_type, service_type))
+    if service_type_from:
+        parts.append(
+            f'servicio anterior: '
+            f'{SERVICE_TYPE_LABELS.get(service_type_from, service_type_from)}')
+    return ' - '.join(parts) if parts else 'TODOS LOS SERVICIOS'
+
+
+def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
+                    service_type_from=None):
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.units import mm
     from reportlab.lib import colors
@@ -90,17 +115,8 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None):
     from reportlab.lib.styles import getSampleStyleSheet
     from datetime import datetime
 
-    SERVICE_TYPE_LABELS = {
-        'internet': 'INTERNET', 'tv': 'TV ANALOGA', 'tv_digital': 'TV DIGITAL',
-        'combo_analog': 'INTERNET + TV ANALOGA', 'combo_digital': 'INTERNET + TV DIGITAL',
-    }
-
-    sales = Sale.objects.select_related('plan', 'createdBy').filter(
-        date__gte=from_date, date__lte=to_date).order_by('date', 'id')
-    if request_type:
-        sales = sales.filter(requestType=request_type)
-    if service_type:
-        sales = sales.filter(serviceType=service_type)
+    sales = _sales_queryset(from_date, to_date, request_type, service_type,
+                            service_type_from)
 
     styles = getSampleStyleSheet()
     buf = BytesIO()
@@ -112,7 +128,7 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None):
     title_to = datetime.strptime(to_date, '%Y-%m-%d').strftime('%d/%m/%Y')
 
     request_label = REQUEST_TYPE_LABELS.get(request_type, 'TODOS LOS MOVIMIENTOS')
-    service_label = SERVICE_TYPE_LABELS.get(service_type, 'TODOS LOS SERVICIOS')
+    service_label = _service_filter_label(service_type, service_type_from)
     title = f'MOV. CLIENTES — {request_label} — {service_label}'
 
     story = _report_header(
@@ -123,16 +139,15 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None):
     header = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD', 'PLAN', 'MONTO', 'OPERADOR']
     rows = [header]
     for s in sales:
-        service_label = SERVICE_TYPE_LABELS.get(s.serviceType, s.serviceType)
         # Plan display: cambio_plan shows "anterior → nuevo"
         plan_label = s.plan.label if s.plan else ''
-        if s.requestType == 'cambio_plan' and hasattr(s, 'planFromId') and s.planFromId:
+        if s.requestType == 'cambio_plan' and s.planFromId:
             plan_label = f'{s.planFromId.label} → {s.plan.label}'
         rows.append([
             s.date.strftime('%d/%m/%Y') if s.date else '',
             s.clientCode or '',
             s.clientName or '',
-            service_label,
+            sale_service_label(s),
             get_request_label(s),
             plan_label,
             f'{float(s.total):.2f}',
@@ -160,21 +175,13 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None):
 
 # ---------------------------------------------------------------- XLSX (sales)
 
-def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None):
+def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
+                     service_type_from=None):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
-    SERVICE_TYPE_LABELS = {
-        'internet': 'INTERNET', 'tv': 'TV ANALOGA', 'tv_digital': 'TV DIGITAL',
-        'combo_analog': 'INTERNET + TV ANALOGA', 'combo_digital': 'INTERNET + TV DIGITAL',
-    }
-
-    sales = Sale.objects.select_related('plan', 'createdBy').filter(
-        date__gte=from_date, date__lte=to_date).order_by('date', 'id')
-    if request_type:
-        sales = sales.filter(requestType=request_type)
-    if service_type:
-        sales = sales.filter(serviceType=service_type)
+    sales = _sales_queryset(from_date, to_date, request_type, service_type,
+                            service_type_from)
 
     wb = Workbook()
     ws = wb.active
@@ -200,16 +207,15 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None):
         cell.border = thin_border
 
     for row_idx, s in enumerate(sales, 2):
-        service_label = SERVICE_TYPE_LABELS.get(s.serviceType, s.serviceType)
         plan_label = s.plan.label if s.plan else ''
-        if s.requestType == 'cambio_plan' and hasattr(s, 'planFromId') and s.planFromId:
+        if s.requestType == 'cambio_plan' and s.planFromId:
             plan_label = f'{s.planFromId.label} → {s.plan.label}'
 
         data_row = [
             s.date.strftime('%d/%m/%Y') if s.date else '',
             s.clientCode or '',
             s.clientName or '',
-            service_label,
+            sale_service_label(s),
             get_request_label(s),
             plan_label,
             float(s.total),
@@ -234,17 +240,13 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None):
 
 # ---------------------------------------------------------------- PNG (sales)
 
-def build_sales_png(from_date, to_date):
+def build_sales_png(from_date, to_date, request_type=None, service_type=None,
+                    service_type_from=None):
     from PIL import Image, ImageDraw, ImageFont
     from datetime import datetime
 
-    sales = Sale.objects.select_related('plan', 'createdBy').filter(
-        date__gte=from_date, date__lte=to_date).order_by('date', 'id')
-
-    SERVICE_TYPE_LABELS = {
-        'internet': 'INTERNET', 'tv': 'TV ANALOGA', 'tv_digital': 'TV DIGITAL',
-        'combo_analog': 'INTERNET + TV ANALOGA', 'combo_digital': 'INTERNET + TV DIGITAL',
-    }
+    sales = _sales_queryset(from_date, to_date, request_type, service_type,
+                            service_type_from)
 
     headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD', 'PLAN', 'MONTO', 'OPERADOR']
     col_widths = [140, 130, 300, 240, 180, 180, 120, 240]
@@ -285,15 +287,14 @@ def build_sales_png(from_date, to_date):
     for idx, s in enumerate(sales):
         bg = '#F8FAFC' if idx % 2 == 0 else '#FFFFFF'
         draw.rectangle([0, y, total_width, y + row_height], fill=bg)
-        service_label = SERVICE_TYPE_LABELS.get(s.serviceType, s.serviceType)
         plan_label = s.plan.label if s.plan else ''
-        if s.requestType == 'cambio_plan' and hasattr(s, 'planFromId') and s.planFromId:
+        if s.requestType == 'cambio_plan' and s.planFromId:
             plan_label = f'{s.planFromId.label} → {s.plan.label}'
         values = [
             s.date.strftime('%d/%m/%Y') if s.date else '',
             s.clientCode or '',
             s.clientName or '',
-            service_label,
+            sale_service_label(s),
             get_request_label(s),
             plan_label,
             f'{float(s.total):.2f}',

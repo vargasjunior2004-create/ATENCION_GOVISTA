@@ -150,7 +150,8 @@ class SaleTests(TestCase):
         r = self.c.post('/api/sales', {
             'clientCode': 'K020', 'clientName': 'F1',
             'serviceType': 'internet', 'requestType': 'cambio_plan',
-            'planId': self.plan.id, 'planFromId': self.previous_plan.id
+            'planId': self.plan.id, 'planFromId': self.previous_plan.id,
+            'changeReason': 'AUMENTO DE DISPOSITIVOS'
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r.status_code, 201)
         r2 = self.c.get(f'/api/sales?from={today}&to={today}',
@@ -183,7 +184,8 @@ class SaleTests(TestCase):
         r2 = self.c.put(f'/api/sales/{sale_id}', {
             'clientName': 'EDITED',
             'serviceType': 'internet', 'requestType': 'cambio_plan',
-            'planId': self.plan.id
+            'planId': self.plan.id, 'planFromId': self.previous_plan.id,
+            'changeReason': 'MEJOR CALIDAD'
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r2.status_code, 200)
         self.assertEqual(_json(r2)['clientName'], 'EDITED')
