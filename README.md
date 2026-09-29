@@ -37,9 +37,13 @@ Login por **nombre de usuario** (no email):
   - Adicion — agrega servicio adicional (internet o TV), cobra solo mensualidad (sin instalacion). Solo muestra planes combo
   - Otro — tipo no clasificado
 - **Tipo de adicion:** cuando se selecciona Adicion, se debe indicar sub-tipo: Adicion Internet o Adicion TV
-- **Cambio de Plan:** dos selects de planes:
-  - **Plan Anterior:** muestra todos los planes (activos + legacy) del tipo de servicio seleccionado
-  - **Plan Nuevo:** muestra solo planes activos no legacy del tipo de servicio seleccionado
+- **Cambio de Plan:** los planes anterior y nuevo se eligen por separado, sin exigir que sean del mismo servicio:
+  - **Plan Anterior:** muestra todos los planes (activos + legacy) agrupados por familia (Internet, TV, Combo)
+  - **Plan Nuevo:** muestra solo planes activos no legacy, filtrados por el servicio nuevo
+  - **Servicio Anterior:** se deduce de la familia del plan anterior, y permite precisar la variante exacta (`TV Cable` / `TV Digital`, `Combo analogo` / `Combo digital`)
+  - **Motivo del cambio:** obligatorio para registrar o editar un cambio de plan
+  - Admite conversiones entre servicios: Internet, TV y ambos Combos, en cualquier direccion
+  - No permite registrar el mismo plan con el mismo servicio (no aporta informacion); si cambia la variante del servicio, si se acepta
   - Solo cobra la mensualidad del plan nuevo, sin costo de instalacion
 - **Montos calculados automaticamente** segun tipo de movimiento:
 
@@ -78,6 +82,8 @@ Login por **nombre de usuario** (no email):
 - **Plan:**
   - Cambio de Plan muestra "PLAN ANTERIOR → PLAN NUEVO" en la columna PLAN
   - Los demas muestran el nombre del plan
+- **Servicio:** en cambios de plan entre servicios distintos muestra la conversion en la misma columna, por ejemplo "COMBO → INTERNET"; si el servicio no cambia, muestra solo el servicio
+- **Filtro por servicio anterior:** disponible en el listado y en los reportes, para encontrar los movimientos donde el cliente venia de otro servicio
 - **Titulo PDF:** `MOV. CLIENTES — TIPO MOVIMIENTO — TIPO SERVICIO` + fechas
 - **Links publicos:** PDF y XLSX con vigencia de 1 hora
 
