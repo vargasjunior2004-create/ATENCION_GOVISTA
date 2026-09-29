@@ -30,7 +30,9 @@ class SalesPdfView(APIView):
         from_date, to_date = _sales_range(request.query_params)
         request_type = request.query_params.get('requestType') or None
         service_type = request.query_params.get('serviceType') or None
-        buf = build_sales_pdf(from_date, to_date, request_type, service_type)
+        service_type_from = request.query_params.get('serviceTypeFrom') or None
+        buf = build_sales_pdf(from_date, to_date, request_type, service_type,
+                              service_type_from)
         suffix = f'-{REQUEST_TYPE_LABELS.get(request_type, "TODOS")}' if request_type else ''
         return _pdf_response(buf, f'planilla{suffix}-{from_date}-{to_date}.pdf')
 
@@ -40,7 +42,9 @@ class SalesXlsxView(APIView):
         from_date, to_date = _sales_range(request.query_params)
         request_type = request.query_params.get('requestType') or None
         service_type = request.query_params.get('serviceType') or None
-        buf = build_sales_xlsx(from_date, to_date, request_type, service_type)
+        service_type_from = request.query_params.get('serviceTypeFrom') or None
+        buf = build_sales_xlsx(from_date, to_date, request_type, service_type,
+                               service_type_from)
         suffix = f'-{REQUEST_TYPE_LABELS.get(request_type, "TODOS")}' if request_type else ''
         response = HttpResponse(
             buf.getvalue(),
@@ -52,7 +56,11 @@ class SalesXlsxView(APIView):
 class SalesPngView(APIView):
     def get(self, request):
         from_date, to_date = _sales_range(request.query_params)
-        buf = build_sales_png(from_date, to_date)
+        request_type = request.query_params.get('requestType') or None
+        service_type = request.query_params.get('serviceType') or None
+        service_type_from = request.query_params.get('serviceTypeFrom') or None
+        buf = build_sales_png(from_date, to_date, request_type, service_type,
+                              service_type_from)
         response = HttpResponse(buf.getvalue(), content_type='image/png')
         response['Content-Disposition'] = f'attachment; filename="foto-{from_date}-{to_date}.png"'
         return response

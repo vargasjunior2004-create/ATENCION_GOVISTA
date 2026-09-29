@@ -19,6 +19,30 @@ const SERVICE_TYPES = [
   { value: 'combo_digital', label: 'INTERNET + TV DIGITAL' },
 ];
 
+const SERVICE_TYPE_LABELS = Object.fromEntries(
+  SERVICE_TYPES.map((t) => [t.value, t.label]));
+
+// Tipo de servicio -> familia de plan que ese servicio puede contratar.
+// El catalogo de planes distingue tres familias, no cinco servicios: por eso
+// TV analoga y TV digital comparten 'tv', y los combos comparten 'combo'.
+const SERVICE_TYPE_TO_PLAN_TYPE = {
+  internet: 'internet',
+  tv: 'tv',
+  tv_digital: 'tv',
+  combo_analog: 'combo',
+  combo_digital: 'combo',
+};
+
+// Servicio anterior que se presume por defecto segun la familia del plan
+// elegido. El operador puede corregirlo si el cliente tiene otra variante.
+const FAMILY_DEFAULT_SERVICE = {
+  internet: 'internet',
+  tv: 'tv',
+  combo: 'combo_analog',
+};
+
+const FAMILY_LABELS = { internet: 'INTERNET', tv: 'TV', combo: 'COMBO' };
+
 const CHANGE_REASONS = [
   'ECONOMICOS', 'AUMENTO DE DISPOSITIVOS', 'VIAJE', 'POCO USO',
   'NO UTILIZA EL SERVICIO', 'MEJOR CALIDAD', 'OTROS',
@@ -48,7 +72,8 @@ export default function SaleForm() {
   const [form, setForm] = useState({
     date: today, clientCode: '', clientName: '', serviceType: 'internet',
     requestType: 'nuevo_contrato', additionType: '', planFromId: '',
-    changeReason: '', retiroReason: '', notes: '', planId: '',
+    serviceTypeFrom: '', changeReason: '', retiroReason: '', notes: '',
+    planId: '',
   });
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [error, setError] = useState('');
@@ -97,32 +122,42 @@ export default function SaleForm() {
     return () => document.removeEventListener('click', onClick);
   }, []);
 
-  const filteredPlans = plans.filter((p) => {
-    if (form.requestType === 'adicion') return p.type === 'combo';
-    if (form.requestType === 'cambio_plan') {
-      const typeMap = { 'internet': 'internet', 'tv': 'tv', 'tv_digital': 'tv', 'combo_analog': 'combo', 'combo_digital': 'combo' };
-      return p.active && p.type === typeMap[form.serviceType];
-    }
-    const typeMap = {
-      'internet': 'internet',
-      'tv': 'tv',
-      'tv_digital': 'tv',
-      'combo_analog': 'combo',
-      'combo_digital': 'combo',
-    };
-    return p.type === typeMap[form.serviceType];
-  });
-
-  const previousPlans = plans.filter((p) => true);
-  const currentPlans = form.requestType === 'cambio_plan'
-    ? filteredPlans.filter((p) => !p.legacy)
-    : filteredPlans.filter((p) => !p.legacy);
-  const legacyPlans = form.requestType === 'cambio_plan'
-    ? filteredPlans.filter((p) => p.legacy)
-    : filteredPlans.filter((p) => p.legacy);
   const isRetiro = form.requestType === 'retiro';
   const isCambio = form.requestType === 'cambio_plan';
   const isAdicion = form.requestType === 'adicion';
+
+  // El plan nuevo se filtra por el servicio NUEVO. El plan anterior se
+  // filtra por su propia familia, no por el servicio nuevo: por eso ahora
+  // es posible cambiar de Combo a Internet o de TV a Combo, que antes era
+  // imposible porque ambos selectores compartian un unico tipo de servicio.
+  const newPlanOptions = plans.filter((p) => {
+    if (form.requestType === 'adicion') return p.type === 'combo';
+    return p.type === SERVICE_TYPE_TO_PLAN_TYPE[form.serviceType];
+  });
+
+  // El plan anterior se ofrece completo y agrupado por familia, sin atarse
+  // al servicio nuevo. Se omite el plan ya elegido como nuevo para no
+  // proponer un cambio que no cambia nada.
+  const previousPlanOptions = isCambio
+    ? plans.filter((p) => String(p.id) !== String(form.planId))
+    : [];
+
+  const currentPlans = newPlanOptions.filter((p) => !p.legacy);
+  const legacyPlans = isRetiro ? newPlanOptions.filter((p) => p.legacy) : [];
+
+  const selectedPreviousPlan = plans.find(
+    (p) => String(p.id) === String(form.planFromId)) || null;
+
+  const previousFamily = selectedPreviousPlan ? selectedPreviousPlan.type : null;
+  const currentFamily = SERVICE_TYPE_TO_PLAN_TYPE[form.serviceType];
+  const isServiceChange = isCambio && previousFamily && currentFamily
+    && previousFamily !== currentFamily;
+
+  // El backend vuelve a validar todo esto; aqui solo se evita que el
+  // operador vea un formulario que el servidor va a rechazar.
+  const samePlanSelected = isCambio && form.planFromId
+    && String(form.planId) === String(form.planFromId)
+    && (!form.serviceTypeFrom || form.serviceTypeFrom === form.serviceType);
 
   useEffect(() => {
     if (form.planId) {
@@ -179,11 +214,36 @@ export default function SaleForm() {
     const finalValue = UPPERCASE_FIELDS.includes(name) ? value.toUpperCase() : value;
     setForm((prev) => {
       const next = { ...prev, [name]: finalValue };
-      if (name === 'serviceType' || name === 'requestType') next.planId = '';
-      if (name === 'requestType' && value !== 'adicion') next.additionType = '';
-      if (name === 'requestType' && value !== 'cambio_plan') next.planFromId = '';
+      // Cambiar el servicio nuevo invalida el plan nuevo, y con el el tipo
+      // de servicio anterior derivado: dejarlos puestos dejaria un plan
+      // incompatible seleccionado que el backend rechazaria.
+      if (name === 'serviceType') {
+        next.planId = '';
+        next.serviceTypeFrom = '';
+      }
+      if (name === 'requestType') {
+        next.planId = '';
+        if (value !== 'adicion') next.additionType = '';
+        if (value !== 'cambio_plan') {
+          next.planFromId = '';
+          next.serviceTypeFrom = '';
+        }
+      }
       return next;
     });
+  };
+
+  const handlePreviousPlanChange = (e) => {
+    const value = e.target.value;
+    const picked = plans.find((p) => String(p.id) === String(value));
+    setForm((prev) => ({
+      ...prev,
+      planFromId: value,
+      // El servicio anterior se deduce del plan anterior. El operador solo
+      // tiene que corregirlo cuando el cliente tiene otra variante (analogica
+      // o digital) de la misma familia.
+      serviceTypeFrom: picked ? (FAMILY_DEFAULT_SERVICE[picked.type] || '') : '',
+    }));
   };
 
   const handleSubmit = async (e) => {
@@ -200,6 +260,7 @@ export default function SaleForm() {
         requestType: form.requestType,
         additionType: form.requestType === 'adicion' ? form.additionType : '',
         planFromId: form.requestType === 'cambio_plan' && form.planFromId ? Number(form.planFromId) : null,
+        serviceTypeFrom: form.requestType === 'cambio_plan' && form.serviceTypeFrom ? form.serviceTypeFrom : null,
         changeReason: isCambio ? form.changeReason : (isRetiro ? form.retiroReason : ''),
         notes: form.notes,
         planId: Number(form.planId),
@@ -209,7 +270,7 @@ export default function SaleForm() {
       }
       await api.createSale(payload);
       setSuccess('Registro guardado correctamente');
-      setForm({ date: today, clientCode: '', clientName: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', changeReason: '', retiroReason: '', notes: '', planId: '' });
+      setForm({ date: today, clientCode: '', clientName: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', changeReason: '', retiroReason: '', notes: '', planId: '' });
       setSelectedPlan(null); setSelectedCustomer(null); setQuery(''); setCustomers([]);
       setPromotions([]); setSelectedPromotion(null); setPriceMode('normal');
       setShowPreview(false);
@@ -300,7 +361,12 @@ export default function SaleForm() {
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </Select>
-            <Select label="Tipo de Servicio *" name="serviceType" value={form.serviceType} onChange={handleChange}>
+            <Select
+              label={isCambio ? 'Tipo de Servicio Nuevo *' : 'Tipo de Servicio *'}
+              name="serviceType"
+              value={form.serviceType}
+              onChange={handleChange}
+            >
               {SERVICE_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
@@ -317,29 +383,100 @@ export default function SaleForm() {
           )}
 
           {isCambio && (
-            <Select label="Plan Anterior *" name="planFromId" value={form.planFromId} onChange={handleChange} required>
-              <option value="">--Seleccione plan anterior--</option>
-              {filteredPlans.map((p) => (
-                <option key={p.id} value={p.id}>{p.code} - {p.label} {p.legacy ? '(Anterior)' : ''}</option>
-              ))}
-            </Select>
+            <div className="rounded-2xl border-2 border-dashed border-amber-200 bg-amber-50/40 p-4 space-y-4">
+              <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">
+                Servicio que tiene el cliente
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Select
+                  label="Plan Anterior *"
+                  name="planFromId"
+                  value={form.planFromId}
+                  onChange={handlePreviousPlanChange}
+                  required
+                >
+                  <option value="">--Seleccione plan anterior--</option>
+                  {['internet', 'tv', 'combo'].map((family) => {
+                    const group = previousPlanOptions.filter((p) => p.type === family);
+                    if (!group.length) return null;
+                    return (
+                      <optgroup key={family} label={FAMILY_LABELS[family]}>
+                        {group.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.code} - {p.label}{p.legacy ? ' (Anterior)' : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    );
+                  })}
+                </Select>
+                <Select
+                  label="Tipo de Servicio Anterior *"
+                  name="serviceTypeFrom"
+                  value={form.serviceTypeFrom}
+                  onChange={handleChange}
+                  required
+                  disabled={!form.planFromId}
+                >
+                  <option value="">--Seleccione--</option>
+                  {SERVICE_TYPES
+                    .filter((t) => !previousFamily
+                      || SERVICE_TYPE_TO_PLAN_TYPE[t.value] === previousFamily)
+                    .map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                </Select>
+              </div>
+              <p className="text-xs text-slate-500">
+                Se deduce del plan anterior. Corrijalo solo si el cliente tiene
+                otra variante de la misma familia.
+              </p>
+            </div>
           )}
 
-          <Select label="Paquete / Plan *" name="planId" value={form.planId} onChange={handleChange} required>
-            <option value="">Seleccionar plan...</option>
-            <optgroup label="Planes vigentes">
-              {currentPlans.map((p) => (
-                <option key={p.id} value={p.id}>{p.label} - {parseFloat(p.monthly).toFixed(0)} Bs</option>
-              ))}
-            </optgroup>
-            {isRetiro && legacyPlans.length > 0 && (
-              <optgroup label="Planes anteriores">
-                {legacyPlans.map((p) => (
+          <div className={isCambio ? 'rounded-2xl border-2 border-dashed border-brand-200 bg-brand-50/40 p-4 space-y-4' : ''}>
+            {isCambio && (
+              <p className="text-xs font-bold text-brand-700 uppercase tracking-wider">
+                Servicio nuevo
+              </p>
+            )}
+            <Select label="Paquete / Plan *" name="planId" value={form.planId} onChange={handleChange} required>
+              <option value="">Seleccionar plan...</option>
+              <optgroup label="Planes vigentes">
+                {currentPlans.map((p) => (
                   <option key={p.id} value={p.id}>{p.label} - {parseFloat(p.monthly).toFixed(0)} Bs</option>
                 ))}
               </optgroup>
-            )}
-          </Select>
+              {isRetiro && legacyPlans.length > 0 && (
+                <optgroup label="Planes anteriores">
+                  {legacyPlans.map((p) => (
+                    <option key={p.id} value={p.id}>{p.label} - {parseFloat(p.monthly).toFixed(0)} Bs</option>
+                  ))}
+                </optgroup>
+              )}
+            </Select>
+          </div>
+
+          {isServiceChange && (
+            <div className="flex items-center gap-2 rounded-xl bg-violet-50 border border-violet-200 px-4 py-3">
+              <span className="text-xs font-bold text-violet-700 uppercase tracking-wider">
+                Conversion de servicio
+              </span>
+              <span className="text-sm font-semibold text-violet-900">
+                {FAMILY_LABELS[previousFamily]} → {FAMILY_LABELS[currentFamily]}
+              </span>
+              <span className="text-xs text-violet-600">
+                (se registra como CAMBIO DE PLAN)
+              </span>
+            </div>
+          )}
+
+          {samePlanSelected && (
+            <Alert type="error">
+              El plan anterior y el nuevo son el mismo. Elija otro plan, o
+              registre el movimiento con otro tipo de solicitud.
+            </Alert>
+          )}
 
           {isCambio && (
             <Select label="Motivo del Cambio *" name="changeReason" value={form.changeReason} onChange={handleChange} required>
@@ -433,8 +570,25 @@ export default function SaleForm() {
                 <div className="font-medium">{form.clientName || '—'}</div>
                 <div><span className="text-slate-400">Solicitud:</span></div>
                 <div className="font-medium">{getRequestLabel(form.requestType)}</div>
-                <div><span className="text-slate-400">Servicio:</span></div>
-                <div className="font-medium">{getServiceLabel(form.serviceType)}</div>
+                {isCambio && selectedPreviousPlan ? (
+                  <>
+                    <div><span className="text-slate-400">Servicio anterior:</span></div>
+                    <div className="font-medium">{SERVICE_TYPE_LABELS[form.serviceTypeFrom] || FAMILY_LABELS[previousFamily]}</div>
+                    <div><span className="text-slate-400">Plan anterior:</span></div>
+                    <div className="font-medium">{selectedPreviousPlan.label}</div>
+                  </>
+                ) : (
+                  <>
+                    <div><span className="text-slate-400">Servicio:</span></div>
+                    <div className="font-medium">{getServiceLabel(form.serviceType)}</div>
+                  </>
+                )}
+                {isCambio && (
+                  <>
+                    <div><span className="text-slate-400">Servicio nuevo:</span></div>
+                    <div className="font-medium">{getServiceLabel(form.serviceType)}</div>
+                  </>
+                )}
                 <div><span className="text-slate-400">Plan:</span></div>
                 <div className="font-medium">{selectedPlan.label}</div>
                 {selectedPromotion && (
@@ -465,7 +619,7 @@ export default function SaleForm() {
             </div>
           )}
 
-          <Button type="submit" size="lg" className="w-full" disabled={!form.planId}>
+          <Button type="submit" size="lg" className="w-full" disabled={!form.planId || samePlanSelected || (isCambio && !form.changeReason)}>
             Revisar Registro
           </Button>
         </form>
@@ -484,9 +638,14 @@ export default function SaleForm() {
                 <div className="flex justify-between"><span className="text-slate-400">Kardex:</span><span className="font-medium">{form.clientCode}</span></div>
                 <div className="flex justify-between"><span className="text-slate-400">Cliente:</span><span className="font-medium">{form.clientName}</span></div>
                 <div className="flex justify-between"><span className="text-slate-400">Solicitud:</span><span className="font-medium">{getRequestLabel(form.requestType)}</span></div>
-                <div className="flex justify-between"><span className="text-slate-400">Servicio:</span><span className="font-medium">{getServiceLabel(form.serviceType)}</span></div>
-                {isCambio && form.planFromId && (
-                  <div className="flex justify-between"><span className="text-slate-400">Plan Anterior:</span><span className="font-medium text-amber-600">{plans.find(p => String(p.id) === String(form.planFromId))?.label || '-'}</span></div>
+                {isCambio && selectedPreviousPlan ? (
+                  <>
+                    <div className="flex justify-between"><span className="text-slate-400">Servicio anterior:</span><span className="font-medium text-amber-600">{SERVICE_TYPE_LABELS[form.serviceTypeFrom] || FAMILY_LABELS[previousFamily]}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-400">Plan Anterior:</span><span className="font-medium text-amber-600">{selectedPreviousPlan.label}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-400">Servicio nuevo:</span><span className="font-medium">{getServiceLabel(form.serviceType)}</span></div>
+                  </>
+                ) : (
+                  <div className="flex justify-between"><span className="text-slate-400">Servicio:</span><span className="font-medium">{getServiceLabel(form.serviceType)}</span></div>
                 )}
                 <div className="flex justify-between"><span className="text-slate-400">Plan:</span><span className="font-medium">{selectedPlan.label}</span></div>
                 {selectedPromotion && (

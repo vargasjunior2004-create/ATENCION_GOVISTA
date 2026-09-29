@@ -26,6 +26,22 @@ const SERVICE_TYPES = [
   { value: 'combo_digital', label: 'Internet + TV Digital' },
 ];
 
+const FAMILY_LABELS = { internet: 'INTERNET', tv: 'TV', combo: 'COMBO' };
+
+const SERVICE_TYPE_TO_PLAN_TYPE = {
+  internet: 'internet', tv: 'tv', tv_digital: 'tv',
+  combo_analog: 'combo', combo_digital: 'combo',
+};
+
+const FAMILY_DEFAULT_SERVICE = {
+  internet: 'internet', tv: 'tv', combo: 'combo_analog',
+};
+
+const SERVICE_LABEL_BY_VALUE = {
+  internet: 'Internet', tv: 'TV Cable', tv_digital: 'TV Digital',
+  combo_analog: 'Internet + TV Analoga', combo_digital: 'Internet + TV Digital',
+};
+
 const REQUEST_LABEL = Object.fromEntries(
   REQUEST_TYPES.filter((t) => t.value).map((t) => [t.value, t.label])
 );
@@ -53,6 +69,11 @@ function SaleCard({ sale, isAdmin, onEdit, onDelete }) {
         </span>
         <span className="font-bold text-brand-700 tabular-nums">{parseFloat(sale.total).toFixed(2)} Bs</span>
       </div>
+      {sale.isServiceChange && sale.previousService && (
+        <div className="text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-lg px-2 py-1 inline-block">
+          Cambio de servicio: {sale.previousService.label} &rarr; {FAMILY_LABELS[SERVICE_TYPE_TO_PLAN_TYPE[sale.serviceType]] || sale.serviceType}
+        </div>
+      )}
       {sale.promotion_name && (
         <div className="flex items-center gap-2 text-xs">
           <Badge color="emerald">Promo: {sale.promotion_name}</Badge>
@@ -126,7 +147,7 @@ export default function SalesList() {
 
   const startEdit = (sale) => {
     setEditingSale(sale);
-    setEditForm({ date: sale.date, clientCode: sale.clientCode, clientName: sale.clientName, serviceType: sale.serviceType, requestType: sale.requestType, additionType: sale.additionType || '', planFromId: sale.previousPlan?.id || '', planId: sale.planId, changeReason: sale.changeReason || '', notes: sale.notes || '' });
+    setEditForm({ date: sale.date, clientCode: sale.clientCode, clientName: sale.clientName, serviceType: sale.serviceType, requestType: sale.requestType, additionType: sale.additionType || '', planFromId: sale.previousPlan?.id || '', serviceTypeFrom: sale.serviceTypeFrom || '', planId: sale.planId, changeReason: sale.changeReason || '', notes: sale.notes || '' });
     setEditError('');
   };
 
@@ -136,18 +157,37 @@ export default function SalesList() {
     const finalValue = UPPERCASE_FIELDS.includes(name) ? value.toUpperCase() : value;
     setEditForm((prev) => {
       const next = { ...prev, [name]: finalValue };
-      if (name === 'serviceType') next.planId = '';
+      if (name === 'serviceType') { next.planId = ''; next.serviceTypeFrom = ''; }
       if (name === 'requestType' && value !== 'adicion') next.additionType = '';
-      if (name === 'requestType' && value !== 'cambio_plan') next.planFromId = '';
+      if (name === 'requestType' && value !== 'cambio_plan') { next.planFromId = ''; next.serviceTypeFrom = ''; }
       return next;
     });
   };
+
+  const handleEditPreviousPlanChange = (e) => {
+    const value = e.target.value;
+    const picked = plans.find((p) => String(p.id) === String(value));
+    setEditForm((prev) => ({
+      ...prev,
+      planFromId: value,
+      serviceTypeFrom: picked ? (FAMILY_DEFAULT_SERVICE[picked.type] || '') : '',
+    }));
+  };
+
+  const editPlanOptions = plans.filter((p) => p.type === SERVICE_TYPE_TO_PLAN_TYPE[editForm.serviceType]);
+  const editCurrentPlans = editPlanOptions.filter((p) => !p.legacy);
+  const editLegacyPlans = editForm.requestType === 'retiro'
+    ? editPlanOptions.filter((p) => p.legacy)
+    : [];
+  const editPreviousOptions = editForm.requestType === 'cambio_plan'
+    ? plans.filter((p) => String(p.id) !== String(editForm.planId))
+    : [];
 
   const handleUpdate = async (e) => {
     e.preventDefault();
     setEditError('');
     try {
-      await api.updateSale(editingSale.id, { date: editForm.date, clientCode: editForm.clientCode, clientName: editForm.clientName, serviceType: editForm.serviceType, requestType: editForm.requestType, additionType: editForm.requestType === 'adicion' ? editForm.additionType : '', planFromId: editForm.requestType === 'cambio_plan' && editForm.planFromId ? Number(editForm.planFromId) : null, planId: Number(editForm.planId), changeReason: editForm.changeReason, notes: editForm.notes });
+      await api.updateSale(editingSale.id, { date: editForm.date, clientCode: editForm.clientCode, clientName: editForm.clientName, serviceType: editForm.serviceType, requestType: editForm.requestType, additionType: editForm.requestType === 'adicion' ? editForm.additionType : '', planFromId: editForm.requestType === 'cambio_plan' && editForm.planFromId ? Number(editForm.planFromId) : null, serviceTypeFrom: editForm.requestType === 'cambio_plan' && editForm.serviceTypeFrom ? editForm.serviceTypeFrom : null, planId: Number(editForm.planId), changeReason: editForm.changeReason, notes: editForm.notes });
       setEditingSale(null);
       loadSales(page);
     } catch (err) {
@@ -167,19 +207,6 @@ export default function SalesList() {
       setDeletingSale(null);
     }
   };
-
-  const filteredPlans = plans.filter((p) => {
-    const typeMap = {
-      'internet': 'internet',
-      'tv': 'tv',
-      'tv_digital': 'tv',
-      'combo_analog': 'combo',
-      'combo_digital': 'combo',
-    };
-    return p.type === typeMap[editForm.serviceType];
-  });
-  const currentPlans = filteredPlans.filter((p) => !p.legacy);
-  const legacyPlans = filteredPlans.filter((p) => p.legacy);
 
   const handleGenerateReport = async () => {
     if (!requestType || !serviceType || !reportFormat) return;
@@ -329,26 +356,39 @@ export default function SalesList() {
                 </Select>
               )}
               {editForm.requestType === 'cambio_plan' && (
-                <Select label="Plan Anterior" name="planFromId" value={editForm.planFromId} onChange={handleEditChange} required>
-                  <option value="">--Seleccione plan anterior--</option>
-                  {plans.filter(p => {
-                    const typeMap = { 'internet': 'internet', 'tv': 'tv', 'tv_digital': 'tv', 'combo_analog': 'combo', 'combo_digital': 'combo' };
-                    return p.active && p.type === typeMap[editForm.serviceType];
-                  }).map((p) => (
-                    <option key={p.id} value={p.id}>{p.code} - {p.label} {p.legacy ? '(Anterior)' : ''}</option>
-                  ))}
-                </Select>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Select label="Plan Anterior" name="planFromId" value={editForm.planFromId} onChange={handleEditPreviousPlanChange} required>
+                    <option value="">--Seleccione plan anterior--</option>
+                    {['internet', 'tv', 'combo'].map((family) => {
+                      const group = editPreviousOptions.filter((p) => p.type === family);
+                      if (!group.length) return null;
+                      return (
+                        <optgroup key={family} label={FAMILY_LABELS[family]}>
+                          {group.map((p) => (
+                            <option key={p.id} value={p.id}>{p.code} - {p.label} {p.legacy ? '(Anterior)' : ''}</option>
+                          ))}
+                        </optgroup>
+                      );
+                    })}
+                  </Select>
+                  <Select label="Servicio Anterior" name="serviceTypeFrom" value={editForm.serviceTypeFrom} onChange={handleEditChange} required disabled={!editForm.planFromId}>
+                    <option value="">--Seleccione--</option>
+                    {SERVICE_TYPES.filter((t) => t.value).map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </Select>
+                </div>
               )}
               <Select label="Plan" name="planId" value={editForm.planId} onChange={handleEditChange} required>
                 <option value="">Seleccionar...</option>
                 <optgroup label="Planes vigentes">
-                  {currentPlans.map((p) => (
+                  {editCurrentPlans.map((p) => (
                     <option key={p.id} value={p.id}>{p.label}</option>
                   ))}
                 </optgroup>
-                {legacyPlans.length > 0 && (
+                {editLegacyPlans.length > 0 && (
                   <optgroup label="Planes anteriores">
-                    {legacyPlans.map((p) => (
+                    {editLegacyPlans.map((p) => (
                       <option key={p.id} value={p.id}>{p.label}</option>
                     ))}
                   </optgroup>

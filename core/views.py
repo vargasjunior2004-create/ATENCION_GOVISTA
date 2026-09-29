@@ -198,6 +198,11 @@ class PlanDetailView(IsAdminMixin, APIView):
         if Sale.objects.filter(plan=plan).exists():
             return Response({'error': 'No se puede eliminar: tiene ventas asociadas'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # Tambien como plan anterior: borrarlo dejaria movimientos historicos
+        # sin origen, que es justo lo que el cambio de plan debe conservar.
+        if Sale.objects.filter(planFromId=plan).exists():
+            return Response({'error': 'No se puede eliminar: es el plan anterior de un cambio de plan'},
+                            status=status.HTTP_400_BAD_REQUEST)
         plan.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -380,7 +385,8 @@ class SaleListView(APIView):
         to_date = request.query_params.get('to')
         rtype = request.query_params.get('requestType')
         stype = request.query_params.get('serviceType')
-        qs = Sale.objects.select_related('plan', 'createdBy').all().order_by('-date', '-id')
+        stype_from = request.query_params.get('serviceTypeFrom')
+        qs = Sale.objects.select_related('plan', 'planFromId', 'createdBy').all().order_by('-date', '-id')
         if from_date:
             qs = qs.filter(date__gte=from_date)
         if to_date:
@@ -389,6 +395,17 @@ class SaleListView(APIView):
             qs = qs.filter(requestType=rtype)
         if stype:
             qs = qs.filter(serviceType=stype)
+        if stype_from:
+            # Busca por el servicio anterior registrado y, para los
+            # movimientos antiguos que no lo tienen, por la familia del
+            # plan anterior. Asi el filtro no pierde registros previos.
+            from .domain import SERVICE_TYPE_TO_PLAN_TYPE
+            if stype_from in SERVICE_TYPE_TO_PLAN_TYPE:
+                qs = qs.filter(Q(serviceTypeFrom=stype_from)
+                               | Q(serviceTypeFrom__isnull=True,
+                                   planFromId__type=SERVICE_TYPE_TO_PLAN_TYPE[stype_from]))
+            else:
+                qs = qs.filter(serviceTypeFrom=stype_from)
 
         total = qs.count()
         page = max(1, int(request.query_params.get('page', 1)))
@@ -444,6 +461,10 @@ class SaleDetailView(IsAdminMixin, APIView):
         except Sale.DoesNotExist:
             return Response({'error': 'Venta no encontrada'}, status=status.HTTP_404_NOT_FOUND)
 
+        from .domain import SERVICE_TYPE_LABELS, SERVICE_TYPE_TO_PLAN_TYPE
+        from .serializers import (
+            SaleSerializer, resolve_sale_prices, validate_cambio_plan)
+
         data = request.data
         plan = sale.plan
         if data.get('planId'):
@@ -452,24 +473,63 @@ class SaleDetailView(IsAdminMixin, APIView):
                 return Response({'error': 'Plan no encontrado o inactivo'},
                                 status=status.HTTP_400_BAD_REQUEST)
 
+        service_type = data.get('serviceType', sale.serviceType)
+        request_type = data.get('requestType', sale.requestType)
+        if service_type not in SERVICE_TYPE_LABELS:
+            return Response({'error': 'Tipo de servicio no valido'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if plan.type != SERVICE_TYPE_TO_PLAN_TYPE.get(service_type):
+            return Response(
+                {'error': 'El plan no pertenece al tipo de servicio seleccionado'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        plan_from = sale.planFromId
+        if 'planFromId' in data:
+            plan_from = None
+            if data.get('planFromId'):
+                plan_from = Plan.objects.filter(id=data['planFromId']).first()
+                if not plan_from:
+                    return Response({'error': 'Plan anterior no encontrado'},
+                                    status=status.HTTP_400_BAD_REQUEST)
+
+        service_type_from = data.get('serviceTypeFrom', sale.serviceTypeFrom) or None
+        change_reason = data.get('changeReason', sale.changeReason)
+
+        if request_type == 'cambio_plan':
+            errors = validate_cambio_plan(
+                plan=plan, plan_from=plan_from, service_type=service_type,
+                service_type_from=service_type_from,
+                change_reason=change_reason)
+            if errors:
+                return Response({'error': next(iter(errors.values()))},
+                                status=status.HTTP_400_BAD_REQUEST)
+        else:
+            service_type_from = None
+            if request_type != 'adicion':
+                data = {**data, 'additionType': ''}
+
         sale.date = data.get('date', sale.date)
         sale.clientCode = data.get('clientCode', sale.clientCode)
         sale.clientName = data.get('clientName', sale.clientName)
-        sale.serviceType = data.get('serviceType', sale.serviceType)
-        sale.requestType = data.get('requestType', sale.requestType)
+        sale.serviceType = service_type
+        sale.requestType = request_type
         sale.additionType = data.get('additionType', sale.additionType)
-        sale.changeReason = data.get('changeReason', sale.changeReason)
+        sale.changeReason = change_reason
         sale.notes = data.get('notes', sale.notes)
         sale.plan = plan
-        sale.total = plan.total
-        # cambio_plan: actualizar plan anterior
-        if data.get('planFromId'):
-            from .models import Plan as PlanModel
-            pf = PlanModel.objects.filter(id=data['planFromId']).first()
-            if pf:
-                sale.planFromId = pf
-                sale.planFrom = pf.code
-                sale.totalFrom = pf.total
+        sale.planFromId = plan_from
+        sale.serviceTypeFrom = service_type_from
+        sale.planFrom = plan_from.label if plan_from else ''
+        sale.totalFrom = plan_from.total if plan_from else None
+
+        # Mismos precios que en el alta: la edicion no puede inventarse
+        # una regla de cobro distinta a la del registro original.
+        installation, monthly, total = resolve_sale_prices(
+            plan, sale.promotion, request_type)
+        sale.applied_installation = installation
+        sale.applied_monthly = monthly
+        sale.total = total
+
         sale.lastEditedBy = request.user
         sale.lastEditedAt = timezone.now()
         sale.save()
