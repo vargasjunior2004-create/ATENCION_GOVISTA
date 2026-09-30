@@ -240,6 +240,41 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
 
 # ---------------------------------------------------------------- PNG (sales)
 
+def _wrap_text(text, font, max_width):
+    """Parte un texto en lineas que caben en max_width.
+
+    Sin esto, ImageDraw dibuja la cadena completa y se sale de la celda,
+    encima de la columna siguiente. Parte palabras cuando una sola no
+    cabe (ej. codigos de plan largos en la celda PLAN).
+    """
+    text = str(text)
+    if not text:
+        return ['']
+
+    lines, current = [], ''
+    for word in text.split(' '):
+        candidate = f'{current} {word}'.strip()
+        if font.getlength(candidate) <= max_width:
+            current = candidate
+            continue
+        if current:
+            lines.append(current)
+        if font.getlength(word) <= max_width:
+            current = word
+        else:
+            fragment = ''
+            for char in word:
+                if font.getlength(fragment + char) <= max_width:
+                    fragment += char
+                else:
+                    lines.append(fragment)
+                    fragment = char
+            current = fragment
+    if current:
+        lines.append(current)
+    return lines or ['']
+
+
 def build_sales_png(from_date, to_date, request_type=None, service_type=None,
                     service_type_from=None):
     from PIL import Image, ImageDraw, ImageFont
@@ -264,9 +299,35 @@ def build_sales_png(from_date, to_date, request_type=None, service_type=None,
 
     total_width = sum(col_widths) + padding * 2
     title_height = 60
-    total_height = title_height + row_height + row_height * len(sales) + 40
+    h_padding = 6
+    line_height = font.size + 6
 
-    img = Image.new('RGB', (total_width, total_height), '#FFFFFF')
+    # Primera pasada: envolver cada celda a su columna y medir la fila.
+    # El alto total depende de esto, asi que va antes de crear la imagen.
+    rows = []
+    for s in sales:
+        plan_label = s.plan.label if s.plan else ''
+        if s.requestType == 'cambio_plan' and s.planFromId:
+            plan_label = f'{s.planFromId.label} → {plan_label}'
+        values = [
+            s.date.strftime('%d/%m/%Y') if s.date else '',
+            s.clientCode or '',
+            s.clientName or '',
+            sale_service_label(s),
+            get_request_label(s),
+            plan_label,
+            f'{float(s.total):.2f}',
+            s.createdBy.name if s.createdBy else '',
+        ]
+        cells = [
+            _wrap_text(v, font, col_widths[i] - h_padding * 2)
+            for i, v in enumerate(values)
+        ]
+        height = max(row_height, max(len(c) for c in cells) * line_height + 20)
+        rows.append((cells, height))
+
+    body_height = sum(height for _, height in rows)
+    img = Image.new('RGB', (total_width, title_height + row_height + body_height + 40), '#FFFFFF')
     draw = ImageDraw.Draw(img)
 
     # Title
@@ -279,32 +340,20 @@ def build_sales_png(from_date, to_date, request_type=None, service_type=None,
     draw.rectangle([0, y, total_width, y + row_height], fill='#1D4ED8')
     x = padding
     for i, h in enumerate(headers):
-        draw.text((x + 6, y + 10), h, fill='#FFFFFF', font=font_bold)
+        draw.text((x + h_padding, y + 10), h, fill='#FFFFFF', font=font_bold)
         x += col_widths[i]
-
-    # Data rows
     y += row_height
-    for idx, s in enumerate(sales):
-        bg = '#F8FAFC' if idx % 2 == 0 else '#FFFFFF'
-        draw.rectangle([0, y, total_width, y + row_height], fill=bg)
-        plan_label = s.plan.label if s.plan else ''
-        if s.requestType == 'cambio_plan' and s.planFromId:
-            plan_label = f'{s.planFromId.label} → {s.plan.label}'
-        values = [
-            s.date.strftime('%d/%m/%Y') if s.date else '',
-            s.clientCode or '',
-            s.clientName or '',
-            sale_service_label(s),
-            get_request_label(s),
-            plan_label,
-            f'{float(s.total):.2f}',
-            s.createdBy.name if s.createdBy else '',
-        ]
+
+    # Segunda pasada: dibujar. La celda PLAN de un cambio de plan puede
+    # ocupar dos lineas, y la fila crece para que nada invada MONTO.
+    for idx, (cells, height) in enumerate(rows):
+        draw.rectangle([0, y, total_width, y + height], fill='#F8FAFC' if idx % 2 == 0 else '#FFFFFF')
         x = padding
-        for i, v in enumerate(values):
-            draw.text((x + 6, y + 10), str(v), fill='#1E293B', font=font)
+        for i, lines in enumerate(cells):
+            for n, line in enumerate(lines):
+                draw.text((x + h_padding, y + 10 + n * line_height), line, fill='#1E293B', font=font)
             x += col_widths[i]
-        y += row_height
+        y += height
 
     # Footer
     draw.text((padding, y + 10), f'{len(sales)} registros', fill='#94A3B8', font=font)
