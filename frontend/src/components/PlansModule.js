@@ -5,6 +5,19 @@ import { Button, Input, Select, Card, Alert, Badge, TotalDisplay } from './ui';
 const emptyPlan = { code: '', label: '', type: 'internet', speed: '', monthly: '', installation: '' };
 const typeColor = { internet: 'blue', tv: 'amber', combo: 'violet' };
 
+const TYPE_FILTERS = [
+  { value: 'all', label: 'Todos' },
+  { value: 'internet', label: 'Internet' },
+  { value: 'tv', label: 'TV Cable' },
+  { value: 'combo', label: 'Combo' },
+];
+
+const STATE_FILTERS = [
+  { value: 'all', label: 'Todos los estados' },
+  { value: 'current', label: 'Actuales' },
+  { value: 'legacy', label: 'Anteriores' },
+];
+
 export default function PlansModule() {
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -13,7 +26,9 @@ export default function PlansModule() {
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
   const [deletingPlan, setDeletingPlan] = useState(null);
-  const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [stateFilter, setStateFilter] = useState('all');
+  const [applied, setApplied] = useState(null);
 
   const loadPlans = useCallback(async () => {
     try { setPlans(await api.getPlans()); } catch (err) { console.error(err); } finally { setLoading(false); }
@@ -61,10 +76,28 @@ export default function PlansModule() {
 
   if (loading) return <p className="text-center text-slate-400 py-20">Cargando...</p>;
 
-  const q = search.toLowerCase();
-  const filtered = plans.filter((p) =>
-    !q || p.code.toLowerCase().includes(q) || p.label.toLowerCase().includes(q) || p.type.toLowerCase().includes(q)
-  );
+  const hasSelection = typeFilter !== 'all' || stateFilter !== 'all';
+
+  // `applied` guarda lo que se ejecuto con Buscar, para que cambiar un
+  // filtro no altere la tabla hasta volver a buscar.
+  const filtered = !applied ? [] : plans.filter((p) => {
+    if (applied.type !== 'all' && p.type !== applied.type) return false;
+    if (applied.state === 'current' && p.legacy) return false;
+    if (applied.state === 'legacy' && !p.legacy) return false;
+    return true;
+  });
+
+  const handleSearch = () => {
+    if (hasSelection) setApplied({ type: typeFilter, state: stateFilter });
+  };
+
+  const clearFilters = () => {
+    setTypeFilter('all');
+    setStateFilter('all');
+    setApplied(null);
+  };
+
+  const typeCount = (value) => value === 'all' ? plans.length : plans.filter((p) => p.type === value).length;
 
   return (
     <div className="space-y-6">
@@ -76,8 +109,45 @@ export default function PlansModule() {
         <Button onClick={openNew}>+ Agregar Plan</Button>
       </div>
 
-      <Card className="p-4">
-        <Input placeholder="Buscar por codigo, nombre o tipo..." value={search} onChange={(e) => setSearch(e.target.value)} />
+      {/* Filtros */}
+      <Card className="p-5 space-y-4">
+        <div>
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Tipo</p>
+          <div className="flex flex-wrap gap-2">
+            {TYPE_FILTERS.map((t) => (
+              <Button
+                key={t.value}
+                variant={typeFilter === t.value ? 'primary' : 'secondary'}
+                size="sm"
+                onClick={() => setTypeFilter(t.value)}
+                aria-pressed={typeFilter === t.value}
+              >
+                {t.label} ({typeCount(t.value)})
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+          <Select label="Estado" value={stateFilter} onChange={(e) => setStateFilter(e.target.value)}>
+            {STATE_FILTERS.map((s) => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
+          </Select>
+          <div className="flex gap-3">
+            <Button onClick={handleSearch} disabled={!hasSelection}>Buscar</Button>
+            <Button variant="secondary" onClick={clearFilters}>Limpiar</Button>
+          </div>
+        </div>
+
+        {!hasSelection && (
+          <p className="text-xs text-slate-400">Selecciona al menos un filtro para buscar</p>
+        )}
+        {applied && (
+          <p className="text-xs text-slate-500">
+            Mostrando {filtered.length} de {plans.length} planes
+          </p>
+        )}
       </Card>
 
       {/* Delete confirmation modal */}
@@ -141,7 +211,24 @@ export default function PlansModule() {
         </div>
       )}
 
+      {/* Estado inicial: sin consulta ejecutada */}
+      {!applied && (
+        <Card className="p-12 text-center">
+          <p className="text-sm text-slate-400">Selecciona un filtro y presiona Buscar para ver los planes</p>
+        </Card>
+      )}
+
+      {/* Sin coincidencias */}
+      {applied && filtered.length === 0 && (
+        <Card className="p-12 text-center space-y-3">
+          <p className="text-sm font-semibold text-slate-700">No hay planes que coincidan con los filtros</p>
+          <p className="text-xs text-slate-400">Prueba con otra combinacion o restablece los filtros</p>
+          <Button variant="secondary" onClick={clearFilters}>Limpiar filtros</Button>
+        </Card>
+      )}
+
       {/* Desktop table */}
+      {applied && filtered.length > 0 && (
       <Card className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -176,8 +263,10 @@ export default function PlansModule() {
           </tbody>
         </table>
       </Card>
+      )}
 
       {/* Mobile cards */}
+      {applied && filtered.length > 0 && (
       <div className="md:hidden space-y-3">
         {filtered.map((p) => (
           <Card key={p.id} className={`p-4 space-y-2 ${p.legacy ? 'opacity-50' : ''}`}>
@@ -206,6 +295,7 @@ export default function PlansModule() {
           </Card>
         ))}
       </div>
+      )}
     </div>
   );
 }
