@@ -107,9 +107,20 @@ Login por **nombre de usuario** (no email):
 
 ### Planes
 
-- Busqueda por codigo/nombre/tipo
+- **Filtros visuales** (reemplazan la busqueda por texto):
+  - **Tipo:** botones `Todos` / `Internet` / `TV Cable` / `Combo`, cada uno con el conteo de planes de esa familia
+  - **Estado:** select con `Todos los estados` / `Actuales` / `Anteriores`
+  - **Buscar:** deshabilitado hasta elegir al menos un filtro, con aviso de por que
+  - **Limpiar:** restablece los filtros y vuelve a la pantalla inicial
+  - Los resultados se actualizan al presionar Buscar, no al cambiar un select
+  - Contador "Mostrando X de Y planes" para ver el efecto de cada combinacion
+  - Combina Tipo y Estado con AND; cualquiera de los dos en "Todos" no restringe
+  - Sin coincidencias: mensaje explicito con opcion de limpiar, en vez de una tabla vacia
+- Los filtros se resuelven en el cliente sobre el catalogo completo que ya devuelve `GET /api/plans`; sin cambios en backend
 - Inhabilitar como actual (legacy) — no aparecen en selects de nuevos movimientos pero si en Plan Anterior para cambio de plan y retiros
 - Eliminacion con confirmacion
+
+> Nota: el filtro de Estado se apoya en `legacy`, que es el unico campo que la interfaz puede modificar. El campo `active` existe en el modelo pero hoy no se actualiza desde la UI, por lo que ambos pueden quedar desalineados.
 
 ### Usuarios
 
