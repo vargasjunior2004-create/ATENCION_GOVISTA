@@ -5,18 +5,26 @@ from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
 
 from .models import Sale
 from .domain import (
-    ADDITION_TYPE_LABELS, REQUEST_TYPE_LABELS, SERVICE_TYPE_LABELS,
+    ADDITION_TYPE_LABELS, SERVICE_TYPE_LABELS,
     SERVICE_TYPE_TO_PLAN_TYPE, sale_service_label,
+    request_type_label, request_type_mode, request_type_catalog,
+    MODO_ADICION, MODO_CAMBIO_PLAN,
 )
 
 SIGNER = TimestampSigner()
 
 
-def get_request_label(sale):
-    """Label de solicitud para la columna SOLICITUD del reporte."""
-    if sale.requestType == 'adicion' and sale.additionType:
+def get_request_label(sale, catalog=None):
+    """Label de solicitud para la columna SOLICITUD del reporte.
+
+    El nombre sale del catalogo TipoSolicitud. Un code huerfano cae al
+    propio code en mayusculas, para que un movimiento antiguo nunca
+    quede en blanco.
+    """
+    mode = request_type_mode(sale.requestType, catalog)
+    if mode == MODO_ADICION and sale.additionType:
         return ADDITION_TYPE_LABELS.get(sale.additionType, 'ADICION')
-    return REQUEST_TYPE_LABELS.get(sale.requestType, sale.requestType or sale.get_requestType_display())
+    return request_type_label(sale.requestType, catalog)
 
 LOGO_PATH = Path(__file__).resolve().parent / 'logo.png'
 
@@ -127,7 +135,9 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
     title_from = datetime.strptime(from_date, '%Y-%m-%d').strftime('%d/%m/%Y')
     title_to = datetime.strptime(to_date, '%Y-%m-%d').strftime('%d/%m/%Y')
 
-    request_label = REQUEST_TYPE_LABELS.get(request_type, 'TODOS LOS MOVIMIENTOS')
+    catalog = request_type_catalog()
+    request_label = (request_type_label(request_type, catalog) if request_type
+                     else 'TODOS LOS MOVIMIENTOS')
     service_label = _service_filter_label(service_type, service_type_from)
     title = f'MOV. CLIENTES — {request_label} — {service_label}'
 
@@ -141,14 +151,14 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
     for s in sales:
         # Plan display: cambio_plan shows "anterior → nuevo"
         plan_label = s.plan.label if s.plan else ''
-        if s.requestType == 'cambio_plan' and s.planFromId:
+        if request_type_mode(s.requestType, catalog) == MODO_CAMBIO_PLAN and s.planFromId:
             plan_label = f'{s.planFromId.label} → {s.plan.label}'
         rows.append([
             s.date.strftime('%d/%m/%Y') if s.date else '',
             s.clientCode or '',
             s.clientName or '',
-            sale_service_label(s),
-            get_request_label(s),
+            sale_service_label(s, catalog),
+            get_request_label(s, catalog),
             plan_label,
             f'{float(s.total):.2f}',
             s.createdBy.name if s.createdBy else '',
@@ -187,7 +197,7 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
     ws = wb.active
     ws.title = 'MOV. CLIENTES'
 
-    headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD', 'PLAN', 'MONTO', 'OPERADOR']
+    headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD', 'PLAN', 'MOTIVO DEL CAMBIO', 'MONTO', 'OPERADOR']
 
     header_font = Font(bold=True, color='FFFFFF')
     header_fill = PatternFill('solid', fgColor='1D4ED8')
@@ -206,18 +216,20 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
         cell.alignment = header_alignment
         cell.border = thin_border
 
+    catalog = request_type_catalog()
     for row_idx, s in enumerate(sales, 2):
         plan_label = s.plan.label if s.plan else ''
-        if s.requestType == 'cambio_plan' and s.planFromId:
+        if request_type_mode(s.requestType, catalog) == MODO_CAMBIO_PLAN and s.planFromId:
             plan_label = f'{s.planFromId.label} → {s.plan.label}'
 
         data_row = [
             s.date.strftime('%d/%m/%Y') if s.date else '',
             s.clientCode or '',
             s.clientName or '',
-            sale_service_label(s),
-            get_request_label(s),
+            sale_service_label(s, catalog),
+            get_request_label(s, catalog),
             plan_label,
+            getattr(s, 'changeReason', '') or '',
             float(s.total),
             s.createdBy.name if s.createdBy else '',
         ]
@@ -225,10 +237,10 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
         for col, value in enumerate(data_row, 1):
             cell = ws.cell(row=row_idx, column=col, value=value)
             cell.border = thin_border
-            if col == 7:
+            if col == 8:
                 cell.number_format = '#,##0.00'
 
-    column_widths = [14, 14, 35, 24, 20, 20, 14, 20]
+    column_widths = [14, 14, 35, 24, 20, 20, 30, 14, 20]
     for i, width in enumerate(column_widths, 1):
         ws.column_dimensions[chr(64 + i)].width = width
 
@@ -304,17 +316,18 @@ def build_sales_png(from_date, to_date, request_type=None, service_type=None,
 
     # Primera pasada: envolver cada celda a su columna y medir la fila.
     # El alto total depende de esto, asi que va antes de crear la imagen.
+    catalog = request_type_catalog()
     rows = []
     for s in sales:
         plan_label = s.plan.label if s.plan else ''
-        if s.requestType == 'cambio_plan' and s.planFromId:
+        if request_type_mode(s.requestType, catalog) == MODO_CAMBIO_PLAN and s.planFromId:
             plan_label = f'{s.planFromId.label} → {plan_label}'
         values = [
             s.date.strftime('%d/%m/%Y') if s.date else '',
             s.clientCode or '',
             s.clientName or '',
-            sale_service_label(s),
-            get_request_label(s),
+            sale_service_label(s, catalog),
+            get_request_label(s, catalog),
             plan_label,
             f'{float(s.total):.2f}',
             s.createdBy.name if s.createdBy else '',
