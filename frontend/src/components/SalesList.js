@@ -2,18 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { Button, Input, Select, Card, Alert, Badge } from './ui';
+import useRequestTypes, { MODO_COLOR } from '../hooks/useRequestTypes';
 
 const typeColor = { internet: 'blue', tv: 'amber', combo: 'violet' };
 
-const REQUEST_TYPES = [
+// '-- Seleccione --' y 'Todos' se anteponen al catalogo que llega del backend.
+const REQUEST_FILTER_PREFIX = [
   { value: '', label: '-- Seleccione --' },
   { value: 'all', label: 'Todos los movimientos' },
-  { value: 'nuevo_contrato', label: 'Nuevo Contrato' },
-  { value: 'cambio_plan', label: 'Cambio de Plan' },
-  { value: 'recontratacion', label: 'Recontratacion' },
-  { value: 'retiro', label: 'Retiro' },
-  { value: 'adicion', label: 'Adicion' },
-  { value: 'otro', label: 'Otro' },
 ];
 
 const SERVICE_TYPES = [
@@ -42,15 +38,6 @@ const SERVICE_LABEL_BY_VALUE = {
   combo_analog: 'Internet + TV Analoga', combo_digital: 'Internet + TV Digital',
 };
 
-const REQUEST_LABEL = Object.fromEntries(
-  REQUEST_TYPES.filter((t) => t.value).map((t) => [t.value, t.label])
-);
-
-const REQUEST_COLOR = {
-  nuevo_contrato: 'green', cambio_plan: 'amber', recontratacion: 'violet',
-  retiro: 'red', adicion: 'blue', baja_temporal: 'slate', otro: 'slate',
-};
-
 function SaleCard({ sale, isAdmin, onEdit, onDelete }) {
   return (
     <Card className="p-4 space-y-3">
@@ -59,7 +46,7 @@ function SaleCard({ sale, isAdmin, onEdit, onDelete }) {
           <p className="font-semibold text-slate-900">{sale.clientName}</p>
           <p className="text-sm text-slate-400">{sale.clientCode} &middot; {sale.date}</p>
         </div>
-        <Badge color={REQUEST_COLOR[sale.requestType] || 'slate'}>{sale.requestType === 'adicion' && sale.additionType ? (sale.additionType === 'adicion_internet' ? 'ADICION INTERNET' : 'ADICION TV') : (REQUEST_LABEL[sale.requestType] || sale.requestType)}</Badge>
+        <Badge color={MODO_COLOR[requestMode(sale.requestType)]}>{requestLabel(sale)}</Badge>
       </div>
       <div className="flex items-center justify-between text-sm">
         <span className="text-slate-500">
@@ -85,13 +72,22 @@ function SaleCard({ sale, isAdmin, onEdit, onDelete }) {
           )}
         </div>
       )}
-      <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-        <span className="text-xs text-slate-400">por {sale.creator?.name || '-'}</span>
-        {isAdmin && (
-          <div className="flex gap-2">
-            <Button variant="ghost" size="sm" onClick={() => onEdit(sale)}>Editar</Button>
-            <Button variant="danger" size="sm" onClick={() => onDelete(sale)}>Eliminar</Button>
+        <div className="space-y-1 pt-2 border-t border-slate-100">
+          {sale.changeReason && (
+            <div className="text-xs text-slate-500">
+              <span className="font-semibold text-slate-600">Motivo del cambio:</span> {sale.changeReason}
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-slate-400">por {sale.creator?.name || '-'}</span>
+            {isAdmin && (
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={() => onEdit(sale)}>Editar</Button>
+                <Button variant="danger" size="sm" onClick={() => setDeletingSale(sale)}>Eliminar</Button>
+              </div>
+            )}
           </div>
+        </div>
         )}
       </div>
     </Card>
@@ -258,7 +254,7 @@ export default function SalesList() {
           </div>
           <div>
             <Select label="Movimiento" value={requestType} onChange={(e) => setRequestType(e.target.value)}>
-              {REQUEST_TYPES.map((t) => (
+              {[...REQUEST_FILTER_PREFIX, ...requestTypes.map((t) => ({ value: t.code, label: t.nombre }))].map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </Select>
@@ -336,7 +332,7 @@ export default function SalesList() {
               <Input label="Nombre" name="clientName" value={editForm.clientName} onChange={handleEditChange} required />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Select label="Movimiento" name="requestType" value={editForm.requestType} onChange={handleEditChange}>
-                  {REQUEST_TYPES.filter((t) => t.value).map((t) => (
+                  {requestTypes.map((t) => (
                     <option key={t.value} value={t.value}>{t.label}</option>
                   ))}
                 </Select>
@@ -439,7 +435,7 @@ export default function SalesList() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100">
-                  {['Fecha', 'Cod.', 'Nombre', 'Movimiento', 'Plan', 'Total', 'Por', ''].map((h) => (
+                  {['Fecha', 'Cod.', 'Nombre', 'Movimiento', 'Plan', 'Motivo del cambio', 'Total', 'Por', ''].map((h) => (
                     <th key={h} className="text-left px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">{h}</th>
                   ))}
                 </tr>
@@ -450,12 +446,13 @@ export default function SalesList() {
                     <td className="px-5 py-3.5 text-slate-500">{s.date}</td>
                     <td className="px-5 py-3.5 text-slate-500 font-mono text-xs">{s.clientCode}</td>
                     <td className="px-5 py-3.5 font-medium text-slate-900">{s.clientName}</td>
-                    <td className="px-5 py-3.5"><Badge color={REQUEST_COLOR[s.requestType] || 'slate'}>{s.requestType === 'adicion' && s.additionType ? (s.additionType === 'adicion_internet' ? 'ADICION INTERNET' : 'ADICION TV') : (REQUEST_LABEL[s.requestType] || s.requestType)}</Badge></td>
+                    <td className="px-5 py-3.5"><Badge color={MODO_COLOR[requestMode(s.requestType)]}>{requestLabel(s)}</Badge></td>
                     <td className="px-5 py-3.5 text-slate-500">
                       {s.requestType === 'cambio_plan' && s.previousPlan
                         ? <>{s.previousPlan.label} <span className="text-amber-500">&rarr;</span> {s.Plan?.label || '-'}</>
                         : (s.Plan?.label || '-')}
                     </td>
+                    <td className="px-5 py-3.5 text-slate-500 text-xs">{s.changeReason || '—'}</td>
                     <td className="px-5 py-3.5 text-right font-bold text-brand-700 tabular-nums">{parseFloat(s.total).toFixed(2)} Bs</td>
                     <td className="px-5 py-3.5 text-slate-500 text-xs">{s.creator?.name || '-'}</td>
                     {isAdmin && (
