@@ -12,6 +12,10 @@ urlpatterns = [
     path('plans/active', views.ActivePlansView.as_view()),
     path('plans/<int:pk>', views.PlanDetailView.as_view()),
 
+    path('request-types', views.TipoSolicitudListView.as_view()),
+    path('request-types/active', views.ActiveRequestTypesView.as_view()),
+    path('request-types/<int:pk>', views.TipoSolicitudDetailView.as_view()),
+
     path('promotions', views.PromotionListView.as_view()),
     path('promotions/active', views.ActivePromotionsView.as_view()),
     path('promotions/<int:pk>', views.PromotionDetailView.as_view()),

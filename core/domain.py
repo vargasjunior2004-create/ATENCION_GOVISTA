@@ -41,14 +41,72 @@ SERVICE_TYPE_TO_PLAN_TYPE = {
     'combo_digital': 'combo',
 }
 
-REQUEST_TYPE_LABELS = {
-    'nuevo_contrato': 'NUEVO CONTRATO',
-    'cambio_plan': 'CAMBIO DE PLAN',
-    'recontratacion': 'RECONTRATACION',
-    'retiro': 'RETIRO',
-    'adicion': 'ADICION',
-    'otro': 'OTRO',
-}
+# ------------------------------------------------------------------
+# Tipos de solicitud
+#
+# El catalogo vive en la tabla TipoSolicitud, no aqui. Lo que este
+# modulo fija es el significado de cada MODO, que es lo que decide el
+# cobro: un tipo nuevo no elige sus reglas, elige un modo de esta lista.
+#
+# Los literales se repiten aqui a proposito. domain.py no importa models
+# para poder cargarse sin el app registry (migraciones, imports tardios).
+# Si se agrega un modo, sale una migracion.
+MODO_NUEVO = 'nuevo'
+MODO_RETIRO = 'retiro'
+MODO_CAMBIO_PLAN = 'cambio_plan'
+MODO_ADICION = 'adicion'
+MODO_SIMPLE = 'simple'
+
+# El cliente ya tiene el servicio instalado: no se cobra instalacion.
+MODOS_SOLO_MENSUAL = (MODO_RETIRO, MODO_ADICION, MODO_CAMBIO_PLAN)
+# Cuentan como instalacion en el dashboard.
+MODOS_INSTALACION = (MODO_NUEVO,)
+
+
+def request_type_catalog():
+    """Todos los tipos de solicitud como {code: TipoSolicitud}.
+
+    Una sola consulta. Los llamadores que recorren muchas ventas la
+    generan una vez y la pasan por parametro, para no repetirla por fila.
+    """
+    from .models import TipoSolicitud
+
+    return {tipo.code: tipo for tipo in TipoSolicitud.objects.all()}
+
+
+def request_type_mode(code, catalog=None):
+    """Modo de un tipo de solicitud.
+
+    Un code que no esta en el catalogo cae en SIMPLE, o sea sin reglas
+    especiales. No deberia ocurrir: la migracion siembra los tipos que ya
+    usaban ventas y el borrado esta bloqueado si hay movimientos, asi
+    que solo un alta con un code duplicado llegaria aqui.
+    """
+    if catalog is None:
+        catalog = request_type_catalog()
+    tipo = catalog.get(code)
+    return tipo.modo if tipo is not None else MODO_SIMPLE
+
+
+def request_type_label(code, catalog=None):
+    """Nombre visible del tipo, en mayusculas como los reportes."""
+    if catalog is None:
+        catalog = request_type_catalog()
+    tipo = catalog.get(code)
+    if tipo is not None:
+        return (tipo.nombre or '').upper()
+    return code or ''
+
+
+def codes_with_modes(modes, catalog=None):
+    """Codigos de los tipos cuyo modo esta en modes."""
+    if catalog is None:
+        catalog = request_type_catalog()
+    return [code for code, tipo in catalog.items() if tipo.modo in modes]
+
+
+def sale_request_mode(sale, catalog=None):
+    return request_type_mode(sale.requestType, catalog)
 
 ADDITION_TYPE_LABELS = {
     'adicion_internet': 'ADICION INTERNET',
@@ -79,23 +137,23 @@ def previous_service_family(sale):
     return None
 
 
-def is_service_change(sale):
+def is_service_change(sale, catalog=None):
     """True si el movimiento cambia de familia de servicio (Combo -> Internet)."""
-    if sale.requestType != 'cambio_plan':
+    if request_type_mode(sale.requestType, catalog) != MODO_CAMBIO_PLAN:
         return False
     previous = previous_service_family(sale)
     current = SERVICE_TYPE_FAMILY.get(sale.serviceType)
     return bool(previous and current and previous != current)
 
 
-def sale_service_label(sale):
+def sale_service_label(sale, catalog=None):
     """Texto de la columna SERVICIO.
 
     En un cambio de plan se muestra laconversion como 'COMBO -> INTERNET'.
     En el resto de movimientos no se toca nada, para no alterar la
     apariencia de los reportes que ya usa la operacion.
     """
-    if sale.requestType == 'cambio_plan':
+    if request_type_mode(sale.requestType, catalog) == MODO_CAMBIO_PLAN:
         previous = previous_service_family(sale)
         current = SERVICE_TYPE_FAMILY.get(sale.serviceType)
         if previous and current:

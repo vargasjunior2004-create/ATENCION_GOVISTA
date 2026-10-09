@@ -52,6 +52,13 @@ const api = {
   updatePlan: (id, data) => request(`/api/plans/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deletePlan: (id) => request(`/api/plans/${id}`, { method: 'DELETE' }),
 
+  // Tipos de solicitud
+  getRequestTypes: () => request('/api/request-types'),
+  getActiveRequestTypes: () => request('/api/request-types/active'),
+  createRequestType: (data) => request('/api/request-types', { method: 'POST', body: JSON.stringify(data) }),
+  updateRequestType: (id, data) => request(`/api/request-types/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteRequestType: (id) => request(`/api/request-types/${id}`, { method: 'DELETE' }),
+
   // Promociones
   getPromotions: (planId) => {
     const params = new URLSearchParams();

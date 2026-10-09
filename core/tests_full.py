@@ -338,31 +338,37 @@ class ReportTests(TestCase):
         """Cada tipo de movimiento conserva su propia etiqueta en el reporte.
 
         Un 'nuevo contrato' no debe aparecer como INSTALACIONES: la agrupacion
-        de instalaciones es exclusiva del dashboard.
+        de instalaciones es exclusiva del dashboard. La etiqueta sale del
+        catalogo TipoSolicitud, no de una constante en el codigo.
         """
-        from .models import Sale as SaleModel
-        from .reports import REQUEST_TYPE_LABELS, get_request_label
+        from .models import Sale as SaleModel, TipoSolicitud
+        from .reports import get_request_label
+        from .domain import request_type_catalog
 
-        esperado = dict(SaleModel.REQUEST_CHOICES)
-        self.assertEqual(REQUEST_TYPE_LABELS, esperado)
+        catalog = request_type_catalog()
+        self.assertTrue(catalog, 'la migracion 0019 debe sembrar el catalogo')
 
-        for value, label in esperado.items():
-            with self.subTest(tipo=value):
-                sale = SaleModel(requestType=value, serviceType='internet')
-                self.assertEqual(get_request_label(sale), label)
+        for tipo in catalog.values():
+            with self.subTest(tipo=tipo.code):
+                sale = SaleModel(requestType=tipo.code, serviceType='internet')
+                self.assertEqual(get_request_label(sale, catalog),
+                                 tipo.nombre.upper())
 
+        etiquetas = {t.nombre.upper() for t in catalog.values()}
         # La agrupacion de instalaciones no debe aparecer en ningun reporte.
-        self.assertNotIn('INSTALACIONES', REQUEST_TYPE_LABELS.values())
-        self.assertNotEqual(REQUEST_TYPE_LABELS['nuevo_contrato'],
-                            REQUEST_TYPE_LABELS['recontratacion'])
+        self.assertNotIn('INSTALACIONES', etiquetas)
+        self.assertIn('NUEVO CONTRATO', etiquetas)
+        self.assertIn('RECONTRATACION', etiquetas)
 
     def test_adicion_mantiene_subtipo(self):
         from .models import Sale as SaleModel
         from .reports import get_request_label
+        from .domain import request_type_catalog
 
+        catalog = request_type_catalog()
         internet = SaleModel(requestType='adicion', additionType='adicion_internet')
         tv = SaleModel(requestType='adicion', additionType='adicion_tv')
-        self.assertEqual(get_request_label(internet), 'ADICION INTERNET')
+        self.assertEqual(get_request_label(internet, catalog), 'ADICION INTERNET')
         self.assertEqual(get_request_label(tv), 'ADICION TV')
 
     def test_nombre_de_archivo_usa_el_tipo_de_movimiento(self):

@@ -1,15 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../services/api';
 import { Button, Input, Select, Card, Alert, TotalDisplay } from './ui';
-
-const REQUEST_TYPES = [
-  { value: 'nuevo_contrato', label: 'NUEVO CONTRATO' },
-  { value: 'cambio_plan', label: 'CAMBIO DE PLAN' },
-  { value: 'recontratacion', label: 'RECONTRATACION' },
-  { value: 'retiro', label: 'RETIRO' },
-  { value: 'adicion', label: 'ADICION' },
-  { value: 'otro', label: 'OTRO' },
-];
+import useRequestTypes from '../hooks/useRequestTypes';
 
 const SERVICE_TYPES = [
   { value: 'internet', label: 'INTERNET' },
@@ -75,6 +67,8 @@ export default function SaleForm() {
     serviceTypeFrom: '', changeReason: '', retiroReason: '', notes: '',
     planId: '',
   });
+  const { tipos: requestTypes, modoOf, nombreOf } = useRequestTypes();
+  const modo = modoOf(form.requestType);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -95,6 +89,14 @@ export default function SaleForm() {
   useEffect(() => {
     api.getActivePlans().then(setPlans).catch(() => {});
   }, []);
+
+  // El tipo por defecto viene sembrado, pero si un administrador lo
+  // desactiva el formulario no puede quedar con un valor que ya no existe.
+  useEffect(() => {
+    if (!requestTypes.length) return;
+    if (requestTypes.some((t) => t.code === form.requestType)) return;
+    setForm((f) => ({ ...f, requestType: requestTypes[0].code }));
+  }, [requestTypes, form.requestType]);
 
   const searchCustomers = async (q) => {
     setQuery(q.toUpperCase());
@@ -122,16 +124,16 @@ export default function SaleForm() {
     return () => document.removeEventListener('click', onClick);
   }, []);
 
-  const isRetiro = form.requestType === 'retiro';
-  const isCambio = form.requestType === 'cambio_plan';
-  const isAdicion = form.requestType === 'adicion';
+  const isRetiro = modo === 'retiro';
+  const isCambio = modo === 'cambio_plan';
+  const isAdicion = modo === 'adicion';
 
   // El plan nuevo se filtra por el servicio NUEVO. El plan anterior se
   // filtra por su propia familia, no por el servicio nuevo: por eso ahora
   // es posible cambiar de Combo a Internet o de TV a Combo, que antes era
   // imposible porque ambos selectores compartian un unico tipo de servicio.
   const newPlanOptions = plans.filter((p) => {
-    if (form.requestType === 'adicion') return p.type === 'combo';
+    if (modo === 'adicion') return p.type === 'combo';
     return p.type === SERVICE_TYPE_TO_PLAN_TYPE[form.serviceType];
   });
 
@@ -223,8 +225,9 @@ export default function SaleForm() {
       }
       if (name === 'requestType') {
         next.planId = '';
-        if (value !== 'adicion') next.additionType = '';
-        if (value !== 'cambio_plan') {
+        const nuevoModo = modoOf(value);
+        if (nuevoModo !== 'adicion') next.additionType = '';
+        if (nuevoModo !== 'cambio_plan') {
           next.planFromId = '';
           next.serviceTypeFrom = '';
         }
@@ -258,9 +261,9 @@ export default function SaleForm() {
         clientName: form.clientName,
         serviceType: form.serviceType,
         requestType: form.requestType,
-        additionType: form.requestType === 'adicion' ? form.additionType : '',
-        planFromId: form.requestType === 'cambio_plan' && form.planFromId ? Number(form.planFromId) : null,
-        serviceTypeFrom: form.requestType === 'cambio_plan' && form.serviceTypeFrom ? form.serviceTypeFrom : null,
+        additionType: isAdicion ? form.additionType : '',
+        planFromId: isCambio && form.planFromId ? Number(form.planFromId) : null,
+        serviceTypeFrom: isCambio && form.serviceTypeFrom ? form.serviceTypeFrom : null,
         changeReason: isCambio ? form.changeReason : (isRetiro ? form.retiroReason : ''),
         notes: form.notes,
         planId: Number(form.planId),
@@ -288,11 +291,10 @@ export default function SaleForm() {
   };
 
   const getRequestLabel = (val) => {
-    if (val === 'adicion' && form.additionType) {
+    if (modoOf(val) === 'adicion' && form.additionType) {
       return form.additionType === 'adicion_internet' ? 'ADICION INTERNET' : 'ADICION TV';
     }
-    const found = REQUEST_TYPES.find(t => t.value === val);
-    return found ? found.label : val;
+    return nombreOf(val);
   };
 
   const getServiceLabel = (val) => {
@@ -357,8 +359,8 @@ export default function SaleForm() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Select label="Tipo de Solicitud *" name="requestType" value={form.requestType} onChange={handleChange} required>
-              {REQUEST_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>{t.label}</option>
+              {requestTypes.map((t) => (
+                <option key={t.code} value={t.code}>{t.nombre}</option>
               ))}
             </Select>
             <Select
@@ -373,7 +375,7 @@ export default function SaleForm() {
             </Select>
           </div>
 
-          {form.requestType === 'adicion' && (
+          {isAdicion && (
             <Select label="Tipo de Adicion *" name="additionType" value={form.additionType} onChange={handleChange} required>
               <option value="">--Seleccione--</option>
               {ADDITION_TYPES.map((t) => (

@@ -8,8 +8,9 @@ from rest_framework.views import APIView
 
 from .reports import (
     build_sales_pdf, build_sales_xlsx, build_sales_png,
-    sign_report_token, unsign_report_token, REQUEST_TYPE_LABELS,
+    sign_report_token, unsign_report_token,
 )
+from .domain import request_type_label
 
 
 def _sales_range(params, default_day=True):
@@ -33,7 +34,7 @@ class SalesPdfView(APIView):
         service_type_from = request.query_params.get('serviceTypeFrom') or None
         buf = build_sales_pdf(from_date, to_date, request_type, service_type,
                               service_type_from)
-        suffix = f'-{REQUEST_TYPE_LABELS.get(request_type, "TODOS")}' if request_type else ''
+        suffix = f'-{request_type_label(request_type)}' if request_type else ''
         return _pdf_response(buf, f'planilla{suffix}-{from_date}-{to_date}.pdf')
 
 
@@ -45,7 +46,7 @@ class SalesXlsxView(APIView):
         service_type_from = request.query_params.get('serviceTypeFrom') or None
         buf = build_sales_xlsx(from_date, to_date, request_type, service_type,
                                service_type_from)
-        suffix = f'-{REQUEST_TYPE_LABELS.get(request_type, "TODOS")}' if request_type else ''
+        suffix = f'-{request_type_label(request_type)}' if request_type else ''
         response = HttpResponse(
             buf.getvalue(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
