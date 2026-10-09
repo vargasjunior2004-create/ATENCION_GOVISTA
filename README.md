@@ -108,7 +108,7 @@ Login por **nombre de usuario** (no email):
 
 Catalogo administrable de motivos para cambios de plan y retiros (solo admin). Reemplaza los antiguos "Tipos de solicitud" (que eran solo de uso interno para calcular el cobro; esa logica se conserva y ya no se administra desde la interfaz).
 
-- **CRUD completo** (solo admin): crear, editar, activar/desactivar y eliminar
+- **Gestion** (solo admin): crear, editar y activar/desactivar. No se eliminan desde la interfaz (se desactivan), para no romper el historial
 - **Categoria:** cada motivo pertenece a una categoria fija:
   - `cambio` — aparece en el select "Motivo del Cambio"
   - `retiro` — aparece en el select "Motivo del Retiro"
@@ -117,7 +117,7 @@ Catalogo administrable de motivos para cambios de plan y retiros (solo admin). R
 - **Viene precargado** con los motivos que antes estaban fijos en el formulario (7 de cambio y 8 de retiro), editables o eliminables desde el modulo
 - **Solo los motivos activos** se ofrecen al registrar o editar un movimiento
 - **Validacion:** el motivo debe existir, estar activo y su categoria coincidir con el tipo de movimiento (cambio de plan ↔ cambio, retiro ↔ retiro)
-- **Borrado protegido:** no se puede eliminar un motivo asociado a movimientos; en su lugar se desactiva
+- **Desactivar:** un motivo desactivado deja de ofrecerse en el formulario sin borrar el historial que lo referencia
 - **Snapshot:** el nombre del motivo se copia al movimiento, por lo que los registros historicos conservan su texto aunque el motivo se renombre o se desactive
 
 ### Dashboard

@@ -19,7 +19,6 @@ export default function MotivosModule() {
   const [form, setForm] = useState({ ...emptyForm });
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
-  const [deletingMotivo, setDeletingMotivo] = useState(null);
   const [categoriaFilter, setCategoriaFilter] = useState('all');
   const [stateFilter, setStateFilter] = useState('all');
   // `applied` guarda lo que se ejecuto con Buscar, igual que en Planes:
@@ -95,18 +94,6 @@ export default function MotivosModule() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!deletingMotivo) return;
-    try {
-      await api.deleteMotivo(deletingMotivo.id);
-      setDeletingMotivo(null);
-      loadMotivos();
-    } catch (err) {
-      alert(err.error || 'Error al eliminar el motivo');
-      setDeletingMotivo(null);
-    }
-  };
-
   if (loading) return <p className="text-center text-slate-400 py-20">Cargando...</p>;
 
   const hasSelection = categoriaFilter !== 'all' || stateFilter !== 'all';
@@ -173,36 +160,6 @@ export default function MotivosModule() {
           <p className="text-xs text-slate-500">Mostrando {filtered.length} de {motivos.length} motivos</p>
         )}
       </Card>
-
-      {/* Confirmacion de borrado */}
-      {deletingMotivo && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setDeletingMotivo(null)}>
-          <Card className="w-full max-w-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-                <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-900">Eliminar motivo</h3>
-                <p className="text-sm text-slate-500">Esta accion no se puede deshacer</p>
-              </div>
-            </div>
-            <p className="text-sm text-slate-600">
-              Seguro que deseas eliminar el motivo <strong>{deletingMotivo.nombre}</strong>?
-            </p>
-            <Alert type="info">
-              Si ya tiene movimientos registrados no se podra borrar. En ese caso desactivalo para que
-              deje de ofrecerse sin romper el historial.
-            </Alert>
-            <div className="flex gap-3 pt-2">
-              <Button variant="danger" onClick={handleDelete}>Si, eliminar</Button>
-              <Button variant="secondary" onClick={() => setDeletingMotivo(null)}>Cancelar</Button>
-            </div>
-          </Card>
-        </div>
-      )}
 
       {/* Modal de alta / edicion */}
       {showForm && (
@@ -293,7 +250,6 @@ export default function MotivosModule() {
                   </td>
                   <td className="px-4 py-3 space-x-1">
                     <Button variant="ghost" size="sm" onClick={() => openEdit(m)}>Editar</Button>
-                    <Button variant="danger" size="sm" onClick={() => setDeletingMotivo(m)}>Eliminar</Button>
                     <Button variant={m.activo ? 'secondary' : 'success'} size="sm" onClick={() => toggleActive(m)}>
                       {m.activo ? 'Desactivar' : 'Activar'}
                     </Button>
@@ -324,7 +280,6 @@ export default function MotivosModule() {
               {m.descripcion && <p className="text-sm text-slate-500">{m.descripcion}</p>}
               <div className="flex gap-2 pt-1">
                 <Button variant="ghost" size="sm" onClick={() => openEdit(m)} className="flex-1">Editar</Button>
-                <Button variant="danger" size="sm" onClick={() => setDeletingMotivo(m)} className="flex-1">Eliminar</Button>
                 <Button variant={m.activo ? 'secondary' : 'success'} size="sm" onClick={() => toggleActive(m)} className="flex-1">
                   {m.activo ? 'Desactivar' : 'Activar'}
                 </Button>
