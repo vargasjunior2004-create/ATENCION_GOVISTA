@@ -21,6 +21,10 @@ export default function MotivosModule() {
   const [error, setError] = useState('');
   const [deletingMotivo, setDeletingMotivo] = useState(null);
   const [categoriaFilter, setCategoriaFilter] = useState('all');
+  const [stateFilter, setStateFilter] = useState('all');
+  // `applied` guarda lo que se ejecuto con Buscar, igual que en Planes:
+  // los resultados no cambian hasta presionar el boton.
+  const [applied, setApplied] = useState(null);
 
   const loadMotivos = useCallback(async () => {
     try {
@@ -105,9 +109,24 @@ export default function MotivosModule() {
 
   if (loading) return <p className="text-center text-slate-400 py-20">Cargando...</p>;
 
-  const filtered = categoriaFilter === 'all'
-    ? motivos
-    : motivos.filter((m) => m.categoria === categoriaFilter);
+  const hasSelection = categoriaFilter !== 'all' || stateFilter !== 'all';
+
+  const handleSearch = () => {
+    if (hasSelection) setApplied({ categoria: categoriaFilter, estado: stateFilter });
+  };
+
+  const handleClear = () => {
+    setCategoriaFilter('all');
+    setStateFilter('all');
+    setApplied(null);
+  };
+
+  const filtered = !applied ? [] : motivos.filter((m) => {
+    if (applied.categoria !== 'all' && m.categoria !== applied.categoria) return false;
+    if (applied.estado === 'activos' && !m.activo) return false;
+    if (applied.estado === 'inactivos' && m.activo) return false;
+    return true;
+  });
 
   const categoriaCount = (value) =>
     value === 'all' ? motivos.length : motivos.filter((m) => m.categoria === value).length;
@@ -139,7 +158,20 @@ export default function MotivosModule() {
             </Button>
           ))}
         </div>
-        <p className="text-xs text-slate-500">Mostrando {filtered.length} de {motivos.length} motivos</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+          <Select label="Estado" value={stateFilter} onChange={(e) => setStateFilter(e.target.value)}>
+            <option value="all">Todos los estados</option>
+            <option value="activos">Activos</option>
+            <option value="inactivos">Inactivos</option>
+          </Select>
+          <div className="flex gap-2 pb-0.5">
+            <Button onClick={handleSearch} disabled={!hasSelection}>Buscar</Button>
+            <Button variant="secondary" onClick={handleClear} disabled={!hasSelection && !applied}>Limpiar</Button>
+          </div>
+        </div>
+        {applied && (
+          <p className="text-xs text-slate-500">Mostrando {filtered.length} de {motivos.length} motivos</p>
+        )}
       </Card>
 
       {/* Confirmacion de borrado */}
@@ -219,6 +251,19 @@ export default function MotivosModule() {
       {motivos.length === 0 && (
         <Card className="p-12 text-center">
           <p className="text-sm text-slate-400">Aun no hay motivos. Agrega el primero para ofrecerlo en el formulario.</p>
+        </Card>
+      )}
+
+      {motivos.length > 0 && !applied && (
+        <Card className="p-10 text-center">
+          <p className="text-sm text-slate-400">Selecciona un filtro y presiona Buscar para ver los motivos</p>
+        </Card>
+      )}
+
+      {applied && filtered.length === 0 && (
+        <Card className="p-12 text-center space-y-3">
+          <p className="text-sm text-slate-500">No hay motivos que coincidan con los filtros seleccionados</p>
+          <Button variant="secondary" size="sm" onClick={handleClear}>Limpiar filtros</Button>
         </Card>
       )}
 
