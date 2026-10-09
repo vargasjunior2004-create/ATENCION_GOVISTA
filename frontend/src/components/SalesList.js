@@ -38,7 +38,7 @@ const SERVICE_LABEL_BY_VALUE = {
   combo_analog: 'Internet + TV Analoga', combo_digital: 'Internet + TV Digital',
 };
 
-function SaleCard({ sale, isAdmin, onEdit, onDelete }) {
+function SaleCard({ sale, isAdmin, onEdit, onDelete, requestMode, requestLabel }) {
   return (
     <Card className="p-4 space-y-3">
       <div className="flex items-start justify-between">
@@ -88,8 +88,6 @@ function SaleCard({ sale, isAdmin, onEdit, onDelete }) {
             )}
           </div>
         </div>
-        )}
-      </div>
     </Card>
   );
 }
@@ -114,6 +112,17 @@ export default function SalesList() {
   const [generatingReport, setGeneratingReport] = useState(false);
   const [msg, setMsg] = useState('');
   const [deletingSale, setDeletingSale] = useState(null);
+
+  // El catalogo es administrable: etiqueta y color del movimiento salen de
+  // aqui, no de un mapa fijo por code.
+  const { tipos: requestTypes, modoOf, nombreOf } = useRequestTypes();
+  const requestMode = (code) => modoOf(code);
+  const requestLabel = (sale) => {
+    if (modoOf(sale.requestType) === 'adicion' && sale.additionType) {
+      return sale.additionType === 'adicion_internet' ? 'ADICION INTERNET' : 'ADICION TV';
+    }
+    return nombreOf(sale.requestType);
+  };
 
   const hasSelection = requestType !== '' && serviceType !== '' && reportFormat !== '';
 
@@ -222,7 +231,7 @@ export default function SalesList() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      typeName = REQUEST_TYPES.find(t => t.value === requestType)?.label || requestType;
+      typeName = nombreOf(requestType);
       a.download = `reporte-${typeName}-${from}-${to}.${ext}`;
       document.body.appendChild(a);
       a.click();
@@ -412,7 +421,7 @@ export default function SalesList() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
           </svg>
           <p className="text-slate-500 font-medium">Selecciona filtros para mostrar informacion</p>
-          <p className="text-xs text-slate-400 mt-1">Elige tipo de movimiento y tipo de servicio, luego presiona Buscar</p>
+          <p className="text-xs text-slate-400 mt-1">Elige tipo de movimiento, tipo de servicio y formato, luego presiona Buscar</p>
         </Card>
       ) : loading ? (
         <div className="flex items-center justify-center py-20">
@@ -472,7 +481,7 @@ export default function SalesList() {
           {/* Mobile cards */}
           <div className="md:hidden space-y-3">
             {sales.map((s) => (
-              <SaleCard key={s.id} sale={s} isAdmin={isAdmin} onEdit={startEdit} onDelete={(sale) => setDeletingSale(sale)} />
+              <SaleCard key={s.id} sale={s} isAdmin={isAdmin} onEdit={startEdit} onDelete={(sale) => setDeletingSale(sale)} requestMode={requestMode} requestLabel={requestLabel} />
             ))}
           </div>
 

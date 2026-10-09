@@ -38,6 +38,12 @@ echo "--- Version de pg_dump instalada ---"
 /usr/lib/postgresql/17/bin/pg_dump --version || pg_dump --version
 # -------------------------------------------------------------------------
 
+# Migraciones: sin esto, el codigo nuevo consulta tablas que todavia no
+# existen en la base (p. ej. core_tiposolicitud) y la API responde 500.
+# DATABASE_URL vive en el panel de Render y esta disponible durante el build.
+echo "Aplicando migraciones..."
+python manage.py migrate --noinput
+
 echo "Running collectstatic..."
 python manage.py collectstatic --noinput --verbosity 2
 

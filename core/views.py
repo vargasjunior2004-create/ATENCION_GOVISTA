@@ -260,7 +260,7 @@ class ActiveRequestTypesView(APIView):
 
     def get(self, request):
         return Response(TipoSolicitudPublicSerializer(
-            TipoSolicitud.objects.filter(active=True), many=True).data)
+            TipoSolicitud.objects.filter(activo=True), many=True).data)
 
 
 class TipoSolicitudDetailView(IsAdminMixin, APIView):
