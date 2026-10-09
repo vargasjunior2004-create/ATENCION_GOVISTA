@@ -114,6 +114,7 @@ Catalogo administrable de motivos para cambios de plan y retiros (solo admin). R
   - `retiro` — aparece en el select "Motivo del Retiro"
 - **Campos:** nombre (obligatorio), descripcion (opcional), categoria, estado (activo/inactivo) y orden
 - **Filtro por categoria** en el listado
+- **Viene precargado** con los motivos que antes estaban fijos en el formulario (7 de cambio y 8 de retiro), editables o eliminables desde el modulo
 - **Solo los motivos activos** se ofrecen al registrar o editar un movimiento
 - **Validacion:** el motivo debe existir, estar activo y su categoria coincidir con el tipo de movimiento (cambio de plan ↔ cambio, retiro ↔ retiro)
 - **Borrado protegido:** no se puede eliminar un motivo asociado a movimientos; en su lugar se desactiva
