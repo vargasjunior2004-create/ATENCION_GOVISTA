@@ -7,7 +7,7 @@ import Dashboard from './components/Dashboard';
 import SaleForm from './components/SaleForm';
 import SalesList from './components/SalesList';
 import PlansModule from './components/PlansModule';
-import RequestTypesModule from './components/RequestTypesModule';
+import MotivosModule from './components/MotivosModule';
 import PromotionsModule from './components/PromotionsModule';
 import UsersModule from './components/UsersModule';
 import BackupModule from './components/BackupModule';
@@ -35,7 +35,7 @@ function App() {
               <Route path="/ventas" element={<SalesList />} />
               <Route element={<AdminRoute />}>
                 <Route path="/planes" element={<PlansModule />} />
-                <Route path="/tipos-solicitud" element={<RequestTypesModule />} />
+                <Route path="/motivos" element={<MotivosModule />} />
                 <Route path="/promociones" element={<PromotionsModule />} />
                 <Route path="/usuarios" element={<UsersModule />} />
                 <Route path="/backups" element={<BackupModule />} />

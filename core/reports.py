@@ -114,7 +114,7 @@ def _service_filter_label(service_type=None, service_type_from=None):
 
 
 def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
-                    service_type_from=None):
+                    service_type_from=None, show_motivos=False):
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.units import mm
     from reportlab.lib import colors
@@ -146,23 +146,31 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
         Paragraph('', styles['Normal']),
     )
 
-    header = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD', 'PLAN', 'MONTO', 'OPERADOR']
+    header = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD', 'PLAN']
+    if show_motivos:
+        header.append('MOTIVO')
+    header += ['MONTO', 'OPERADOR']
     rows = [header]
     for s in sales:
         # Plan display: cambio_plan shows "anterior → nuevo"
         plan_label = s.plan.label if s.plan else ''
         if request_type_mode(s.requestType, catalog) == MODO_CAMBIO_PLAN and s.planFromId:
             plan_label = f'{s.planFromId.label} → {s.plan.label}'
-        rows.append([
+        row = [
             s.date.strftime('%d/%m/%Y') if s.date else '',
             s.clientCode or '',
             s.clientName or '',
             sale_service_label(s, catalog),
             get_request_label(s, catalog),
             plan_label,
+        ]
+        if show_motivos:
+            row.append(s.changeReason or '')
+        row += [
             f'{float(s.total):.2f}',
             s.createdBy.name if s.createdBy else '',
-        ])
+        ]
+        rows.append(row)
 
     table = Table(rows, repeatRows=1)
     table.setStyle(TableStyle([
@@ -186,7 +194,7 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
 # ---------------------------------------------------------------- XLSX (sales)
 
 def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
-                     service_type_from=None):
+                     service_type_from=None, show_motivos=False):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
@@ -197,7 +205,10 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
     ws = wb.active
     ws.title = 'MOV. CLIENTES'
 
-    headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD', 'PLAN', 'MOTIVO DEL CAMBIO', 'MONTO', 'OPERADOR']
+    headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD', 'PLAN']
+    if show_motivos:
+        headers.append('MOTIVO')
+    headers += ['MONTO', 'OPERADOR']
 
     header_font = Font(bold=True, color='FFFFFF')
     header_fill = PatternFill('solid', fgColor='1D4ED8')
@@ -229,7 +240,10 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
             sale_service_label(s, catalog),
             get_request_label(s, catalog),
             plan_label,
-            getattr(s, 'changeReason', '') or '',
+        ]
+        if show_motivos:
+            data_row.append(s.changeReason or '')
+        data_row += [
             float(s.total),
             s.createdBy.name if s.createdBy else '',
         ]
@@ -237,10 +251,13 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
         for col, value in enumerate(data_row, 1):
             cell = ws.cell(row=row_idx, column=col, value=value)
             cell.border = thin_border
-            if col == 8:
+            if isinstance(value, float):
                 cell.number_format = '#,##0.00'
 
-    column_widths = [14, 14, 35, 24, 20, 20, 30, 14, 20]
+    column_widths = [14, 14, 35, 24, 20, 20]
+    if show_motivos:
+        column_widths.append(30)
+    column_widths += [14, 20]
     for i, width in enumerate(column_widths, 1):
         ws.column_dimensions[chr(64 + i)].width = width
 
@@ -288,15 +305,20 @@ def _wrap_text(text, font, max_width):
 
 
 def build_sales_png(from_date, to_date, request_type=None, service_type=None,
-                    service_type_from=None):
+                    service_type_from=None, show_motivos=False):
     from PIL import Image, ImageDraw, ImageFont
     from datetime import datetime
 
     sales = _sales_queryset(from_date, to_date, request_type, service_type,
                             service_type_from)
 
-    headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD', 'PLAN', 'MONTO', 'OPERADOR']
-    col_widths = [140, 130, 300, 240, 180, 180, 120, 240]
+    headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD', 'PLAN']
+    col_widths = [140, 130, 300, 240, 180, 180]
+    if show_motivos:
+        headers.append('MOTIVO')
+        col_widths.append(200)
+    headers += ['MONTO', 'OPERADOR']
+    col_widths += [120, 240]
     row_height = 40
     padding = 16
 
@@ -329,6 +351,10 @@ def build_sales_png(from_date, to_date, request_type=None, service_type=None,
             sale_service_label(s, catalog),
             get_request_label(s, catalog),
             plan_label,
+        ]
+        if show_motivos:
+            values.append(s.changeReason or '')
+        values += [
             f'{float(s.total):.2f}',
             s.createdBy.name if s.createdBy else '',
         ]

@@ -52,12 +52,25 @@ const api = {
   updatePlan: (id, data) => request(`/api/plans/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deletePlan: (id) => request(`/api/plans/${id}`, { method: 'DELETE' }),
 
-  // Tipos de solicitud
-  getRequestTypes: () => request('/api/request-types'),
+  // Tipos de solicitud (solo lectura para el formulario)
   getActiveRequestTypes: () => request('/api/request-types/active'),
-  createRequestType: (data) => request('/api/request-types', { method: 'POST', body: JSON.stringify(data) }),
-  updateRequestType: (id, data) => request(`/api/request-types/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  deleteRequestType: (id) => request(`/api/request-types/${id}`, { method: 'DELETE' }),
+
+  // Motivos
+  getMotivos: (categoria = '') => {
+    const params = new URLSearchParams();
+    if (categoria) params.set('categoria', categoria);
+    const qs = params.toString();
+    return request(`/api/motivos${qs ? `?${qs}` : ''}`);
+  },
+  getActiveMotivos: (categoria = '') => {
+    const params = new URLSearchParams();
+    if (categoria) params.set('categoria', categoria);
+    const qs = params.toString();
+    return request(`/api/motivos/active${qs ? `?${qs}` : ''}`);
+  },
+  createMotivo: (data) => request('/api/motivos', { method: 'POST', body: JSON.stringify(data) }),
+  updateMotivo: (id, data) => request(`/api/motivos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteMotivo: (id) => request(`/api/motivos/${id}`, { method: 'DELETE' }),
 
   // Promociones
   getPromotions: (planId) => {
@@ -103,26 +116,29 @@ const api = {
   },
 
   // Reportes
-  getPDF: (from, to, requestType, serviceType = '') => {
+  getPDF: (from, to, requestType, serviceType = '', showMotivos = false) => {
     const params = new URLSearchParams();
     if (from) params.set('from', from);
     if (to) params.set('to', to);
     if (requestType && requestType !== 'all') params.set('requestType', requestType);
     if (serviceType && serviceType !== 'all') params.set('serviceType', serviceType);
+    if (showMotivos) params.set('showMotivos', 'si');
     return request(`/api/reports/pdf?${params.toString()}`);
   },
-  getXLSX: (from, to, requestType = '', serviceType = '') => {
+  getXLSX: (from, to, requestType = '', serviceType = '', showMotivos = false) => {
     const params = new URLSearchParams();
     if (from) params.set('from', from);
     if (to) params.set('to', to);
     if (requestType && requestType !== 'all') params.set('requestType', requestType);
     if (serviceType && serviceType !== 'all') params.set('serviceType', serviceType);
+    if (showMotivos) params.set('showMotivos', 'si');
     return request(`/api/reports/xlsx?${params.toString()}`);
   },
-  getPNG: (from, to) => {
+  getPNG: (from, to, showMotivos = false) => {
     const params = new URLSearchParams();
     if (from) params.set('from', from);
     if (to) params.set('to', to);
+    if (showMotivos) params.set('showMotivos', 'si');
     return request(`/api/reports/png?${params.toString()}`);
   },
 
