@@ -41,10 +41,12 @@ Login por **nombre de usuario** (no email):
   - **Plan Anterior:** muestra todos los planes (activos + legacy) agrupados por familia (Internet, TV, Combo)
   - **Plan Nuevo:** muestra solo planes activos no legacy, filtrados por el servicio nuevo
   - **Servicio Anterior:** se deduce de la familia del plan anterior, y permite precisar la variante exacta (`TV Cable` / `TV Digital`, `Combo analogo` / `Combo digital`)
-  - **Motivo del cambio:** obligatorio para registrar o editar un cambio de plan
+  - **Motivo del cambio:** obligatorio, elegido del catalogo de Motivos (solo motivos de tipo "cambio")
   - Admite conversiones entre servicios: Internet, TV y ambos Combos, en cualquier direccion
   - No permite registrar el mismo plan con el mismo servicio (no aporta informacion); si cambia la variante del servicio, si se acepta
   - Solo cobra la mensualidad del plan nuevo, sin costo de instalacion
+- **Motivo del retiro:** obligatorio, elegido del catalogo de Motivos (solo motivos de tipo "retiro")
+- **Motivos:** cambios y retiros ya no usan listas fijas en el codigo; el motivo se elige de un catalogo administrable (ver **Motivos**). El nombre elegido se guarda como snapshot en el movimiento
 - **Montos calculados automaticamente** segun tipo de movimiento:
 
 | Tipo | Instalacion | Total |
@@ -66,15 +68,18 @@ Login por **nombre de usuario** (no email):
   - Tipo de Movimiento: `-- Seleccione --`, `Todos los movimientos`, Nuevo Contrato, Cambio de Plan, Recontratacion, Retiro, Adicion, Otro
   - Tipo de Servicio: `-- Seleccione --`, `Todos los tipos de servicio`, Internet, TV Cable, TV Digital, Internet + TV Analoga, Internet + TV Digital
   - Formato: `-- Seleccione --`, PDF, Excel
+  - Mostrar motivos: `-- Seleccione --`, `Si, mostrar motivos`, `No mostrar motivos`
 - **Boton Buscar:** solo busca al hacer clic (no automatico)
 - **Mensaje profesional:** cuando los selects estan en `-- Seleccione --` se muestra "Selecciona filtros para mostrar informacion"
-- **Reporte condicionado:** boton deshabilitado (gris) hasta seleccionar los 3 filtros (movimiento, servicio y formato)
+- **Reporte condicionado:** boton deshabilitado (gris) hasta seleccionar los 4 filtros (movimiento, servicio, formato y mostrar motivos)
+- **Mostrar motivos:** es obligatorio elegirlo. Con `Si` agrega la columna **MOTIVO** a la tabla y a los reportes PDF y Excel; con `No` no la incluye. Solo afecta la visualizacion/exportacion, nunca los datos
 
 ### Reportes (normalizados)
 
 - **Formato desde filtros:** usuario elige PDF o Excel antes de generar
-- **Columnas unificadas:** todos los reportes tienen las mismas 8 columnas:
-  - FECHA | KARDEX | CLIENTE | SERVICIO | SOLICITUD | PLAN | MONTO | OPERADOR
+- **Columnas unificadas:** todos los reportes comparten las mismas columnas:
+  - FECHA | KARDEX | CLIENTE | SERVICIO | SOLICITUD | PLAN | MOTIVO | MONTO | OPERADOR
+  - La columna **MOTIVO** solo aparece cuando se elige `Si, mostrar motivos` en los filtros; sin ella, el reporte mantiene las 8 columnas originales
 - **Fecha:** formato DD/MM/YYYY en titulo y datos
 - **Solicitud:**
   - Adicion muestra "ADICION INTERNET" o "ADICION TV" segun sub-tipo
@@ -98,6 +103,21 @@ Login por **nombre de usuario** (no email):
   - Precio normal (costo estandar del plan)
   - Precio promocional (precio especial de la promocion seleccionada)
 - **Restricciones:** solo se pueden crear promociones para planes activos y no legacy
+
+### Motivos
+
+Catalogo administrable de motivos para cambios de plan y retiros (solo admin). Reemplaza los antiguos "Tipos de solicitud" (que eran solo de uso interno para calcular el cobro; esa logica se conserva y ya no se administra desde la interfaz).
+
+- **CRUD completo** (solo admin): crear, editar, activar/desactivar y eliminar
+- **Categoria:** cada motivo pertenece a una categoria fija:
+  - `cambio` — aparece en el select "Motivo del Cambio"
+  - `retiro` — aparece en el select "Motivo del Retiro"
+- **Campos:** nombre (obligatorio), descripcion (opcional), categoria, estado (activo/inactivo) y orden
+- **Filtro por categoria** en el listado
+- **Solo los motivos activos** se ofrecen al registrar o editar un movimiento
+- **Validacion:** el motivo debe existir, estar activo y su categoria coincidir con el tipo de movimiento (cambio de plan ↔ cambio, retiro ↔ retiro)
+- **Borrado protegido:** no se puede eliminar un motivo asociado a movimientos; en su lugar se desactiva
+- **Snapshot:** el nombre del motivo se copia al movimiento, por lo que los registros historicos conservan su texto aunque el motivo se renombre o se desactive
 
 ### Dashboard
 
@@ -155,7 +175,7 @@ Respaldo **manual** de PostgreSQL. Solo administradores.
 
 ## Roles
 
-- **ADMINISTRADOR:** acceso total (crear, editar, eliminar movimientos, planes, usuarios, promociones)
+- **ADMINISTRADOR:** acceso total (crear, editar, eliminar movimientos, planes, usuarios, promociones, motivos)
 - **OPERADOR:** solo puede registrar movimientos y ver reportes
 
 ## Estructura
@@ -165,7 +185,7 @@ Sales_Tracker/
 ├── manage.py
 ├── salestracker/             # settings, urls, wsgi
 ├── core/
-│   ├── models.py             # User, Plan, Promotion, Sale, Customer, Backup
+│   ├── models.py             # User, Plan, Promotion, Sale, Customer, Backup, TipoSolicitud, Motivo
 │   ├── serializers.py
 │   ├── views.py              # auth, plans, promotions, sales, users, dashboard
 │   ├── report_views.py       # PDF/XLSX/PNG + links publicos
@@ -202,6 +222,12 @@ Sales_Tracker/
 | POST | /api/promotions | Admin | Crear promocion |
 | PUT | /api/promotions/:id | Admin | Editar/activar/desactivar promocion |
 | DELETE | /api/promotions/:id | Admin | Eliminar promocion |
+| GET | /api/motivos?categoria=cambio\|retiro | Admin | Listar motivos (catalogo) |
+| GET | /api/motivos/active?categoria=cambio\|retiro | Si | Motivos activos por categoria |
+| POST | /api/motivos | Admin | Crear motivo |
+| PUT | /api/motivos/:id | Admin | Editar/activar/desactivar motivo |
+| DELETE | /api/motivos/:id | Admin | Eliminar motivo (bloqueado si tiene movimientos) |
+| GET | /api/request-types/active | Si | Tipos de solicitud activos (uso interno de cobro) |
 | GET | /api/sales?from=&to=&requestType=&serviceType=&page=&page_size= | Si | Movimientos (paginado, 25/pag) |
 | POST | /api/sales | Si | Crear movimiento |
 | PUT | /api/sales/:id | Admin | Editar movimiento |
@@ -211,11 +237,11 @@ Sales_Tracker/
 | POST | /api/users | Admin | Crear usuario |
 | PUT | /api/users/:id | Admin | Editar usuario |
 | DELETE | /api/users/:id | Admin | Eliminar usuario |
-| GET | /api/reports/pdf?from=&to=&requestType=&serviceType= | Si | PDF planilla |
-| GET | /api/reports/xlsx?from=&to=&requestType=&serviceType= | Si | XLSX planilla |
-| GET | /api/reports/png?from=&to=&requestType=&serviceType= | Si | PNG imagen del reporte |
-| GET | /api/reports/pdf-link?from=&to=&requestType=&serviceType= | Si | Link publico PDF (1h) |
-| GET | /api/reports/xlsx-link?from=&to=&requestType=&serviceType= | Si | Link publico XLSX (1h) |
+| GET | /api/reports/pdf?from=&to=&requestType=&serviceType=&showMotivos= | Si | PDF planilla |
+| GET | /api/reports/xlsx?from=&to=&requestType=&serviceType=&showMotivos= | Si | XLSX planilla |
+| GET | /api/reports/png?from=&to=&requestType=&serviceType=&showMotivos= | Si | PNG imagen del reporte |
+| GET | /api/reports/pdf-link?from=&to=&requestType=&serviceType=&showMotivos= | Si | Link publico PDF (1h) |
+| GET | /api/reports/xlsx-link?from=&to=&requestType=&serviceType=&showMotivos= | Si | Link publico XLSX (1h) |
 | GET | /api/health | No | Estado del servicio y de la base de datos |
 | GET | /api/backups | Admin | Historial de respaldos (solo metadata) |
 | POST | /api/backups | Admin | Genera el respaldo y lo descarga (409 si ya hay uno en curso) |
@@ -287,4 +313,4 @@ Y comparalo con el campo `checksum` del historial en la app.
 - Un respaldo pendiente de un proceso que muere queda en estado `running`: se puede borrar desde el historial
 - `pg_dump` debe ser igual o mas nuevo que el servidor; `build.sh` instala la version 17 y el comando verifica la compatibilidad antes de respaldar
 - El historial guarda metadata, nunca el archivo
-- `core/tests.py` y `core/tests_full.py` cubren permisos, generacion, streaming, integridad, concurrencia y el ciclo `pg_dump` → `pg_restore`
+- `core/tests.py`, `core/tests_full.py`, `core/tests_cambio_plan.py` y `core/tests_motivos.py` cubren permisos, generacion, streaming, integridad, concurrencia, cobro por tipo de cambio y ciclo `pg_dump` → `pg_restore`

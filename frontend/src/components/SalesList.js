@@ -3,6 +3,7 @@ import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { Button, Input, Select, Card, Alert, Badge } from './ui';
 import useRequestTypes, { MODO_COLOR } from '../hooks/useRequestTypes';
+import useMotivos from '../hooks/useMotivos';
 
 const typeColor = { internet: 'blue', tv: 'amber', combo: 'violet' };
 
@@ -24,6 +25,14 @@ const SERVICE_TYPES = [
 
 const FAMILY_LABELS = { internet: 'INTERNET', tv: 'TV', combo: 'COMBO' };
 
+// Filtro obligatorio de visualizacion: controla si la columna Motivo aparece
+// en la tabla y en los reportes. Nunca altera los movimientos consultados.
+const SHOW_MOTIVOS_OPTIONS = [
+  { value: '', label: '-- Seleccione --' },
+  { value: 'si', label: 'Si, mostrar motivos' },
+  { value: 'no', label: 'No mostrar motivos' },
+];
+
 const SERVICE_TYPE_TO_PLAN_TYPE = {
   internet: 'internet', tv: 'tv', tv_digital: 'tv',
   combo_analog: 'combo', combo_digital: 'combo',
@@ -38,7 +47,7 @@ const SERVICE_LABEL_BY_VALUE = {
   combo_analog: 'Internet + TV Analoga', combo_digital: 'Internet + TV Digital',
 };
 
-function SaleCard({ sale, isAdmin, onEdit, onDelete, requestMode, requestLabel }) {
+function SaleCard({ sale, isAdmin, onEdit, onDelete, requestMode, requestLabel, showMotivos }) {
   return (
     <Card className="p-4 space-y-3">
       <div className="flex items-start justify-between">
@@ -50,7 +59,7 @@ function SaleCard({ sale, isAdmin, onEdit, onDelete, requestMode, requestLabel }
       </div>
       <div className="flex items-center justify-between text-sm">
         <span className="text-slate-500">
-          {sale.requestType === 'cambio_plan' && sale.previousPlan
+          {requestMode(sale.requestType) === 'cambio_plan' && sale.previousPlan
             ? <>{sale.previousPlan.label} <span className="text-amber-500">&rarr;</span> {sale.Plan?.label || '-'}</>
             : (sale.Plan?.label || '-')}
         </span>
@@ -73,9 +82,9 @@ function SaleCard({ sale, isAdmin, onEdit, onDelete, requestMode, requestLabel }
         </div>
       )}
         <div className="space-y-1 pt-2 border-t border-slate-100">
-          {sale.changeReason && (
+          {showMotivos && sale.changeReason && (
             <div className="text-xs text-slate-500">
-              <span className="font-semibold text-slate-600">Motivo del cambio:</span> {sale.changeReason}
+              <span className="font-semibold text-slate-600">Motivo:</span> {sale.changeReason}
             </div>
           )}
           <div className="flex items-center justify-between">
@@ -83,7 +92,7 @@ function SaleCard({ sale, isAdmin, onEdit, onDelete, requestMode, requestLabel }
             {isAdmin && (
               <div className="flex gap-2">
                 <Button variant="ghost" size="sm" onClick={() => onEdit(sale)}>Editar</Button>
-                <Button variant="danger" size="sm" onClick={() => setDeletingSale(sale)}>Eliminar</Button>
+                <Button variant="danger" size="sm" onClick={() => onDelete(sale)}>Eliminar</Button>
               </div>
             )}
           </div>
@@ -101,6 +110,7 @@ export default function SalesList() {
   const [requestType, setRequestType] = useState('');
   const [serviceType, setServiceType] = useState('');
   const [reportFormat, setReportFormat] = useState('');
+  const [showMotivos, setShowMotivos] = useState('');
   const [sales, setSales] = useState([]);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -116,6 +126,7 @@ export default function SalesList() {
   // El catalogo es administrable: etiqueta y color del movimiento salen de
   // aqui, no de un mapa fijo por code.
   const { tipos: requestTypes, modoOf, nombreOf } = useRequestTypes();
+  const { porCategoria } = useMotivos();
   const requestMode = (code) => modoOf(code);
   const requestLabel = (sale) => {
     if (modoOf(sale.requestType) === 'adicion' && sale.additionType) {
@@ -124,7 +135,8 @@ export default function SalesList() {
     return nombreOf(sale.requestType);
   };
 
-  const hasSelection = requestType !== '' && serviceType !== '' && reportFormat !== '';
+  const showMotivosColumn = showMotivos === 'si';
+  const hasSelection = requestType !== '' && serviceType !== '' && reportFormat !== '' && showMotivos !== '';
 
   const loadSales = useCallback(async (p = 1) => {
     if (!hasSelection) {
@@ -152,7 +164,7 @@ export default function SalesList() {
 
   const startEdit = (sale) => {
     setEditingSale(sale);
-    setEditForm({ date: sale.date, clientCode: sale.clientCode, clientName: sale.clientName, serviceType: sale.serviceType, requestType: sale.requestType, additionType: sale.additionType || '', planFromId: sale.previousPlan?.id || '', serviceTypeFrom: sale.serviceTypeFrom || '', planId: sale.planId, changeReason: sale.changeReason || '', notes: sale.notes || '' });
+    setEditForm({ date: sale.date, clientCode: sale.clientCode, clientName: sale.clientName, serviceType: sale.serviceType, requestType: sale.requestType, additionType: sale.additionType || '', planFromId: sale.previousPlan?.id || '', serviceTypeFrom: sale.serviceTypeFrom || '', planId: sale.planId, motivoId: sale.motivo || '', notes: sale.notes || '' });
     setEditError('');
   };
 
@@ -163,8 +175,12 @@ export default function SalesList() {
     setEditForm((prev) => {
       const next = { ...prev, [name]: finalValue };
       if (name === 'serviceType') { next.planId = ''; next.serviceTypeFrom = ''; }
-      if (name === 'requestType' && value !== 'adicion') next.additionType = '';
-      if (name === 'requestType' && value !== 'cambio_plan') { next.planFromId = ''; next.serviceTypeFrom = ''; }
+      if (name === 'requestType') {
+        const nuevoModo = modoOf(value);
+        next.motivoId = '';
+        if (nuevoModo !== 'adicion') next.additionType = '';
+        if (nuevoModo !== 'cambio_plan') { next.planFromId = ''; next.serviceTypeFrom = ''; }
+      }
       return next;
     });
   };
@@ -179,12 +195,14 @@ export default function SalesList() {
     }));
   };
 
+  const editModo = modoOf(editForm.requestType);
+  const editMotivos = porCategoria(editModo === 'retiro' ? 'retiro' : 'cambio');
   const editPlanOptions = plans.filter((p) => p.type === SERVICE_TYPE_TO_PLAN_TYPE[editForm.serviceType]);
   const editCurrentPlans = editPlanOptions.filter((p) => !p.legacy);
-  const editLegacyPlans = editForm.requestType === 'retiro'
+  const editLegacyPlans = editModo === 'retiro'
     ? editPlanOptions.filter((p) => p.legacy)
     : [];
-  const editPreviousOptions = editForm.requestType === 'cambio_plan'
+  const editPreviousOptions = editModo === 'cambio_plan'
     ? plans.filter((p) => String(p.id) !== String(editForm.planId))
     : [];
 
@@ -192,7 +210,13 @@ export default function SalesList() {
     e.preventDefault();
     setEditError('');
     try {
-      await api.updateSale(editingSale.id, { date: editForm.date, clientCode: editForm.clientCode, clientName: editForm.clientName, serviceType: editForm.serviceType, requestType: editForm.requestType, additionType: editForm.requestType === 'adicion' ? editForm.additionType : '', planFromId: editForm.requestType === 'cambio_plan' && editForm.planFromId ? Number(editForm.planFromId) : null, serviceTypeFrom: editForm.requestType === 'cambio_plan' && editForm.serviceTypeFrom ? editForm.serviceTypeFrom : null, planId: Number(editForm.planId), changeReason: editForm.changeReason, notes: editForm.notes });
+      const payload = { date: editForm.date, clientCode: editForm.clientCode, clientName: editForm.clientName, serviceType: editForm.serviceType, requestType: editForm.requestType, additionType: editModo === 'adicion' ? editForm.additionType : '', planFromId: editModo === 'cambio_plan' && editForm.planFromId ? Number(editForm.planFromId) : null, serviceTypeFrom: editModo === 'cambio_plan' && editForm.serviceTypeFrom ? editForm.serviceTypeFrom : null, planId: Number(editForm.planId), notes: editForm.notes };
+      // Solo se envia si el usuario eligio un motivo; si no, el backend
+      // conserva el motivo y el texto del registro original.
+      if ((editModo === 'cambio_plan' || editModo === 'retiro') && editForm.motivoId) {
+        payload.motivoId = Number(editForm.motivoId);
+      }
+      await api.updateSale(editingSale.id, payload);
       setEditingSale(null);
       loadSales(page);
     } catch (err) {
@@ -220,11 +244,11 @@ export default function SalesList() {
     try {
       let blob, ext, typeName, formatLabel;
       if (reportFormat === 'pdf') {
-        blob = await api.getPDF(from, to, requestType, serviceType);
+        blob = await api.getPDF(from, to, requestType, serviceType, showMotivosColumn);
         ext = 'pdf';
         formatLabel = 'PDF';
       } else {
-        blob = await api.getXLSX(from, to, requestType, serviceType);
+        blob = await api.getXLSX(from, to, requestType, serviceType, showMotivosColumn);
         ext = 'xlsx';
         formatLabel = 'Excel';
       }
@@ -254,7 +278,7 @@ export default function SalesList() {
 
       {/* Filters */}
       <Card className="p-5">
-        <div className="grid grid-cols-1 sm:grid-cols-6 items-end gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-7 items-end gap-3">
           <div>
             <Input label="Desde" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
@@ -272,6 +296,13 @@ export default function SalesList() {
             <Select label="Tipo Servicio" value={serviceType} onChange={(e) => setServiceType(e.target.value)}>
               {SERVICE_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Select label="Mostrar motivos" value={showMotivos} onChange={(e) => setShowMotivos(e.target.value)}>
+              {SHOW_MOTIVOS_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </Select>
           </div>
@@ -342,7 +373,7 @@ export default function SalesList() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Select label="Movimiento" name="requestType" value={editForm.requestType} onChange={handleEditChange}>
                   {requestTypes.map((t) => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
+                    <option key={t.code} value={t.code}>{t.nombre}</option>
                   ))}
                 </Select>
                 <Select label="Tipo" name="serviceType" value={editForm.serviceType} onChange={handleEditChange}>
@@ -353,14 +384,14 @@ export default function SalesList() {
                   <option value="combo_digital">Internet + TV Digital</option>
                 </Select>
               </div>
-              {editForm.requestType === 'adicion' && (
+              {editModo === 'adicion' && (
                 <Select label="Tipo de Adicion" name="additionType" value={editForm.additionType} onChange={handleEditChange} required>
                   <option value="">--Seleccione--</option>
                   <option value="adicion_internet">ADICION INTERNET</option>
                   <option value="adicion_tv">ADICION TV</option>
                 </Select>
               )}
-              {editForm.requestType === 'cambio_plan' && (
+              {editModo === 'cambio_plan' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Select label="Plan Anterior" name="planFromId" value={editForm.planFromId} onChange={handleEditPreviousPlanChange} required>
                     <option value="">--Seleccione plan anterior--</option>
@@ -399,12 +430,20 @@ export default function SalesList() {
                   </optgroup>
                 )}
               </Select>
-              {editForm.requestType === 'retiro' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Input label="Motivo del Retiro" name="changeReason" value={editForm.changeReason} onChange={handleEditChange} placeholder="Ej: no paga" />
-                  <Input label="Comentario" name="notes" value={editForm.notes} onChange={handleEditChange} placeholder="Opcional" />
-                </div>
+              {(editModo === 'cambio_plan' || editModo === 'retiro') && (
+                <Select
+                  label={editModo === 'retiro' ? 'Motivo del Retiro' : 'Motivo del Cambio'}
+                  name="motivoId"
+                  value={editForm.motivoId}
+                  onChange={handleEditChange}
+                >
+                  <option value="">--Sin cambios--</option>
+                  {editMotivos.map((m) => (
+                    <option key={m.id} value={m.id}>{m.nombre}</option>
+                  ))}
+                </Select>
               )}
+              <Input label="Comentario" name="notes" value={editForm.notes} onChange={handleEditChange} placeholder="Opcional" />
               <div className="flex gap-3 pt-2">
                 <Button type="submit">Guardar</Button>
                 <Button variant="secondary" type="button" onClick={() => setEditingSale(null)}>Cancelar</Button>
@@ -444,7 +483,7 @@ export default function SalesList() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100">
-                  {['Fecha', 'Cod.', 'Nombre', 'Movimiento', 'Plan', 'Motivo del cambio', 'Total', 'Por', ''].map((h) => (
+                  {['Fecha', 'Cod.', 'Nombre', 'Movimiento', 'Plan', ...(showMotivosColumn ? ['Motivo'] : []), 'Total', 'Por', ''].map((h) => (
                     <th key={h} className="text-left px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">{h}</th>
                   ))}
                 </tr>
@@ -457,11 +496,13 @@ export default function SalesList() {
                     <td className="px-5 py-3.5 font-medium text-slate-900">{s.clientName}</td>
                     <td className="px-5 py-3.5"><Badge color={MODO_COLOR[requestMode(s.requestType)]}>{requestLabel(s)}</Badge></td>
                     <td className="px-5 py-3.5 text-slate-500">
-                      {s.requestType === 'cambio_plan' && s.previousPlan
+                      {requestMode(s.requestType) === 'cambio_plan' && s.previousPlan
                         ? <>{s.previousPlan.label} <span className="text-amber-500">&rarr;</span> {s.Plan?.label || '-'}</>
                         : (s.Plan?.label || '-')}
                     </td>
-                    <td className="px-5 py-3.5 text-slate-500 text-xs">{s.changeReason || '—'}</td>
+                    {showMotivosColumn && (
+                      <td className="px-5 py-3.5 text-slate-500 text-xs">{s.changeReason || '—'}</td>
+                    )}
                     <td className="px-5 py-3.5 text-right font-bold text-brand-700 tabular-nums">{parseFloat(s.total).toFixed(2)} Bs</td>
                     <td className="px-5 py-3.5 text-slate-500 text-xs">{s.creator?.name || '-'}</td>
                     {isAdmin && (
@@ -481,7 +522,7 @@ export default function SalesList() {
           {/* Mobile cards */}
           <div className="md:hidden space-y-3">
             {sales.map((s) => (
-              <SaleCard key={s.id} sale={s} isAdmin={isAdmin} onEdit={startEdit} onDelete={(sale) => setDeletingSale(sale)} requestMode={requestMode} requestLabel={requestLabel} />
+              <SaleCard key={s.id} sale={s} isAdmin={isAdmin} onEdit={startEdit} onDelete={(sale) => setDeletingSale(sale)} requestMode={requestMode} requestLabel={requestLabel} showMotivos={showMotivosColumn} />
             ))}
           </div>
 

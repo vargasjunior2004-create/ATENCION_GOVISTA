@@ -8,7 +8,7 @@ from decimal import Decimal
 from django.test import TestCase
 from django.utils import timezone
 
-from .models import User, Plan, Sale
+from .models import User, Plan, Sale, Motivo
 from .domain import SERVICE_TYPE_TO_PLAN_TYPE, sale_service_label
 
 
@@ -35,6 +35,8 @@ class CambioPlanEntreServiciosTest(TestCase):
         self.client_ = None
         from django.test import Client
         self.client_ = Client()
+        self.motivo_cambio = Motivo.objects.create(
+            categoria='cambio', nombre='MEJOR CALIDAD')
 
     def _token(self, user, password):
         r = self.client_.post('/api/auth/login',
@@ -57,7 +59,7 @@ class CambioPlanEntreServiciosTest(TestCase):
             'planId': plan_to.id, 'planFromId': plan_from.id,
         }
         if not omit_reason:
-            payload['changeReason'] = 'MEJOR CALIDAD'
+            payload['motivoId'] = self.motivo_cambio.id
         if service_type_from:
             payload['serviceTypeFrom'] = service_type_from
         return self.client_.post(
@@ -181,7 +183,7 @@ class CambioPlanEntreServiciosTest(TestCase):
             'serviceType': 'combo_digital', 'requestType': 'cambio_plan',
             'planId': combo.id, 'planFromId': combo.id,
             'serviceTypeFrom': 'combo_analog',
-            'changeReason': 'MEJOR CALIDAD',
+            'motivoId': self.motivo_cambio.id,
         }, content_type='application/json',
             HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r.status_code, 201)
@@ -210,7 +212,7 @@ class CambioPlanEntreServiciosTest(TestCase):
             'serviceType': 'internet', 'requestType': 'cambio_plan',
             'planId': self.plans[('internet', 1)].id,
             'planFromId': self.plans[('combo', 2)].id,
-            'changeReason': 'MEJOR CALIDAD',
+            'motivoId': self.motivo_cambio.id,
         }, content_type='application/json',
             HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r.status_code, 201)

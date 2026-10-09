@@ -11,13 +11,13 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
-from .models import User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud
+from .models import User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo
 from .serializers import (
     UserSerializer, UserWriteSerializer, PlanSerializer,
     PlanPublicSerializer, CustomerSerializer, SaleSerializer,
     SaleCreateSerializer, BackupSerializer,
     PromotionSerializer, PromotionWriteSerializer,
-    TipoSolicitudSerializer, TipoSolicitudPublicSerializer,
+    TipoSolicitudPublicSerializer, MotivoSerializer, MotivoPublicSerializer,
 )
 from .domain import (
     request_type_mode, request_type_catalog, codes_with_modes,
@@ -231,26 +231,6 @@ class ActivePlansView(APIView):
         return Response(PlanPublicSerializer(plans, many=True).data)
 
 
-class TipoSolicitudListView(IsAdminMixin, APIView):
-    def get(self, request):
-        error = self.check_admin(request)
-        if error:
-            return error
-        return Response(TipoSolicitudSerializer(
-            TipoSolicitud.objects.all(), many=True).data)
-
-    def post(self, request):
-        error = self.check_admin(request)
-        if error:
-            return error
-        serializer = TipoSolicitudSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response({'error': _first_error(serializer)},
-                            status=status.HTTP_400_BAD_REQUEST)
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-
 class ActiveRequestTypesView(APIView):
     """Catalogo para el formulario de movimientos.
 
@@ -263,48 +243,80 @@ class ActiveRequestTypesView(APIView):
             TipoSolicitud.objects.filter(activo=True), many=True).data)
 
 
-class TipoSolicitudDetailView(IsAdminMixin, APIView):
-    def _get_tipo(self, pk):
+class MotivoListView(IsAdminMixin, APIView):
+    """Catalogo administrable de motivos (solo administradores)."""
+
+    def get(self, request):
+        error = self.check_admin(request)
+        if error:
+            return error
+        categoria = request.query_params.get('categoria')
+        qs = Motivo.objects.all()
+        if categoria:
+            qs = qs.filter(categoria=categoria)
+        return Response(MotivoSerializer(qs, many=True).data)
+
+    def post(self, request):
+        error = self.check_admin(request)
+        if error:
+            return error
+        serializer = MotivoSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({'error': _first_error(serializer)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class ActiveMotivosView(APIView):
+    """Motivos activos para el formulario de movimientos.
+
+    Sin IsAdminMixin: el operador necesita los motivos aunque no pueda
+    administrarlos. `?categoria=cambio|retiro` filtra por formulario.
+    """
+
+    def get(self, request):
+        qs = Motivo.objects.filter(activo=True)
+        categoria = request.query_params.get('categoria')
+        if categoria in ('cambio', 'retiro'):
+            qs = qs.filter(categoria=categoria)
+        return Response(MotivoPublicSerializer(qs, many=True).data)
+
+
+class MotivoDetailView(IsAdminMixin, APIView):
+    def _get_motivo(self, pk):
         try:
-            return TipoSolicitud.objects.get(id=pk)
-        except TipoSolicitud.DoesNotExist:
+            return Motivo.objects.get(id=pk)
+        except Motivo.DoesNotExist:
             return None
 
     def delete(self, request, pk):
         error = self.check_admin(request)
         if error:
             return error
-        tipo = self._get_tipo(pk)
-        if not tipo:
-            return Response({'error': 'Tipo de solicitud no encontrado'},
+        motivo = self._get_motivo(pk)
+        if not motivo:
+            return Response({'error': 'Motivo no encontrado'},
                             status=status.HTTP_404_NOT_FOUND)
-        # Los movimientos guardan el code, no el id. Borrar un tipo usado
-        # dejaria el historial sin etiqueta.
-        if Sale.objects.filter(requestType=tipo.code).exists():
+        # La FK es PROTECT: borrar un motivo usado dejaria el historial sin
+        # trazabilidad. Se desactiva en su lugar.
+        if Sale.objects.filter(motivo=motivo).exists():
             return Response(
                 {'error': 'No se puede eliminar: tiene movimientos asociados. '
                           'Desactivelo en su lugar para que deje de ofrecerse.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        tipo.delete()
+        motivo.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def put(self, request, pk):
         error = self.check_admin(request)
         if error:
             return error
-        tipo = self._get_tipo(pk)
-        if not tipo:
-            return Response({'error': 'Tipo de solicitud no encontrado'},
+        motivo = self._get_motivo(pk)
+        if not motivo:
+            return Response({'error': 'Motivo no encontrado'},
                             status=status.HTTP_404_NOT_FOUND)
-
-        nuevo_code = request.data.get('code')
-        if nuevo_code and nuevo_code != tipo.code:
-            if Sale.objects.filter(requestType=nuevo_code).exists():
-                return Response(
-                    {'error': 'Ese codigo ya lo usan movimientos existentes'},
-                    status=status.HTTP_400_BAD_REQUEST)
-
-        serializer = TipoSolicitudSerializer(tipo, data=request.data, partial=True)
+        serializer = MotivoSerializer(motivo, data=request.data, partial=True)
         if not serializer.is_valid():
             return Response({'error': _first_error(serializer)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -553,7 +565,8 @@ class SaleDetailView(IsAdminMixin, APIView):
 
         from .domain import SERVICE_TYPE_LABELS, SERVICE_TYPE_TO_PLAN_TYPE
         from .serializers import (
-            SaleSerializer, resolve_sale_prices, validate_cambio_plan)
+            SaleSerializer, resolve_sale_prices, validate_cambio_plan,
+            resolve_motivo)
 
         data = request.data
         plan = sale.plan
@@ -593,7 +606,21 @@ class SaleDetailView(IsAdminMixin, APIView):
                                     status=status.HTTP_400_BAD_REQUEST)
 
         service_type_from = data.get('serviceTypeFrom', sale.serviceTypeFrom) or None
-        change_reason = data.get('changeReason', sale.changeReason)
+
+        # Motivo: solo se toca si el payload trae uno distinto al actual.
+        # Editar un movimiento historico sin re-seleccionar motivo conserva
+        # su motivo y su texto, aunque el motivo ya este inactivo.
+        motivo = sale.motivo
+        motivo_id = data.get('motivoId')
+        if motivo_id and str(motivo_id) != str(sale.motivo_id):
+            motivo_errors = {}
+            motivo, _ = resolve_motivo(motivo_id, mode, motivo_errors)
+            if motivo_errors:
+                return Response({'error': next(iter(motivo_errors.values()))},
+                                status=status.HTTP_400_BAD_REQUEST)
+            change_reason = motivo.nombre
+        else:
+            change_reason = data.get('changeReason', sale.changeReason)
 
         if mode == MODO_CAMBIO_PLAN:
             errors = validate_cambio_plan(
@@ -615,6 +642,7 @@ class SaleDetailView(IsAdminMixin, APIView):
         sale.requestType = request_type
         sale.additionType = data.get('additionType', sale.additionType)
         sale.changeReason = change_reason
+        sale.motivo = motivo
         sale.notes = data.get('notes', sale.notes)
         sale.plan = plan
         sale.planFromId = plan_from

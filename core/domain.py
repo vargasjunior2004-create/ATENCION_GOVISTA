@@ -62,6 +62,25 @@ MODOS_SOLO_MENSUAL = (MODO_RETIRO, MODO_ADICION, MODO_CAMBIO_PLAN)
 # Cuentan como instalacion en el dashboard.
 MODOS_INSTALACION = (MODO_NUEVO,)
 
+# ------------------------------------------------------------------
+# Motivos
+#
+# Un motivo solo aplica a un cambio de plan o a un retiro. La categoria
+# del motivo tiene que coincidir con el modo del movimiento; este mapeo
+# es la unica traduccion entre ambos conceptos.
+MOTIVO_CAMBIO = 'cambio'
+MOTIVO_RETIRO = 'retiro'
+
+MODO_A_MOTIVO_CATEGORIA = {
+    MODO_CAMBIO_PLAN: MOTIVO_CAMBIO,
+    MODO_RETIRO: MOTIVO_RETIRO,
+}
+
+
+def motivo_categoria_de_modo(mode):
+    """Categoria de motivo que corresponde a un modo, o None si no lleva."""
+    return MODO_A_MOTIVO_CATEGORIA.get(mode)
+
 
 def request_type_catalog():
     """Todos los tipos de solicitud como {code: TipoSolicitud}.

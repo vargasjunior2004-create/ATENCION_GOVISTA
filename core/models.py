@@ -89,6 +89,36 @@ class TipoSolicitud(models.Model):
         return self.nombre
 
 
+class Motivo(models.Model):
+    """Catalogo administrable de motivos de movimiento.
+
+    Reemplaza a las listas fijas que vivian en el formulario. Cada motivo
+    pertenece a UNA categoria y esa categoria decide en que formulario se
+    ofrece: 'cambio' solo en cambios de plan, 'retiro' solo en retiros.
+
+    Igual que TipoSolicitud, un motivo NUNCA se borra fisicamente si tiene
+    movimientos: se desactiva. Asi el historial conserva su trazabilidad.
+    """
+
+    CATEGORIA_CHOICES = [
+        ('cambio', 'Motivo del cambio'),
+        ('retiro', 'Motivo del retiro'),
+    ]
+
+    categoria = models.CharField(max_length=10, choices=CATEGORIA_CHOICES)
+    nombre = models.CharField(max_length=120)
+    descripcion = models.CharField(max_length=255, blank=True, default='')
+    activo = models.BooleanField(default=True)
+    orden = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['categoria', 'orden', 'nombre']
+
+    def __str__(self):
+        return f'{self.get_categoria_display()}: {self.nombre}'
+
+
 class Promotion(models.Model):
     """Promocion asociada a un plan. Permite ofrecer precios especiales
     durante un periodo de vigencia sin crear planes duplicados."""
@@ -169,7 +199,13 @@ class Sale(models.Model):
         max_length=20, choices=ADDITION_TYPE_CHOICES, blank=True, default='',
         help_text='Sub-tipo de adicion: internet o tv')
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='sales')
-    changeReason = models.CharField(max_length=120, blank=True, default='')
+    changeReason = models.CharField(
+        max_length=120, blank=True, default='',
+        help_text='Snapshot del nombre del motivo al momento del registro')
+    motivo = models.ForeignKey(
+        Motivo, null=True, blank=True, on_delete=models.PROTECT,
+        related_name='sales',
+        help_text='Motivo del cambio o del retiro, segun la categoria')
     planFrom = models.CharField(max_length=60, blank=True, default='')
     serviceTypeFrom = models.CharField(
         max_length=20, choices=TYPE_CHOICES, null=True, blank=True,

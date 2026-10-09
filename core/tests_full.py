@@ -2,7 +2,7 @@ from django.test import TestCase, Client
 from django.utils import timezone
 from decimal import Decimal
 
-from .models import User, Plan, Sale
+from .models import User, Plan, Sale, Motivo
 
 
 def _json(response):
@@ -90,6 +90,11 @@ class SaleTests(TestCase):
             type='internet', code='P000', label='Plan 100',
             monthly=100, speed='10', active=True,
             installation=Decimal('0'))
+        # Los movimientos de cambio/retiro exigen un motivo del catalogo.
+        self.motivo_cambio = Motivo.objects.create(
+            categoria='cambio', nombre='AUMENTO DE DISPOSITIVOS')
+        self.motivo_retiro = Motivo.objects.create(
+            categoria='retiro', nombre='MUDANZA')
 
     def _token(self, user, pw):
         r = self.c.post('/api/auth/login', {'name': user.name, 'password': pw},
@@ -151,7 +156,7 @@ class SaleTests(TestCase):
             'clientCode': 'K020', 'clientName': 'F1',
             'serviceType': 'internet', 'requestType': 'cambio_plan',
             'planId': self.plan.id, 'planFromId': self.previous_plan.id,
-            'changeReason': 'AUMENTO DE DISPOSITIVOS'
+            'motivoId': self.motivo_cambio.id
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r.status_code, 201)
         r2 = self.c.get(f'/api/sales?from={today}&to={today}',
@@ -164,7 +169,7 @@ class SaleTests(TestCase):
         self.c.post('/api/sales', {
             'clientCode': 'K030', 'clientName': 'RET',
             'serviceType': 'internet', 'requestType': 'retiro',
-            'planId': self.plan.id
+            'planId': self.plan.id, 'motivoId': self.motivo_retiro.id
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         r = self.c.get('/api/sales?requestType=retiro',
                        HTTP_AUTHORIZATION=f'Bearer {token}')
@@ -185,7 +190,7 @@ class SaleTests(TestCase):
             'clientName': 'EDITED',
             'serviceType': 'internet', 'requestType': 'cambio_plan',
             'planId': self.plan.id, 'planFromId': self.previous_plan.id,
-            'changeReason': 'MEJOR CALIDAD'
+            'motivoId': self.motivo_cambio.id
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r2.status_code, 200)
         self.assertEqual(_json(r2)['clientName'], 'EDITED')
@@ -223,6 +228,8 @@ class DashboardTests(TestCase):
             type='internet', code='P002', label='Plan 200',
             monthly=200, speed='30', active=True,
             installation=Decimal('0'))
+        self.motivo_retiro = Motivo.objects.create(
+            categoria='retiro', nombre='MUDANZA')
 
     def _token(self):
         r = self.c.post('/api/auth/login', {'name': 'admin2', 'password': 'pass1'},
@@ -254,7 +261,7 @@ class DashboardTests(TestCase):
         self.c.post('/api/sales', {
             'clientCode': 'D002', 'clientName': 'DASH2',
             'serviceType': 'internet', 'requestType': 'retiro',
-            'planId': self.plan.id
+            'planId': self.plan.id, 'motivoId': self.motivo_retiro.id
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
 
         r = self.c.get('/api/dashboard/stats', HTTP_AUTHORIZATION=f'Bearer {token}')
@@ -292,6 +299,8 @@ class ReportTests(TestCase):
             type='internet', code='P003', label='Plan 100',
             monthly=100, speed='10', active=True,
             installation=Decimal('0'))
+        self.motivo_retiro = Motivo.objects.create(
+            categoria='retiro', nombre='MUDANZA')
 
     def _token(self):
         r = self.c.post('/api/auth/login', {'name': 'admin4', 'password': 'pass1'},
@@ -310,7 +319,7 @@ class ReportTests(TestCase):
         self.c.post('/api/sales', {
             'clientCode': 'R001', 'clientName': 'RPDF',
             'serviceType': 'internet', 'requestType': 'retiro',
-            'planId': self.plan.id
+            'planId': self.plan.id, 'motivoId': self.motivo_retiro.id
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         today = timezone.localdate().isoformat()
         r = self.c.get(f'/api/reports/pdf?from={today}&to={today}&requestType=retiro',

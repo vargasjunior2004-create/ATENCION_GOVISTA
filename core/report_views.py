@@ -20,6 +20,16 @@ def _sales_range(params, default_day=True):
     return from_date, to_date
 
 
+def _show_motivos(params):
+    """El filtro es obligatorio en la UI; la API lo interpreta como bool.
+
+    Solo controla si la columna Motivo aparece en el reporte. Nunca
+    altera ni filtra los movimientos incluidos.
+    """
+    value = str(params.get('showMotivos', '')).strip().lower()
+    return value in ('1', 'true', 'si', 'sí', 'yes')
+
+
 def _pdf_response(buf, filename):
     response = HttpResponse(buf.getvalue(), content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
@@ -32,8 +42,9 @@ class SalesPdfView(APIView):
         request_type = request.query_params.get('requestType') or None
         service_type = request.query_params.get('serviceType') or None
         service_type_from = request.query_params.get('serviceTypeFrom') or None
+        show_motivos = _show_motivos(request.query_params)
         buf = build_sales_pdf(from_date, to_date, request_type, service_type,
-                              service_type_from)
+                              service_type_from, show_motivos)
         suffix = f'-{request_type_label(request_type)}' if request_type else ''
         return _pdf_response(buf, f'planilla{suffix}-{from_date}-{to_date}.pdf')
 
@@ -44,8 +55,9 @@ class SalesXlsxView(APIView):
         request_type = request.query_params.get('requestType') or None
         service_type = request.query_params.get('serviceType') or None
         service_type_from = request.query_params.get('serviceTypeFrom') or None
+        show_motivos = _show_motivos(request.query_params)
         buf = build_sales_xlsx(from_date, to_date, request_type, service_type,
-                               service_type_from)
+                               service_type_from, show_motivos)
         suffix = f'-{request_type_label(request_type)}' if request_type else ''
         response = HttpResponse(
             buf.getvalue(),
@@ -60,8 +72,9 @@ class SalesPngView(APIView):
         request_type = request.query_params.get('requestType') or None
         service_type = request.query_params.get('serviceType') or None
         service_type_from = request.query_params.get('serviceTypeFrom') or None
+        show_motivos = _show_motivos(request.query_params)
         buf = build_sales_png(from_date, to_date, request_type, service_type,
-                              service_type_from)
+                              service_type_from, show_motivos)
         response = HttpResponse(buf.getvalue(), content_type='image/png')
         response['Content-Disposition'] = f'attachment; filename="foto-{from_date}-{to_date}.png"'
         return response

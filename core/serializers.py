@@ -2,13 +2,14 @@ from decimal import Decimal
 
 from rest_framework import serializers
 from .models import (
-    User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud,
+    User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
 )
 from .domain import (
     SERVICE_TYPE_LABELS, SERVICE_TYPE_FAMILY, SERVICE_TYPE_TO_PLAN_TYPE,
     service_family_label, previous_service_family, is_service_change,
     request_type_mode, request_type_catalog,
     MODO_ADICION, MODO_CAMBIO_PLAN, MODOS_SOLO_MENSUAL,
+    motivo_categoria_de_modo, MOTIVO_CAMBIO,
 )
 
 
@@ -95,6 +96,31 @@ def validate_cambio_plan(plan, plan_from, service_type, service_type_from,
     return errors
 
 
+def resolve_motivo(motivo_id, mode, errors):
+    """Resuelve el motivo de un movimiento y valida su categoria/estado.
+
+    Un motivo inexistente, inactivo o de la categoria equivocada se
+    apunta en `errors`. La obligatoriedad se decide en el llamador para
+    no tapar otras validaciones (plan anterior, compatibilidad, etc.).
+    Devuelve (motivo | None, categoria_esperada | None).
+    """
+    categoria = motivo_categoria_de_modo(mode)
+    if categoria is None:
+        return None, None
+    if not motivo_id:
+        return None, categoria
+    try:
+        motivo = Motivo.objects.get(id=motivo_id)
+    except Motivo.DoesNotExist:
+        errors['motivoId'] = 'Motivo no encontrado'
+        return None, categoria
+    if not motivo.activo:
+        errors['motivoId'] = 'El motivo esta inactivo'
+    elif motivo.categoria != categoria:
+        errors['motivoId'] = 'El motivo no corresponde a este tipo de movimiento'
+    return motivo, categoria
+
+
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
@@ -149,12 +175,22 @@ class PlanPublicSerializer(serializers.ModelSerializer):
                   'monthly', 'installation', 'total', 'legacy', 'active']
 
 
-class TipoSolicitudSerializer(serializers.ModelSerializer):
+class MotivoSerializer(serializers.ModelSerializer):
+    """CRUD administrativo de motivos."""
+
     class Meta:
-        model = TipoSolicitud
-        fields = ['id', 'code', 'nombre', 'descripcion', 'modo',
+        model = Motivo
+        fields = ['id', 'categoria', 'nombre', 'descripcion',
                   'activo', 'orden', 'created_at']
         read_only_fields = ['created_at']
+
+
+class MotivoPublicSerializer(serializers.ModelSerializer):
+    """Lo que recibe el formulario de movimientos: solo motivos activos."""
+
+    class Meta:
+        model = Motivo
+        fields = ['id', 'categoria', 'nombre', 'orden']
 
 
 class TipoSolicitudPublicSerializer(serializers.ModelSerializer):
@@ -245,15 +281,21 @@ class SaleSerializer(serializers.ModelSerializer):
     previousPlan = serializers.SerializerMethodField()
     previousService = serializers.SerializerMethodField()
     isServiceChange = serializers.SerializerMethodField()
+    motivoNombre = serializers.SerializerMethodField()
 
     class Meta:
         model = Sale
         fields = ['id', 'date', 'clientCode', 'clientName', 'serviceType',
-                  'requestType', 'additionType', 'changeReason', 'planFrom',
+                  'requestType', 'additionType', 'changeReason', 'motivo',
+                  'motivoNombre', 'planFrom',
                   'serviceTypeFrom', 'previousService', 'isServiceChange',
                   'totalFrom', 'notes', 'planId', 'total', 'Plan', 'creator',
                   'promotion', 'promotion_name',
                   'applied_installation', 'applied_monthly', 'previousPlan']
+
+    def get_motivoNombre(self, obj):
+        """Nombre del motivo: el snapshot si existe, o el texto historico."""
+        return obj.changeReason or ''
 
     def get_Plan(self, obj):
         return {'id': obj.plan.id, 'label': obj.plan.label, 'code': obj.plan.code}
@@ -307,6 +349,7 @@ class SaleCreateSerializer(serializers.Serializer):
         choices=[c[0] for c in Sale.ADDITION_TYPE_CHOICES],
         required=False, allow_blank=True, default='')
     planFromId = serializers.IntegerField(required=False, allow_null=True)
+    motivoId = serializers.IntegerField(required=False, allow_null=True)
 
     def validate(self, attrs):
         catalog = request_type_catalog()
@@ -343,6 +386,15 @@ class SaleCreateSerializer(serializers.Serializer):
         plan_from = None
         service_type_from = attrs.get('serviceTypeFrom') or None
 
+        # Motivo del cambio / del retiro. Se resuelve primero para usar su
+        # nombre como motivo, pero sus errores se reportan al final para no
+        # tapar los mensajes de plan anterior o compatibilidad de servicio.
+        reason_errors = {}
+        motivo, categoria_motivo = resolve_motivo(
+            attrs.get('motivoId'), mode, reason_errors)
+        attrs['changeReason'] = (
+            motivo.nombre if motivo else (attrs.get('changeReason') or ''))
+
         if mode == MODO_CAMBIO_PLAN:
             pf_id = attrs.get('planFromId')
             try:
@@ -355,14 +407,24 @@ class SaleCreateSerializer(serializers.Serializer):
                 plan=plan, plan_from=plan_from,
                 service_type=attrs['serviceType'],
                 service_type_from=service_type_from,
-                change_reason=attrs.get('changeReason'))
+                change_reason=attrs['changeReason'])
             if errors:
                 raise serializers.ValidationError(errors)
         else:
             service_type_from = None
 
+        if reason_errors:
+            raise serializers.ValidationError(reason_errors)
+        # Un cambio o un retiro nuevo no puede quedar sin motivo.
+        if categoria_motivo and motivo is None:
+            etiqueta = ('del cambio' if categoria_motivo == MOTIVO_CAMBIO
+                        else 'del retiro')
+            raise serializers.ValidationError(
+                {'motivoId': f'Debe seleccionar el motivo {etiqueta}'})
+
         attrs['planFromPlan'] = plan_from
         attrs['serviceTypeFromValue'] = service_type_from
+        attrs['motivoValue'] = motivo
 
         # Validate promotion if provided
         promotion = None
@@ -387,6 +449,7 @@ class SaleCreateSerializer(serializers.Serializer):
         promotion = validated_data.pop('promotion', None)
         plan_from = validated_data.pop('planFromPlan', None)
         service_type_from = validated_data.pop('serviceTypeFromValue', None)
+        motivo = validated_data.pop('motivoValue', None)
         request_type = validated_data.get('requestType', 'nuevo_contrato')
 
         code = validated_data.get('clientCode', '')
@@ -406,6 +469,7 @@ class SaleCreateSerializer(serializers.Serializer):
             requestType=request_type,
             additionType=validated_data.get('additionType', ''),
             changeReason=validated_data.get('changeReason', ''),
+            motivo=motivo,
             planFrom=plan_from.label if plan_from else validated_data.get('planFrom', ''),
             planFromId=plan_from,
             serviceTypeFrom=service_type_from,

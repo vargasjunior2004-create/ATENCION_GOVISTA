@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import api from '../services/api';
 import { Button, Input, Select, Card, Alert, TotalDisplay } from './ui';
 import useRequestTypes from '../hooks/useRequestTypes';
+import useMotivos from '../hooks/useMotivos';
 
 const SERVICE_TYPES = [
   { value: 'internet', label: 'INTERNET' },
@@ -35,16 +36,6 @@ const FAMILY_DEFAULT_SERVICE = {
 
 const FAMILY_LABELS = { internet: 'INTERNET', tv: 'TV', combo: 'COMBO' };
 
-const CHANGE_REASONS = [
-  'ECONOMICOS', 'AUMENTO DE DISPOSITIVOS', 'VIAJE', 'POCO USO',
-  'NO UTILIZA EL SERVICIO', 'MEJOR CALIDAD', 'OTROS',
-];
-
-const RETIRO_REASONS = [
-  'ECONOMICOS', 'CAMBIO A OTRA EMPRESA', 'MAL SERVICIO', 'TRASLADO',
-  'NO UTILIZA EL SERVICIO', 'FUERA DE AREA', 'VIAJE', 'OTROS',
-];
-
 const ADDITION_TYPES = [
   { value: 'adicion_internet', label: 'ADICION INTERNET' },
   { value: 'adicion_tv', label: 'ADICION TV' },
@@ -64,10 +55,11 @@ export default function SaleForm() {
   const [form, setForm] = useState({
     date: today, clientCode: '', clientName: '', serviceType: 'internet',
     requestType: 'nuevo_contrato', additionType: '', planFromId: '',
-    serviceTypeFrom: '', changeReason: '', retiroReason: '', notes: '',
+    serviceTypeFrom: '', motivoId: '', notes: '',
     planId: '',
   });
   const { tipos: requestTypes, modoOf, nombreOf } = useRequestTypes();
+  const { porCategoria, nombreOf: motivoNombreOf } = useMotivos();
   const modo = modoOf(form.requestType);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [error, setError] = useState('');
@@ -127,6 +119,10 @@ export default function SaleForm() {
   const isRetiro = modo === 'retiro';
   const isCambio = modo === 'cambio_plan';
   const isAdicion = modo === 'adicion';
+
+  // Motivos del catalogo segun el formulario que corresponde.
+  const motivosCambio = porCategoria('cambio');
+  const motivosRetiro = porCategoria('retiro');
 
   // El plan nuevo se filtra por el servicio NUEVO. El plan anterior se
   // filtra por su propia familia, no por el servicio nuevo: por eso ahora
@@ -225,6 +221,7 @@ export default function SaleForm() {
       }
       if (name === 'requestType') {
         next.planId = '';
+        next.motivoId = '';
         const nuevoModo = modoOf(value);
         if (nuevoModo !== 'adicion') next.additionType = '';
         if (nuevoModo !== 'cambio_plan') {
@@ -264,7 +261,7 @@ export default function SaleForm() {
         additionType: isAdicion ? form.additionType : '',
         planFromId: isCambio && form.planFromId ? Number(form.planFromId) : null,
         serviceTypeFrom: isCambio && form.serviceTypeFrom ? form.serviceTypeFrom : null,
-        changeReason: isCambio ? form.changeReason : (isRetiro ? form.retiroReason : ''),
+        motivoId: (isCambio || isRetiro) && form.motivoId ? Number(form.motivoId) : null,
         notes: form.notes,
         planId: Number(form.planId),
       };
@@ -273,7 +270,7 @@ export default function SaleForm() {
       }
       await api.createSale(payload);
       setSuccess('Registro guardado correctamente');
-      setForm({ date: today, clientCode: '', clientName: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', changeReason: '', retiroReason: '', notes: '', planId: '' });
+      setForm({ date: today, clientCode: '', clientName: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '' });
       setSelectedPlan(null); setSelectedCustomer(null); setQuery(''); setCustomers([]);
       setPromotions([]); setSelectedPromotion(null); setPriceMode('normal');
       setShowPreview(false);
@@ -302,11 +299,7 @@ export default function SaleForm() {
     return found ? found.label : val;
   };
 
-  const getMotivoLabel = () => {
-    if (isCambio) return form.changeReason;
-    if (isRetiro) return form.retiroReason;
-    return '';
-  };
+  const getMotivoLabel = () => motivoNombreOf(form.motivoId);
 
   return (
     <div className="space-y-6">
@@ -481,16 +474,16 @@ export default function SaleForm() {
           )}
 
           {isCambio && (
-            <Select label="Motivo del Cambio *" name="changeReason" value={form.changeReason} onChange={handleChange} required>
+            <Select label="Motivo del Cambio *" name="motivoId" value={form.motivoId} onChange={handleChange} required>
               <option value="">Seleccionar motivo...</option>
-              {CHANGE_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+              {motivosCambio.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
             </Select>
           )}
 
           {isRetiro && (
-            <Select label="Motivo del Retiro *" name="retiroReason" value={form.retiroReason} onChange={handleChange} required>
+            <Select label="Motivo del Retiro *" name="motivoId" value={form.motivoId} onChange={handleChange} required>
               <option value="">Seleccionar motivo...</option>
-              {RETIRO_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+              {motivosRetiro.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
             </Select>
           )}
 
@@ -621,7 +614,7 @@ export default function SaleForm() {
             </div>
           )}
 
-          <Button type="submit" size="lg" className="w-full" disabled={!form.planId || samePlanSelected || (isCambio && !form.changeReason)}>
+          <Button type="submit" size="lg" className="w-full" disabled={!form.planId || samePlanSelected || ((isCambio || isRetiro) && !form.motivoId)}>
             Revisar Registro
           </Button>
         </form>

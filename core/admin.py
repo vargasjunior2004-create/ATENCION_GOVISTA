@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import User, Plan, Promotion, Sale, Backup
+from .models import User, Plan, Motivo, Promotion, Sale, Backup
 
 
 @admin.register(User)
@@ -11,6 +11,12 @@ class UserAdmin(admin.ModelAdmin):
 class PlanAdmin(admin.ModelAdmin):
     list_display = ('id', 'code', 'label', 'type', 'speed', 'monthly',
                     'installation', 'active')
+
+
+@admin.register(Motivo)
+class MotivoAdmin(admin.ModelAdmin):
+    list_display = ('id', 'categoria', 'nombre', 'activo', 'orden')
+    list_filter = ('categoria', 'activo')
 
 
 @admin.register(Promotion)
