@@ -25,9 +25,10 @@ import datetime as _dt
 import re
 import unicodedata
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
-from core.models import Customer, Plan, Sale, User
+from core.domain import MODO_CAMBIO_PLAN, request_type_mode
+from core.models import Customer, Plan, Sale, TipoSolicitud, User
 
 SHEET = 'MOV. CLIENTES'
 HEADER_ROW = 6
@@ -108,14 +109,44 @@ REQUEST_TYPE_MAP = [
 ]
 
 
-def to_request_type(tipo):
-    t = normalize(tipo)
-    if not t:
-        return 'nuevo_contrato'
-    for k, v in REQUEST_TYPE_MAP:
-        if k in t:
-            return v
-    return 'otro'
+def request_type_resolver():
+    """(texto del Excel) -> code existente en el catalogo.
+
+    El Excel trae etiquetas propias y a veces mal escritas ("NUEVO COMTRATO"),
+    asi que primero se intenta el nombre del catalogo y despues los alias
+    historicos. Un alias que ya no existe en TipoSolicitud se descarta: antes
+    'BAJA TEMPORAL' producia ventas con un requestType huerfano que ningun
+    reporte sabia etiquetar. Ahora cae en 'otro' y queda reportado.
+    """
+    from core.domain import request_type_catalog
+
+    catalog = request_type_catalog()
+    por_nombre = {normalize(t.nombre): t.code for t in catalog.values()}
+    codigos = set(catalog)
+    default = 'otro' if 'otro' in codigos else (
+        'nuevo_contrato' if 'nuevo_contrato' in codigos else None)
+    if default is None:
+        raise CommandError(
+            'No hay tipos de solicitud en el catalogo. La migracion 0019 '
+            'debe correr antes de importar movimientos.')
+
+    sin_match = set()
+
+    def resolver(tipo):
+        t = normalize(tipo)
+        if not t:
+            return default
+        if t in por_nombre:
+            return por_nombre[t]
+        for k, v in REQUEST_TYPE_MAP:
+            if k in t:
+                if v in codigos:
+                    return v
+                sin_match.add(t)
+                break
+        return default
+
+    return resolver, sin_match, default
 
 
 class Command(BaseCommand):
@@ -150,6 +181,8 @@ class Command(BaseCommand):
         plans = {p.code: p for p in Plan.objects.all()}
         users = list(User.objects.filter(role='admin'))
         fallback_user = users[0] if users else None
+
+        to_request_type, rtype_sin_match, rtype_default = request_type_resolver()
 
         stats = {'ok': 0, 'sin_fecha': 0, 'monto_invalido': 0,
                  'omitido_duplicado': 0, 'clientes': 0}
@@ -195,7 +228,7 @@ class Command(BaseCommand):
             stype = to_service_type(tipo)
             rtype = to_request_type(solicitud)
 
-            if rtype == 'cambio_plan':
+            if request_type_mode(rtype) == MODO_CAMBIO_PLAN:
                 paquete = (p_cambio_int if stype == 'internet'
                            else p_cambio_tv if stype == 'tv'
                            else (p_cambio_tv or p_cambio_int))
@@ -257,6 +290,14 @@ class Command(BaseCommand):
             f"sin_fecha: {stats['sin_fecha']} | "
             f"monto_invalido: {stats['monto_invalido']} | "
             f"omitido (ya existe): {stats['omitido_duplicado']}")
+
+        # Si el Excel trae tipos que no existen en el catalogo, avisar en vez
+        # de importarlos en silencio como 'otro'.
+        if rtype_sin_match:
+            etiquetas = ', '.join(sorted(rtype_sin_match))
+            self.stdout.write(self.style.WARNING(
+                f"Tipos de solicitud del Excel sin equivalente en el catalogo: "
+                f"{etiquetas}. Se importaron como '{rtype_default}'."))
         if errores[:10]:
             self.stdout.write('Ejemplos de filas omitidas: '
                               + ', '.join(f'R{r}: {m}' for r, m in errores[:10]))

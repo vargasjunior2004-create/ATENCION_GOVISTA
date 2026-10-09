@@ -54,6 +54,41 @@ class Plan(models.Model):
         return f'{self.code} - {self.label}'
 
 
+class TipoSolicitud(models.Model):
+    """Catalogo de tipos de solicitud, administrable desde el panel.
+
+    `code` es solo la llave que se guarda en Sale.requestType. `modo` es
+    lo que decide las reglas de cobro, y por eso estan separados: rename
+    de un tipo no debe romper el historial de movimientos.
+
+    Todo tipo nuevo nace en SIMPLE, o sea sin reglas especiales, y hay
+    que cambiarlo a mano. Eso es deliberado: un tipo nuevo que nadie
+    reviso nunca debe cobrar una instalacion que la operacion no espera.
+    """
+
+    class Modo(models.TextChoices):
+        """Reglas de negocio que dispara el tipo de solicitud."""
+        NUEVO = 'nuevo', 'Nuevo contrato'
+        RETIRO = 'retiro', 'Retiro'
+        CAMBIO_PLAN = 'cambio_plan', 'Cambio de plan'
+        ADICION = 'adicion', 'Adicion'
+        SIMPLE = 'simple', 'Sin reglas especiales'
+
+    code = models.SlugField(max_length=20, unique=True)
+    nombre = models.CharField(max_length=120)
+    descripcion = models.CharField(max_length=255, blank=True, default='')
+    modo = models.CharField(max_length=12, choices=Modo, default=Modo.SIMPLE)
+    activo = models.BooleanField(default=True)
+    orden = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['orden', 'nombre']
+
+    def __str__(self):
+        return self.nombre
+
+
 class Promotion(models.Model):
     """Promocion asociada a un plan. Permite ofrecer precios especiales
     durante un periodo de vigencia sin crear planes duplicados."""
@@ -115,14 +150,6 @@ class Sale(models.Model):
         ('combo_analog', 'INTERNET + TV ANALOGA'),
         ('combo_digital', 'INTERNET + TV DIGITAL'),
     ]
-    REQUEST_CHOICES = [
-        ('nuevo_contrato', 'NUEVO CONTRATO'),
-        ('cambio_plan', 'CAMBIO DE PLAN'),
-        ('recontratacion', 'RECONTRATACION'),
-        ('retiro', 'RETIRO'),
-        ('adicion', 'ADICION'),
-        ('otro', 'OTRO'),
-    ]
     ADDITION_TYPE_CHOICES = [
         ('adicion_internet', 'ADICION INTERNET'),
         ('adicion_tv', 'ADICION TV'),
@@ -136,7 +163,8 @@ class Sale(models.Model):
         related_name='sales')
     serviceType = models.CharField(max_length=20, choices=TYPE_CHOICES)
     requestType = models.CharField(
-        max_length=20, choices=REQUEST_CHOICES, default='nuevo_contrato')
+        max_length=20, blank=True, default='nuevo_contrato',
+        help_text='Codigo de TipoSolicitud; el catalogo vive en esa tabla')
     additionType = models.CharField(
         max_length=20, choices=ADDITION_TYPE_CHOICES, blank=True, default='',
         help_text='Sub-tipo de adicion: internet o tv')

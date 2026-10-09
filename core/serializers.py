@@ -1,22 +1,36 @@
 from decimal import Decimal
 
 from rest_framework import serializers
-from .models import User, Customer, Plan, Promotion, Sale, Backup
+from .models import (
+    User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud,
+)
 from .domain import (
     SERVICE_TYPE_LABELS, SERVICE_TYPE_FAMILY, SERVICE_TYPE_TO_PLAN_TYPE,
     service_family_label, previous_service_family, is_service_change,
+    request_type_mode, request_type_catalog,
+    MODO_ADICION, MODO_CAMBIO_PLAN, MODOS_SOLO_MENSUAL,
 )
 
-# Tipos de movimiento que solo cobran mensualidad: no se cobra instalacion
-# porque el cliente ya tiene el servicio instalado.
-ONLY_MONTHLY = ('retiro', 'adicion', 'cambio_plan')
+
+def sale_catalog(serializer_or_context=None):
+    """Catalogo de tipos de solicitud para usar en un bucle.
+
+    SaleSerializer se usa sobre listas de movimientos, y pedir el catalogo
+    por fila seria una consulta por venta. Los llamadores lo ponen en el
+    context; si no esta, se genera aqui.
+    """
+    context = getattr(serializer_or_context, 'context', serializer_or_context)
+    if isinstance(context, dict) and context.get('catalog') is not None:
+        return context['catalog']
+    return request_type_catalog()
 
 
-def resolve_sale_prices(plan, promotion, request_type):
+def resolve_sale_prices(plan, promotion, request_type, catalog=None):
     """Precios de un movimiento, siempre derivados del plan en el servidor.
 
     Se comparte entre el alta y la edicion para que ambas rutas apliquen
-    exactamente la misma regla.
+    exactamente la misma regla. Las reglas vienen del MODO del tipo de
+    solicitud, no de su nombre.
     """
     if promotion:
         installation = (promotion.installation_price
@@ -27,9 +41,10 @@ def resolve_sale_prices(plan, promotion, request_type):
         installation = plan.installation
         monthly = plan.monthly
 
-    if request_type in ('adicion', 'cambio_plan'):
+    mode = request_type_mode(request_type, catalog)
+    if mode in (MODO_ADICION, MODO_CAMBIO_PLAN):
         installation = Decimal('0')
-    if request_type in ONLY_MONTHLY:
+    if mode in MODOS_SOLO_MENSUAL:
         total = monthly
     else:
         total = monthly + installation
@@ -134,6 +149,26 @@ class PlanPublicSerializer(serializers.ModelSerializer):
                   'monthly', 'installation', 'total', 'legacy', 'active']
 
 
+class TipoSolicitudSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TipoSolicitud
+        fields = ['id', 'code', 'nombre', 'descripcion', 'modo',
+                  'activo', 'orden', 'created_at']
+        read_only_fields = ['created_at']
+
+
+class TipoSolicitudPublicSerializer(serializers.ModelSerializer):
+    """Lo que recibe el formulario de movimientos.
+
+    `modo` viaja al frontend para que el formulario muestre plan anterior,
+    motivo de retiro o tipo de adicion sin volver a codificar los nombres.
+    """
+
+    class Meta:
+        model = TipoSolicitud
+        fields = ['id', 'code', 'nombre', 'descripcion', 'modo', 'orden']
+
+
 class PromotionSerializer(serializers.ModelSerializer):
     planLabel = serializers.SerializerMethodField()
     is_current = serializers.BooleanField(read_only=True)
@@ -232,7 +267,7 @@ class SaleSerializer(serializers.ModelSerializer):
 
     def get_previousService(self, obj):
         """Servicio anterior del movimiento, deducido si no se registro."""
-        if obj.requestType != 'cambio_plan':
+        if request_type_mode(obj.requestType, sale_catalog(self)) != MODO_CAMBIO_PLAN:
             return None
         family = previous_service_family(obj)
         if not family:
@@ -244,7 +279,7 @@ class SaleSerializer(serializers.ModelSerializer):
         }
 
     def get_isServiceChange(self, obj):
-        return is_service_change(obj)
+        return is_service_change(obj, sale_catalog(self))
 
     def get_creator(self, obj):
         return {'id': obj.createdBy.id, 'name': obj.createdBy.name}
@@ -257,9 +292,8 @@ class SaleCreateSerializer(serializers.Serializer):
     clientName = serializers.CharField(max_length=160)
     serviceType = serializers.ChoiceField(
         choices=[c[0] for c in Sale.TYPE_CHOICES])
-    requestType = serializers.ChoiceField(
-        choices=[c[0] for c in Sale.REQUEST_CHOICES], required=False,
-        default='nuevo_contrato')
+    requestType = serializers.CharField(
+        max_length=20, required=False, default='nuevo_contrato')
     changeReason = serializers.CharField(required=False, allow_blank=True)
     planFrom = serializers.CharField(required=False, allow_blank=True)
     serviceTypeFrom = serializers.CharField(
@@ -275,7 +309,17 @@ class SaleCreateSerializer(serializers.Serializer):
     planFromId = serializers.IntegerField(required=False, allow_null=True)
 
     def validate(self, attrs):
+        catalog = request_type_catalog()
         request_type = attrs.get('requestType', 'nuevo_contrato')
+        tipo = catalog.get(request_type)
+        if tipo is None:
+            raise serializers.ValidationError(
+                {'requestType': 'Tipo de solicitud desconocido'})
+        if not tipo.activo:
+            raise serializers.ValidationError(
+                {'requestType': 'El tipo de solicitud esta inactivo'})
+        mode = tipo.modo
+
         try:
             plan = Plan.objects.get(id=attrs['planId'], active=True)
         except Plan.DoesNotExist:
@@ -288,8 +332,8 @@ class SaleCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {'serviceType': 'El plan no pertenece al tipo de servicio seleccionado'})
 
-        # additionType requerido cuando requestType = adicion
-        if request_type == 'adicion':
+        # additionType requerido cuando el tipo es ADICION
+        if mode == MODO_ADICION:
             if not attrs.get('additionType'):
                 raise serializers.ValidationError(
                     {'additionType': 'Debe seleccionar el tipo de adicion (Internet o TV)'})
@@ -299,7 +343,7 @@ class SaleCreateSerializer(serializers.Serializer):
         plan_from = None
         service_type_from = attrs.get('serviceTypeFrom') or None
 
-        if request_type == 'cambio_plan':
+        if mode == MODO_CAMBIO_PLAN:
             pf_id = attrs.get('planFromId')
             try:
                 plan_from = Plan.objects.get(id=pf_id) if pf_id else None

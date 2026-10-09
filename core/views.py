@@ -11,12 +11,17 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
-from .models import User, Customer, Plan, Promotion, Sale, Backup
+from .models import User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud
 from .serializers import (
     UserSerializer, UserWriteSerializer, PlanSerializer,
     PlanPublicSerializer, CustomerSerializer, SaleSerializer,
     SaleCreateSerializer, BackupSerializer,
     PromotionSerializer, PromotionWriteSerializer,
+    TipoSolicitudSerializer, TipoSolicitudPublicSerializer,
+)
+from .domain import (
+    request_type_mode, request_type_catalog, codes_with_modes,
+    MODOS_INSTALACION, MODO_RETIRO, MODO_CAMBIO_PLAN, MODO_ADICION,
 )
 from .reports import build_sales_pdf, build_sales_xlsx
 
@@ -226,6 +231,87 @@ class ActivePlansView(APIView):
         return Response(PlanPublicSerializer(plans, many=True).data)
 
 
+class TipoSolicitudListView(IsAdminMixin, APIView):
+    def get(self, request):
+        error = self.check_admin(request)
+        if error:
+            return error
+        return Response(TipoSolicitudSerializer(
+            TipoSolicitud.objects.all(), many=True).data)
+
+    def post(self, request):
+        error = self.check_admin(request)
+        if error:
+            return error
+        serializer = TipoSolicitudSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({'error': _first_error(serializer)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class ActiveRequestTypesView(APIView):
+    """Catalogo para el formulario de movimientos.
+
+    Sin IsAdminMixin, igual que ActivePlansView: el operador registra
+    movimientos y necesita los tipos, aunque no pueda administrarlos.
+    """
+
+    def get(self, request):
+        return Response(TipoSolicitudPublicSerializer(
+            TipoSolicitud.objects.filter(active=True), many=True).data)
+
+
+class TipoSolicitudDetailView(IsAdminMixin, APIView):
+    def _get_tipo(self, pk):
+        try:
+            return TipoSolicitud.objects.get(id=pk)
+        except TipoSolicitud.DoesNotExist:
+            return None
+
+    def delete(self, request, pk):
+        error = self.check_admin(request)
+        if error:
+            return error
+        tipo = self._get_tipo(pk)
+        if not tipo:
+            return Response({'error': 'Tipo de solicitud no encontrado'},
+                            status=status.HTTP_404_NOT_FOUND)
+        # Los movimientos guardan el code, no el id. Borrar un tipo usado
+        # dejaria el historial sin etiqueta.
+        if Sale.objects.filter(requestType=tipo.code).exists():
+            return Response(
+                {'error': 'No se puede eliminar: tiene movimientos asociados. '
+                          'Desactivelo en su lugar para que deje de ofrecerse.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        tipo.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def put(self, request, pk):
+        error = self.check_admin(request)
+        if error:
+            return error
+        tipo = self._get_tipo(pk)
+        if not tipo:
+            return Response({'error': 'Tipo de solicitud no encontrado'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        nuevo_code = request.data.get('code')
+        if nuevo_code and nuevo_code != tipo.code:
+            if Sale.objects.filter(requestType=nuevo_code).exists():
+                return Response(
+                    {'error': 'Ese codigo ya lo usan movimientos existentes'},
+                    status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = TipoSolicitudSerializer(tipo, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response({'error': _first_error(serializer)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        serializer.save()
+        return Response(serializer.data)
+
+
 class PromotionListView(IsAdminMixin, APIView):
     def get(self, request):
         error = self.check_admin(request)
@@ -416,7 +502,11 @@ class SaleListView(APIView):
         total_pages = max(1, (total + page_size - 1) // page_size)
 
         return Response({
-            'items': SaleSerializer(items, many=True).data,
+            # El catalogo va en el context: sin esto, get_previousService y
+            # get_isServiceChange lo pedirian una vez por cada venta de la pagina.
+            'items': SaleSerializer(
+                items, many=True,
+                context={'catalog': request_type_catalog()}).data,
             'total': total,
             'page': page,
             'page_size': page_size,
@@ -475,6 +565,16 @@ class SaleDetailView(IsAdminMixin, APIView):
 
         service_type = data.get('serviceType', sale.serviceType)
         request_type = data.get('requestType', sale.requestType)
+        catalog = request_type_catalog()
+        tipo = catalog.get(request_type)
+        if tipo is None:
+            return Response({'error': 'Tipo de solicitud desconocido'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if not tipo.activo:
+            return Response({'error': 'El tipo de solicitud esta inactivo'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        mode = tipo.modo
+
         if service_type not in SERVICE_TYPE_LABELS:
             return Response({'error': 'Tipo de servicio no valido'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -495,7 +595,7 @@ class SaleDetailView(IsAdminMixin, APIView):
         service_type_from = data.get('serviceTypeFrom', sale.serviceTypeFrom) or None
         change_reason = data.get('changeReason', sale.changeReason)
 
-        if request_type == 'cambio_plan':
+        if mode == MODO_CAMBIO_PLAN:
             errors = validate_cambio_plan(
                 plan=plan, plan_from=plan_from, service_type=service_type,
                 service_type_from=service_type_from,
@@ -505,7 +605,7 @@ class SaleDetailView(IsAdminMixin, APIView):
                                 status=status.HTTP_400_BAD_REQUEST)
         else:
             service_type_from = None
-            if request_type != 'adicion':
+            if mode != MODO_ADICION:
                 data = {**data, 'additionType': ''}
 
         sale.date = data.get('date', sale.date)
@@ -595,7 +695,13 @@ class DashboardStatsView(APIView):
             month_start = today.replace(day=1)
 
             all_sales = Sale.objects.all()
-            installations = all_sales.filter(requestType__in=['nuevo_contrato', 'recontratacion'])
+            # Instalaciones y retiros se derivan del MODO de cada tipo,
+            # no de una lista de codigos. Un tipo nuevo entra en la
+            # categoria que su modo declare, sin tocar esta vista.
+            catalog = request_type_catalog()
+            installations = all_sales.filter(
+                requestType__in=codes_with_modes(MODOS_INSTALACION, catalog))
+            retiro_codes = codes_with_modes((MODO_RETIRO,), catalog)
 
             is_admin = getattr(request.user, 'role', '') == 'admin'
 
@@ -605,7 +711,8 @@ class DashboardStatsView(APIView):
                 return {'count': filtered.count(), 'total': float(total)}
 
             def retiros_stats(from_date, to_date):
-                sale_retiros = all_sales.filter(requestType='retiro', date__gte=from_date, date__lte=to_date)
+                sale_retiros = all_sales.filter(requestType__in=retiro_codes,
+                                               date__gte=from_date, date__lte=to_date)
                 total = sale_retiros.aggregate(s=Sum('total'))['s'] or 0
                 return {'count': sale_retiros.count(), 'total': float(total)}
 
@@ -629,7 +736,11 @@ class DashboardStatsView(APIView):
                 },
                 'role': request.user.role,
             })
-        except Exception as e:
+        except Exception:
+            # Antes era un `except Exception as e` mudo: un error de codigo
+            # devolvia el dashboard en ceros, indistinguible de un dia sin
+            # movimientos. Se loguea para que no vuelva a pasar inadvertido.
+            logger.exception('Error calculando estadisticas del dashboard')
             return Response({
                 'movimientos': {
                     'today': {'count': 0, 'total': 0},
