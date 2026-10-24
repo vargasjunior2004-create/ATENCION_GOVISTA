@@ -1,6 +1,6 @@
-# GO VISTA — Planilla de Movimientos
+# GO VISTA — Planilla de Solicitudes
 
-Sistema web para registro y control de movimientos diarios de telecomunicaciones FTTH (GO VISTA, Cobija — Bolivia).
+Sistema web para registro y control de solicitudes diarias de telecomunicaciones FTTH (GO VISTA, Cobija — Bolivia).
 
 **Produccion:** https://atencion-govista-2.onrender.com
 
@@ -13,7 +13,7 @@ Sistema web para registro y control de movimientos diarios de telecomunicaciones
 - **Reportes:** PDF (reportlab), XLSX (openpyxl), PNG (Pillow)
 
 > **Arranque limpio:** Al iniciar por primera vez se cargan 34 planes (fixture) y 2 usuarios (seed).
-> No hay movimientos previos.
+> No hay solicitudes previas.
 
 ## Credenciales de acceso
 
@@ -26,10 +26,10 @@ Login por **nombre de usuario** (no email):
 
 ## Funcionalidades
 
-### Movimientos
+### Solicitudes
 
 - **Registro:** formulario con auto-complete, fecha automatica (Bolivia UTC-4), campos en mayusculas
-- **Tipos de movimiento:**
+- **Tipos de solicitud:**
   - Nuevo Contrato — instala un plan nuevo con costo de instalacion + mensualidad
   - Cambio de Plan — migra a otro plan, cobra solo mensualidad (sin instalacion). Requiere seleccionar plan anterior
   - Recontratacion — reactiva un servicio con costo de instalacion + mensualidad
@@ -46,8 +46,8 @@ Login por **nombre de usuario** (no email):
   - No permite registrar el mismo plan con el mismo servicio (no aporta informacion); si cambia la variante del servicio, si se acepta
   - Solo cobra la mensualidad del plan nuevo, sin costo de instalacion
 - **Motivo del retiro:** obligatorio, elegido del catalogo de Motivos (solo motivos de tipo "retiro")
-- **Motivos:** cambios y retiros ya no usan listas fijas en el codigo; el motivo se elige de un catalogo administrable (ver **Motivos**). El nombre elegido se guarda como snapshot en el movimiento
-- **Montos calculados automaticamente** segun tipo de movimiento:
+- **Motivos:** cambios y retiros ya no usan listas fijas en el codigo; el motivo se elige de un catalogo administrable (ver **Motivos**). El nombre elegido se guarda como snapshot en la solicitud
+- **Montos calculados automaticamente** segun tipo de solicitud:
 
 | Tipo | Instalacion | Total |
 |------|-------------|-------|
@@ -57,21 +57,21 @@ Login por **nombre de usuario** (no email):
 | Retiro | 0 | solo mensualidad |
 | Adicion | 0 | solo mensualidad |
 
-- **Promociones:** modalidad de precio (normal o promocional) al registrar o editar un movimiento
+- **Promociones:** modalidad de precio (normal o promocional) al registrar o editar una solicitud
 - **Vista previa:** confirmacion antes de guardar
-- **Edicion:** admin puede editar cualquier movimiento (incluye plan anterior, tipo de adicion)
-- **Eliminacion:** admin puede eliminar con confirmacion ("Movimiento eliminado correctamente.")
+- **Edicion:** admin puede editar cualquier solicitud (incluye plan anterior, tipo de adicion)
+- **Eliminacion:** admin puede eliminar con confirmacion ("Solicitud eliminada correctamente.")
 
 ### Filtros de Busqueda
 
 - **Selects con opciones predeterminadas:**
-  - Tipo de Movimiento: `-- Seleccione --`, `Todos los movimientos`, Nuevo Contrato, Cambio de Plan, Recontratacion, Retiro, Adicion, Otro
+  - Tipo de Solicitud: `-- Seleccione --`, `Todas las solicitudes`, Nuevo Contrato, Cambio de Plan, Recontratacion, Retiro, Adicion, Otro
   - Tipo de Servicio: `-- Seleccione --`, `Todos los tipos de servicio`, Internet, TV Cable, TV Digital, Internet + TV Analoga, Internet + TV Digital
   - Formato: `-- Seleccione --`, PDF, Excel
   - Mostrar motivos: `-- Seleccione --`, `Si, mostrar motivos`, `No mostrar motivos`
 - **Boton Buscar:** solo busca al hacer clic (no automatico)
 - **Mensaje profesional:** cuando los selects estan en `-- Seleccione --` se muestra "Selecciona filtros para mostrar informacion"
-- **Reporte condicionado:** solo admin. El boton queda deshabilitado para operadores (con aviso "Solo los administradores pueden generar reportes") y tambien hasta seleccionar los 4 filtros (movimiento, servicio, formato y mostrar motivos)
+- **Reporte condicionado:** solo admin. El boton queda deshabilitado para operadores (con aviso "Solo los administradores pueden generar reportes") y tambien hasta seleccionar los 4 filtros (solicitud, servicio, formato y mostrar motivos)
 - **Mostrar motivos:** es obligatorio elegirlo. Con `Si` agrega la columna **MOTIVO** a la tabla y a los reportes PDF y Excel; con `No` no la incluye. Solo afecta la visualizacion/exportacion, nunca los datos
 
 ### Reportes (normalizados)
@@ -88,8 +88,8 @@ Login por **nombre de usuario** (no email):
   - Cambio de Plan muestra "PLAN ANTERIOR → PLAN NUEVO" en la columna PLAN
   - Los demas muestran el nombre del plan
 - **Servicio:** en cambios de plan entre servicios distintos muestra la conversion en la misma columna, por ejemplo "COMBO → INTERNET"; si el servicio no cambia, muestra solo el servicio
-- **Filtro por servicio anterior:** disponible en el listado y en los reportes, para encontrar los movimientos donde el cliente venia de otro servicio
-- **Titulo PDF:** `MOV. CLIENTES — TIPO MOVIMIENTO — TIPO SERVICIO` + fechas
+- **Filtro por servicio anterior:** disponible en el listado y en los reportes, para encontrar las solicitudes donde el cliente venia de otro servicio
+- **Titulo PDF:** `SOLICITUDES — TIPO SOLICITUD — TIPO SERVICIO` + fechas
 - **Links publicos:** PDF y XLSX con vigencia de 1 hora
 
 ### Promociones
@@ -99,7 +99,7 @@ Login por **nombre de usuario** (no email):
   - Editar promocion
   - Activar/desactivar promocion
   - Eliminar promocion
-- **Seleccion de precio:** al registrar un movimiento, si el plan tiene promociones vigentes, aparecen dos opciones:
+- **Seleccion de precio:** al registrar una solicitud, si el plan tiene promociones vigentes, aparecen dos opciones:
   - Precio normal (costo estandar del plan)
   - Precio promocional (precio especial de la promocion seleccionada)
 - **Restricciones:** solo se pueden crear promociones para planes activos y no legacy
@@ -115,16 +115,16 @@ Catalogo administrable de motivos para cambios de plan y retiros (solo admin). R
 - **Campos:** nombre (obligatorio), descripcion (opcional), categoria, estado (activo/inactivo) y orden
 - **Filtro por categoria** en el listado
 - **Viene precargado** con los motivos que antes estaban fijos en el formulario (7 de cambio y 8 de retiro), editables o eliminables desde el modulo
-- **Solo los motivos activos** se ofrecen al registrar o editar un movimiento
-- **Validacion:** el motivo debe existir, estar activo y su categoria coincidir con el tipo de movimiento (cambio de plan ↔ cambio, retiro ↔ retiro)
+- **Solo los motivos activos** se ofrecen al registrar o editar una solicitud
+- **Validacion:** el motivo debe existir, estar activo y su categoria coincidir con el tipo de solicitud (cambio de plan ↔ cambio, retiro ↔ retiro)
 - **Desactivar:** un motivo desactivado deja de ofrecerse en el formulario sin borrar el historial que lo referencia
-- **Snapshot:** el nombre del motivo se copia al movimiento, por lo que los registros historicos conservan su texto aunque el motivo se renombre o se desactive
+- **Snapshot:** el nombre del motivo se copia a la solicitud, por lo que los registros historicos conservan su texto aunque el motivo se renombre o se desactive
 
 ### Dashboard
 
 - Resumen diario con botones PDF, Excel y Foto
 - Botones deshabilitados cuando no hay registros del dia
-- Estadisticas: movimientos, instalaciones (nuevo contrato + recontratacion), retiros (hoy, semana, mes)
+- Estadisticas: solicitudes, instalaciones (nuevo contrato + recontratacion), retiros (hoy, semana, mes)
 
 ### Planes
 
@@ -138,7 +138,7 @@ Catalogo administrable de motivos para cambios de plan y retiros (solo admin). R
   - Combina Tipo y Estado con AND; cualquiera de los dos en "Todos" no restringe
   - Sin coincidencias: mensaje explicito con opcion de limpiar, en vez de una tabla vacia
 - Los filtros se resuelven en el cliente sobre el catalogo completo que ya devuelve `GET /api/plans`; sin cambios en backend
-- Inhabilitar como actual (legacy) — no aparecen en selects de nuevos movimientos pero si en Plan Anterior para cambio de plan y retiros
+- Inhabilitar como actual (legacy) — no aparecen en selects de nuevas solicitudes pero si en Plan Anterior para cambio de plan y retiros
 - Eliminacion con confirmacion
 
 > Nota: el filtro de Estado se apoya en `legacy`, que es el unico campo que la interfaz puede modificar. El campo `active` existe en el modelo pero hoy no se actualiza desde la UI, por lo que ambos pueden quedar desalineados.
@@ -176,8 +176,8 @@ Respaldo **manual** de PostgreSQL. Solo administradores.
 
 ## Roles
 
-- **ADMINISTRADOR:** acceso total (crear, editar, eliminar movimientos, planes, usuarios, promociones, motivos y generar reportes)
-- **OPERADOR:** solo puede registrar y consultar movimientos; no puede generar reportes (botones deshabilitados y API responde 403)
+- **ADMINISTRADOR:** acceso total (crear, editar, eliminar solicitudes, planes, usuarios, promociones, motivos y generar reportes)
+- **OPERADOR:** solo puede registrar y consultar solicitudes; no puede generar reportes (botones deshabilitados y API responde 403)
 
 ## Estructura
 
@@ -227,12 +227,12 @@ Sales_Tracker/
 | GET | /api/motivos/active?categoria=cambio\|retiro | Si | Motivos activos por categoria |
 | POST | /api/motivos | Admin | Crear motivo |
 | PUT | /api/motivos/:id | Admin | Editar/activar/desactivar motivo |
-| DELETE | /api/motivos/:id | Admin | Eliminar motivo (bloqueado si tiene movimientos) |
+| DELETE | /api/motivos/:id | Admin | Eliminar motivo (bloqueado si tiene solicitudes) |
 | GET | /api/request-types/active | Si | Tipos de solicitud activos (uso interno de cobro) |
-| GET | /api/sales?from=&to=&requestType=&serviceType=&page=&page_size= | Si | Movimientos (paginado, 25/pag) |
-| POST | /api/sales | Si | Crear movimiento |
-| PUT | /api/sales/:id | Admin | Editar movimiento |
-| DELETE | /api/sales/:id | Admin | Eliminar movimiento |
+| GET | /api/sales?from=&to=&requestType=&serviceType=&page=&page_size= | Si | Solicitudes (paginado, 25/pag) |
+| POST | /api/sales | Si | Crear solicitud |
+| PUT | /api/sales/:id | Admin | Editar solicitud |
+| DELETE | /api/sales/:id | Admin | Eliminar solicitud |
 | GET | /api/dashboard/stats | Si | Estadisticas del dashboard |
 | GET | /api/users | Admin | Listar usuarios |
 | POST | /api/users | Admin | Crear usuario |
@@ -300,7 +300,7 @@ Y comparalo con el campo `checksum` del historial en la app.
 - `frontend_build/` y `staticfiles/` van committeados (archivos servidos por WhiteNoise)
 - `wsgi.py` ejecuta migraciones + seed automaticamente si no hay datos
 - Pooler de Supabase usa IPv4, compatible con Render free tier
-- Planes legacy no aparecen en el select al registrar nuevos movimientos
+- Planes legacy no aparecen en el select al registrar nuevas solicitudes
 - Planes legacy si aparecen en el select de Plan Anterior (cambio de plan y retiro)
 - Admin no puede eliminarse a si mismo
 - 2 workers + 2 threads permite atender usuarios concurrentes (mientras uno genera PDF, otro hace consultas)
