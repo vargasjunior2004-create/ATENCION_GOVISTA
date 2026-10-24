@@ -238,7 +238,7 @@ export default function SalesList() {
   };
 
   const handleGenerateReport = async () => {
-    if (!requestType || !serviceType || !reportFormat) return;
+    if (!isAdmin || !requestType || !serviceType || !reportFormat) return;
     setGeneratingReport(true);
     setMsg('');
     try {
@@ -319,12 +319,15 @@ export default function SalesList() {
           <Button
             variant="primary"
             onClick={handleGenerateReport}
-            disabled={!hasSelection || generatingReport}
-            className={(!hasSelection) ? 'opacity-50 cursor-not-allowed' : ''}
+            disabled={!isAdmin || !hasSelection || generatingReport}
+            className={(!isAdmin || !hasSelection) ? 'opacity-50 cursor-not-allowed' : ''}
           >
             {generatingReport ? 'Generando...' : 'Reporte'}
           </Button>
-          {!hasSelection && (
+          {!isAdmin && (
+            <p className="text-xs text-slate-400">Solo los administradores pueden generar reportes</p>
+          )}
+          {isAdmin && !hasSelection && (
             <p className="text-xs text-slate-400">Selecciona todos los filtros para habilitar el reporte</p>
           )}
         </div>

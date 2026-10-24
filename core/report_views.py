@@ -2,7 +2,7 @@ from datetime import date
 
 from django.http import HttpResponse
 from django.utils import timezone
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -11,6 +11,24 @@ from .reports import (
     sign_report_token, unsign_report_token,
 )
 from .domain import request_type_label
+
+
+class IsAdminRole(BasePermission):
+    """Solo el rol admin puede generar reportes.
+
+    No basta con estar autenticado: los operadores pueden consultar
+    movimientos, pero no descargar planillas.
+    """
+
+    message = 'Se requieren permisos de administrador'
+
+    def has_permission(self, request, view):
+        user = getattr(request, 'user', None)
+        return bool(
+            user
+            and getattr(user, 'active', True)
+            and getattr(user, 'role', None) == 'admin'
+        )
 
 
 def _sales_range(params, default_day=True):
@@ -37,6 +55,8 @@ def _pdf_response(buf, filename):
 
 
 class SalesPdfView(APIView):
+    permission_classes = [IsAdminRole]
+
     def get(self, request):
         from_date, to_date = _sales_range(request.query_params)
         request_type = request.query_params.get('requestType') or None
@@ -50,6 +70,8 @@ class SalesPdfView(APIView):
 
 
 class SalesXlsxView(APIView):
+    permission_classes = [IsAdminRole]
+
     def get(self, request):
         from_date, to_date = _sales_range(request.query_params)
         request_type = request.query_params.get('requestType') or None
@@ -67,6 +89,8 @@ class SalesXlsxView(APIView):
 
 
 class SalesPngView(APIView):
+    permission_classes = [IsAdminRole]
+
     def get(self, request):
         from_date, to_date = _sales_range(request.query_params)
         request_type = request.query_params.get('requestType') or None
@@ -81,6 +105,8 @@ class SalesPngView(APIView):
 
 
 class SalesPdfLinkView(APIView):
+    permission_classes = [IsAdminRole]
+
     def get(self, request):
         from_date, to_date = _sales_range(request.query_params)
         token = sign_report_token(f'{from_date}:{to_date}')
@@ -89,6 +115,8 @@ class SalesPdfLinkView(APIView):
 
 
 class SalesXlsxLinkView(APIView):
+    permission_classes = [IsAdminRole]
+
     def get(self, request):
         from_date, to_date = _sales_range(request.query_params)
         token = sign_report_token(f'xlsx:{from_date}:{to_date}')
