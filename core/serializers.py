@@ -90,7 +90,7 @@ def validate_cambio_plan(plan, plan_from, service_type, service_type_from,
         if same_service:
             errors['planFromId'] = (
                 'El plan anterior y el nuevo son el mismo: '
-                'registre el movimiento con otro tipo de solicitud')
+                'registre la solicitud con otro tipo')
 
     validate_service_from(plan_from, service_type_from, errors)
     return errors
@@ -117,7 +117,7 @@ def resolve_motivo(motivo_id, mode, errors):
     if not motivo.activo:
         errors['motivoId'] = 'El motivo esta inactivo'
     elif motivo.categoria != categoria:
-        errors['motivoId'] = 'El motivo no corresponde a este tipo de movimiento'
+        errors['motivoId'] = 'El motivo no corresponde a este tipo de solicitud'
     return motivo, categoria
 
 

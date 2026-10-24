@@ -128,7 +128,7 @@ def request_type_resolver():
     if default is None:
         raise CommandError(
             'No hay tipos de solicitud en el catalogo. La migracion 0019 '
-            'debe correr antes de importar movimientos.')
+            'debe correr antes de importar solicitudes.')
 
     sin_match = set()
 
