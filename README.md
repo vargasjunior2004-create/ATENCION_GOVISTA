@@ -71,7 +71,7 @@ Login por **nombre de usuario** (no email):
   - Mostrar motivos: `-- Seleccione --`, `Si, mostrar motivos`, `No mostrar motivos`
 - **Boton Buscar:** solo busca al hacer clic (no automatico)
 - **Mensaje profesional:** cuando los selects estan en `-- Seleccione --` se muestra "Selecciona filtros para mostrar informacion"
-- **Reporte condicionado:** boton deshabilitado (gris) hasta seleccionar los 4 filtros (movimiento, servicio, formato y mostrar motivos)
+- **Reporte condicionado:** solo admin. El boton queda deshabilitado para operadores (con aviso "Solo los administradores pueden generar reportes") y tambien hasta seleccionar los 4 filtros (movimiento, servicio, formato y mostrar motivos)
 - **Mostrar motivos:** es obligatorio elegirlo. Con `Si` agrega la columna **MOTIVO** a la tabla y a los reportes PDF y Excel; con `No` no la incluye. Solo afecta la visualizacion/exportacion, nunca los datos
 
 ### Reportes (normalizados)
@@ -176,8 +176,8 @@ Respaldo **manual** de PostgreSQL. Solo administradores.
 
 ## Roles
 
-- **ADMINISTRADOR:** acceso total (crear, editar, eliminar movimientos, planes, usuarios, promociones, motivos)
-- **OPERADOR:** solo puede registrar movimientos y ver reportes
+- **ADMINISTRADOR:** acceso total (crear, editar, eliminar movimientos, planes, usuarios, promociones, motivos y generar reportes)
+- **OPERADOR:** solo puede registrar y consultar movimientos; no puede generar reportes (botones deshabilitados y API responde 403)
 
 ## Estructura
 
@@ -238,11 +238,11 @@ Sales_Tracker/
 | POST | /api/users | Admin | Crear usuario |
 | PUT | /api/users/:id | Admin | Editar usuario |
 | DELETE | /api/users/:id | Admin | Eliminar usuario |
-| GET | /api/reports/pdf?from=&to=&requestType=&serviceType=&showMotivos= | Si | PDF planilla |
-| GET | /api/reports/xlsx?from=&to=&requestType=&serviceType=&showMotivos= | Si | XLSX planilla |
-| GET | /api/reports/png?from=&to=&requestType=&serviceType=&showMotivos= | Si | PNG imagen del reporte |
-| GET | /api/reports/pdf-link?from=&to=&requestType=&serviceType=&showMotivos= | Si | Link publico PDF (1h) |
-| GET | /api/reports/xlsx-link?from=&to=&requestType=&serviceType=&showMotivos= | Si | Link publico XLSX (1h) |
+| GET | /api/reports/pdf?from=&to=&requestType=&serviceType=&showMotivos= | Admin | PDF planilla |
+| GET | /api/reports/xlsx?from=&to=&requestType=&serviceType=&showMotivos= | Admin | XLSX planilla |
+| GET | /api/reports/png?from=&to=&requestType=&serviceType=&showMotivos= | Admin | PNG imagen del reporte |
+| GET | /api/reports/pdf-link?from=&to=&requestType=&serviceType=&showMotivos= | Admin | Link publico PDF (1h) |
+| GET | /api/reports/xlsx-link?from=&to=&requestType=&serviceType=&showMotivos= | Admin | Link publico XLSX (1h) |
 | GET | /api/health | No | Estado del servicio y de la base de datos |
 | GET | /api/backups | Admin | Historial de respaldos (solo metadata) |
 | POST | /api/backups | Admin | Genera el respaldo y lo descarga (409 si ya hay uno en curso) |

@@ -343,6 +343,25 @@ class ReportTests(TestCase):
         r = self.c.get('/api/reports/pdf?from=2026-01-01&to=2026-01-01')
         self.assertEqual(r.status_code, 401)
 
+    def test_reportes_solo_admin(self):
+        _create_user('op4', 'pass2', 'ventas')
+        r = self.c.post('/api/auth/login',
+                        {'name': 'op4', 'password': 'pass2'},
+                        content_type='application/json')
+        token = _json(r)['token']
+        urls = (
+            '/api/reports/pdf?from=2026-01-01&to=2026-01-01',
+            '/api/reports/xlsx?from=2026-01-01&to=2026-01-01',
+            '/api/reports/png?from=2026-01-01&to=2026-01-01',
+            '/api/reports/pdf-link?from=2026-01-01&to=2026-01-01',
+            '/api/reports/xlsx-link?from=2026-01-01&to=2026-01-01',
+        )
+        for url in urls:
+            with self.subTest(url=url):
+                resp = self.c.get(
+                    url, HTTP_AUTHORIZATION=f'Bearer {token}')
+                self.assertEqual(resp.status_code, 403)
+
     def test_labels_respetan_tipo_de_movimiento(self):
         """Cada tipo de movimiento conserva su propia etiqueta en el reporte.
 
