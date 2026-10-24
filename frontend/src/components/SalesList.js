@@ -10,7 +10,7 @@ const typeColor = { internet: 'blue', tv: 'amber', combo: 'violet' };
 // '-- Seleccione --' y 'Todos' se anteponen al catalogo que llega del backend.
 const REQUEST_FILTER_PREFIX = [
   { value: '', label: '-- Seleccione --' },
-  { value: 'all', label: 'Todos los movimientos' },
+  { value: 'all', label: 'Todas las solicitudes' },
 ];
 
 const SERVICE_TYPES = [
@@ -230,7 +230,7 @@ export default function SalesList() {
       await api.deleteSale(deletingSale.id);
       setDeletingSale(null);
       loadSales(page);
-      setMsg('Movimiento eliminado correctamente.');
+      setMsg('Solicitud eliminada correctamente.');
     } catch (err) {
       setMsg(err.error || 'Error al eliminar');
       setDeletingSale(null);
@@ -272,8 +272,8 @@ export default function SalesList() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-black text-slate-900 tracking-tight">Movimientos</h1>
-        <p className="text-sm text-slate-400 mt-1">Historial de movimientos</p>
+        <h1 className="text-2xl font-black text-slate-900 tracking-tight">Solicitudes</h1>
+        <p className="text-sm text-slate-400 mt-1">Historial de solicitudes</p>
       </div>
 
       {/* Filters */}
@@ -286,7 +286,7 @@ export default function SalesList() {
             <Input label="Hasta" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
           <div>
-            <Select label="Movimiento" value={requestType} onChange={(e) => setRequestType(e.target.value)}>
+            <Select label="Solicitud" value={requestType} onChange={(e) => setRequestType(e.target.value)}>
               {[...REQUEST_FILTER_PREFIX, ...requestTypes.map((t) => ({ value: t.code, label: t.nombre }))].map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
@@ -346,12 +346,12 @@ export default function SalesList() {
                 </svg>
               </div>
               <div>
-                <h3 className="text-lg font-bold text-slate-900">Eliminar movimiento</h3>
+                <h3 className="text-lg font-bold text-slate-900">Eliminar solicitud</h3>
                 <p className="text-sm text-slate-500">Esta accion no se puede deshacer</p>
               </div>
             </div>
             <p className="text-sm text-slate-600">
-              Seguro que deseas eliminar el movimiento de <strong>{deletingSale.clientName}</strong> ({deletingSale.clientCode})?
+              Seguro que deseas eliminar la solicitud de <strong>{deletingSale.clientName}</strong> ({deletingSale.clientCode})?
             </p>
             <div className="flex gap-3 pt-2">
               <Button variant="danger" onClick={handleDelete}>Si, eliminar</Button>
@@ -374,7 +374,7 @@ export default function SalesList() {
               </div>
               <Input label="Nombre" name="clientName" value={editForm.clientName} onChange={handleEditChange} required />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Select label="Movimiento" name="requestType" value={editForm.requestType} onChange={handleEditChange}>
+                <Select label="Solicitud" name="requestType" value={editForm.requestType} onChange={handleEditChange}>
                   {requestTypes.map((t) => (
                     <option key={t.code} value={t.code}>{t.nombre}</option>
                   ))}
@@ -463,7 +463,7 @@ export default function SalesList() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
           </svg>
           <p className="text-slate-500 font-medium">Selecciona filtros para mostrar informacion</p>
-          <p className="text-xs text-slate-400 mt-1">Elige tipo de movimiento, tipo de servicio y formato, luego presiona Buscar</p>
+          <p className="text-xs text-slate-400 mt-1">Elige tipo de solicitud, tipo de servicio y formato, luego presiona Buscar</p>
         </Card>
       ) : loading ? (
         <div className="flex items-center justify-center py-20">
@@ -477,7 +477,7 @@ export default function SalesList() {
           <svg className="w-12 h-12 text-slate-200 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
           </svg>
-          <p className="text-slate-400 text-sm">No hay movimientos en este periodo</p>
+          <p className="text-slate-400 text-sm">No hay solicitudes en este periodo</p>
         </Card>
       ) : (
         <>
@@ -486,7 +486,7 @@ export default function SalesList() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100">
-                  {['Fecha', 'Cod.', 'Nombre', 'Movimiento', 'Plan', ...(showMotivosColumn ? ['Motivo'] : []), 'Total', 'Por', ''].map((h) => (
+                  {['Fecha', 'Cod.', 'Nombre', 'Solicitud', 'Plan', ...(showMotivosColumn ? ['Motivo'] : []), 'Total', 'Por', ''].map((h) => (
                     <th key={h} className="text-left px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">{h}</th>
                   ))}
                 </tr>

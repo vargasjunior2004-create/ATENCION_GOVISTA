@@ -137,9 +137,9 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
 
     catalog = request_type_catalog()
     request_label = (request_type_label(request_type, catalog) if request_type
-                     else 'TODOS LOS MOVIMIENTOS')
+                     else 'TODAS LAS SOLICITUDES')
     service_label = _service_filter_label(service_type, service_type_from)
-    title = f'MOV. CLIENTES — {request_label} — {service_label}'
+    title = f'SOLICITUDES — {request_label} — {service_label}'
 
     story = _report_header(
         Paragraph(f'{title}<br/><font size="9">{title_from} al {title_to}</font>', styles['Title']),
@@ -203,7 +203,7 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
 
     wb = Workbook()
     ws = wb.active
-    ws.title = 'MOV. CLIENTES'
+    ws.title = 'SOLICITUDES'
 
     headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD', 'PLAN']
     if show_motivos:
@@ -372,7 +372,7 @@ def build_sales_png(from_date, to_date, request_type=None, service_type=None,
     # Title
     title_from = datetime.strptime(from_date, '%Y-%m-%d').strftime('%d/%m/%Y')
     title_to = datetime.strptime(to_date, '%Y-%m-%d').strftime('%d/%m/%Y')
-    draw.text((padding, 15), f'MOV. CLIENTES  {title_from} al {title_to}', fill='#1D4ED8', font=font_title)
+    draw.text((padding, 15), f'SOLICITUDES  {title_from} al {title_to}', fill='#1D4ED8', font=font_title)
 
     # Header row
     y = title_height

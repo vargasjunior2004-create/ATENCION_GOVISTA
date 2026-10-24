@@ -44,7 +44,7 @@ function MetricCard({ label, count, total, icon, color = 'brand' }) {
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{label}</span>
         </div>
         <div className="stat-number text-3xl mb-1">{count}</div>
-        <p className="text-xs text-slate-400 mb-2 font-medium">movimientos</p>
+        <p className="text-xs text-slate-400 mb-2 font-medium">solicitudes</p>
         <div className="flex items-center gap-2">
           <div className="h-1 flex-1 bg-slate-100 rounded-full overflow-hidden">
             <div className={`h-full bg-gradient-to-r ${c.bar} rounded-full`} style={{ width: `${Math.min(total / 50, 100)}%` }} />
@@ -114,7 +114,7 @@ export default function Dashboard() {
       URL.revokeObjectURL(url);
       setMsg('PDF descargado correctamente.');
     } catch (err) {
-      setMsg(err.error || 'Sin movimientos hoy para generar planilla');
+      setMsg(err.error || 'Sin solicitudes hoy para generar planilla');
     } finally {
       setGenerating(false);
     }
@@ -137,7 +137,7 @@ export default function Dashboard() {
       URL.revokeObjectURL(url);
       setMsg('Archivo Excel descargado.');
     } catch (err) {
-      setMsg(err.error || 'Sin movimientos hoy para generar el archivo');
+      setMsg(err.error || 'Sin solicitudes hoy para generar el archivo');
     } finally {
       setGeneratingXlsx(false);
     }
@@ -160,7 +160,7 @@ export default function Dashboard() {
       URL.revokeObjectURL(url);
       setMsg('Foto descargada correctamente.');
     } catch (err) {
-      setMsg(err.error || 'Sin movimientos hoy para generar foto');
+      setMsg(err.error || 'Sin solicitudes hoy para generar foto');
     } finally {
       setGeneratingFoto(false);
     }
@@ -226,11 +226,11 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {msg && <Alert type={msg.includes('Sin movimientos') ? 'error' : 'success'}>{msg}</Alert>}
+      {msg && <Alert type={msg.includes('Sin solicitudes') ? 'error' : 'success'}>{msg}</Alert>}
 
-      {/* Movimientos del dia */}
+      {/* Solicitudes del dia */}
       <div className="space-y-3">
-        <SectionHeader title={isAdmin ? "Movimientos" : "Mis Movimientos"} color="brand" />
+        <SectionHeader title={isAdmin ? "Solicitudes" : "Mis Solicitudes"} color="brand" />
         <div className={`grid grid-cols-1 gap-4 ${isAdmin ? 'sm:grid-cols-3' : 'sm:grid-cols-1 max-w-sm'}`}>
           <MetricCard
             label="Hoy"

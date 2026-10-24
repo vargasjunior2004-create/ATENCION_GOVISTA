@@ -302,7 +302,7 @@ class MotivoDetailView(IsAdminMixin, APIView):
         # trazabilidad. Se desactiva en su lugar.
         if Sale.objects.filter(motivo=motivo).exists():
             return Response(
-                {'error': 'No se puede eliminar: tiene movimientos asociados. '
+                {'error': 'No se puede eliminar: tiene solicitudes asociadas. '
                           'Desactivelo en su lugar para que deje de ofrecerse.'},
                 status=status.HTTP_400_BAD_REQUEST)
         motivo.delete()

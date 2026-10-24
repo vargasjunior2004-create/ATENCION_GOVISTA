@@ -304,8 +304,8 @@ export default function SaleForm() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-black text-slate-900 tracking-tight">Registrar Movimiento</h1>
-        <p className="text-sm text-slate-400 mt-1">Nuevo registro de movimiento de cliente</p>
+        <h1 className="text-2xl font-black text-slate-900 tracking-tight">Registrar Solicitud</h1>
+        <p className="text-sm text-slate-400 mt-1">Nuevo registro de solicitud de cliente</p>
       </div>
 
       <Card className="p-6">
@@ -469,7 +469,7 @@ export default function SaleForm() {
           {samePlanSelected && (
             <Alert type="error">
               El plan anterior y el nuevo son el mismo. Elija otro plan, o
-              registre el movimiento con otro tipo de solicitud.
+              registre la solicitud con otro tipo.
             </Alert>
           )}
 
