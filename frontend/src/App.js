@@ -1,48 +1,13 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import Login from './components/Login';
-import Layout from './components/Layout';
-import Dashboard from './components/Dashboard';
-import SaleForm from './components/SaleForm';
-import SalesList from './components/SalesList';
-import PlansModule from './components/PlansModule';
-import MotivosModule from './components/MotivosModule';
-import PromotionsModule from './components/PromotionsModule';
-import UsersModule from './components/UsersModule';
-import BackupModule from './components/BackupModule';
-
-function ProtectedRoute() {
-  const { token } = useAuth();
-  return token ? <Outlet /> : <Navigate to="/login" replace />;
-}
-
-function AdminRoute() {
-  const { isAdmin } = useAuth();
-  return isAdmin ? <Outlet /> : <Navigate to="/" replace />;
-}
+import { BrowserRouter } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import AppRoutes from './routes/AppRoutes';
 
 function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route element={<ProtectedRoute />}>
-            <Route element={<Layout />}>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/nueva-venta" element={<SaleForm />} />
-              <Route path="/ventas" element={<SalesList />} />
-              <Route element={<AdminRoute />}>
-                <Route path="/planes" element={<PlansModule />} />
-                <Route path="/motivos" element={<MotivosModule />} />
-                <Route path="/promociones" element={<PromotionsModule />} />
-                <Route path="/usuarios" element={<UsersModule />} />
-                <Route path="/backups" element={<BackupModule />} />
-              </Route>
-            </Route>
-          </Route>
-        </Routes>
+        <AppRoutes />
       </BrowserRouter>
     </AuthProvider>
   );

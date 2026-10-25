@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import api from '../services/api';
-import { Button, Input, Select, Card, Alert, TotalDisplay } from './ui';
-import useRequestTypes from '../hooks/useRequestTypes';
-import useMotivos from '../hooks/useMotivos';
+import api from '../../../services/api';
+import { Button, Input, Select, Card, Alert, TotalDisplay } from '../../../components/ui';
+import useRequestTypes from '../../../hooks/useRequestTypes';
+import useMotivos from '../../../hooks/useMotivos';
 
 const SERVICE_TYPES = [
   { value: 'internet', label: 'INTERNET' },

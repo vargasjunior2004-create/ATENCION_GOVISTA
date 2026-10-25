@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import api from '../services/api';
-import { useAuth } from '../context/AuthContext';
-import { Button, Card, Alert } from './ui';
+import api from '../../../services/api';
+import { useAuth } from '../../../context/AuthContext';
+import { Button, Card, Alert } from '../../../components/ui';
 
 function formatNum(n) {
   return parseFloat(n || 0).toFixed(2);

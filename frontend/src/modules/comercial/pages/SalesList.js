@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import api from '../services/api';
-import { useAuth } from '../context/AuthContext';
-import { Button, Input, Select, Card, Alert, Badge } from './ui';
-import useRequestTypes, { MODO_COLOR } from '../hooks/useRequestTypes';
-import useMotivos from '../hooks/useMotivos';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import api from '../../../services/api';
+import { useAuth } from '../../../context/AuthContext';
+import { Button, Input, Select, Card, Alert, Badge } from '../../../components/ui';
+import useRequestTypes, { MODO_COLOR } from '../../../hooks/useRequestTypes';
+import useMotivos from '../../../hooks/useMotivos';
 
 const typeColor = { internet: 'blue', tv: 'amber', combo: 'violet' };
 
@@ -105,19 +106,21 @@ export default function SalesList() {
   const { isAdmin } = useAuth();
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  const [from, setFrom] = useState(today);
-  const [to, setTo] = useState(today);
-  const [requestType, setRequestType] = useState('');
-  const [serviceType, setServiceType] = useState('');
-  const [reportFormat, setReportFormat] = useState('');
-  const [showMotivos, setShowMotivos] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialPage = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
+  const [from, setFrom] = useState(searchParams.get('from') || today);
+  const [to, setTo] = useState(searchParams.get('to') || today);
+  const [requestType, setRequestType] = useState(searchParams.get('requestType') || '');
+  const [serviceType, setServiceType] = useState(searchParams.get('serviceType') || '');
+  const [reportFormat, setReportFormat] = useState(searchParams.get('format') || '');
+  const [showMotivos, setShowMotivos] = useState(searchParams.get('motivos') || '');
   const [sales, setSales] = useState([]);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(false);
   const [editingSale, setEditingSale] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [editError, setEditError] = useState('');
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(initialPage);
   const [pagination, setPagination] = useState({ total: 0, total_pages: 1 });
   const [generatingReport, setGeneratingReport] = useState(false);
   const [msg, setMsg] = useState('');
@@ -138,10 +141,11 @@ export default function SalesList() {
   const showMotivosColumn = showMotivos === 'si';
   const hasSelection = requestType !== '' && serviceType !== '' && reportFormat !== '' && showMotivos !== '';
 
-  const loadSales = useCallback(async (p = 1) => {
+  const loadSales = useCallback(async (p = 1, commitFilters = true) => {
     if (!hasSelection) {
       setSales([]);
       setPagination({ total: 0, total_pages: 1, page: 1 });
+      if (searchParams.toString()) setSearchParams({}, { replace: true });
       return;
     }
     setLoading(true);
@@ -150,14 +154,29 @@ export default function SalesList() {
       setSales(res.items);
       setPagination({ total: res.total, total_pages: res.total_pages, page: res.page });
       setPage(res.page);
+      if (commitFilters) {
+        const params = new URLSearchParams();
+        params.set('from', from);
+        params.set('to', to);
+        params.set('requestType', requestType);
+        params.set('serviceType', serviceType);
+        params.set('format', reportFormat);
+        params.set('motivos', showMotivos);
+        params.set('page', String(res.page));
+        setSearchParams(params, { replace: true });
+      }
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
-  }, [from, to, requestType, serviceType, hasSelection]);
+  }, [from, to, requestType, serviceType, reportFormat, showMotivos, hasSelection, searchParams, setSearchParams]);
 
-  useEffect(() => { loadSales(1); }, [hasSelection]);
+  const filtersMounted = useRef(false);
+  useEffect(() => {
+    loadSales(filtersMounted.current ? 1 : initialPage);
+    filtersMounted.current = true;
+  }, [hasSelection]);
   useEffect(() => {
     if (isAdmin) api.getPlans().then(setPlans).catch(() => {});
   }, [isAdmin]);
