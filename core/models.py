@@ -199,6 +199,9 @@ class Sale(models.Model):
         max_length=20, choices=ADDITION_TYPE_CHOICES, blank=True, default='',
         help_text='Sub-tipo de adicion: internet o tv')
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='sales')
+    planName = models.CharField(
+        max_length=120, blank=True, default='',
+        help_text='Snapshot del nombre del plan al momento del registro')
     changeReason = models.CharField(
         max_length=120, blank=True, default='',
         help_text='Snapshot del nombre del motivo al momento del registro')

@@ -298,13 +298,16 @@ class SaleSerializer(serializers.ModelSerializer):
         return obj.changeReason or ''
 
     def get_Plan(self, obj):
-        return {'id': obj.plan.id, 'label': obj.plan.label, 'code': obj.plan.code}
+        return {'id': obj.plan.id,
+                'label': obj.planName or obj.plan.label,
+                'code': obj.plan.code}
 
     def get_previousPlan(self, obj):
         pf = getattr(obj, 'planFromId', None) or getattr(obj, 'planfromid', None)
         if pf:
-            return {'id': pf.id, 'label': pf.label, 'code': pf.code,
-                    'type': pf.type}
+            return {'id': pf.id,
+                    'label': obj.planFrom or pf.label,
+                    'code': pf.code, 'type': pf.type}
         return None
 
     def get_previousService(self, obj):
@@ -374,6 +377,12 @@ class SaleCreateSerializer(serializers.Serializer):
         if plan.type != expected_type:
             raise serializers.ValidationError(
                 {'serviceType': 'El plan no pertenece al tipo de servicio seleccionado'})
+
+        # Un cambio de plan no puede tener como destino un plan del catalogo
+        # anterior. Los retiros si usan esos planes: son el plan que se retira.
+        if mode == MODO_CAMBIO_PLAN and plan.legacy:
+            raise serializers.ValidationError(
+                {'planId': 'No se puede cambiar a un plan anterior (legacy)'})
 
         # additionType requerido cuando el tipo es ADICION
         if mode == MODO_ADICION:
@@ -478,6 +487,7 @@ class SaleCreateSerializer(serializers.Serializer):
             notes=validated_data.get('notes', ''),
             customer=customer,
             plan=plan,
+            planName=plan.label,
             total=sale_total,
             promotion=promotion,
             promotion_name=promotion.name if promotion else '',

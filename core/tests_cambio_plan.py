@@ -4,11 +4,12 @@ Cubre la matriz completa de conversiones (Internet, TV, Combo), las reglas
 de validacion del backend, la conservacion del historial y los permisos.
 """
 from decimal import Decimal
+from datetime import timedelta
 
 from django.test import TestCase
 from django.utils import timezone
 
-from .models import User, Plan, Sale, Motivo
+from .models import User, Plan, Sale, Motivo, Promotion
 from .domain import SERVICE_TYPE_TO_PLAN_TYPE, sale_service_label
 
 
@@ -37,6 +38,8 @@ class CambioPlanEntreServiciosTest(TestCase):
         self.client_ = Client()
         self.motivo_cambio = Motivo.objects.create(
             categoria='cambio', nombre='MEJOR CALIDAD')
+        self.motivo_retiro = Motivo.objects.create(
+            categoria='retiro', nombre='MUDANZA')
 
     def _token(self, user, password):
         r = self.client_.post('/api/auth/login',
@@ -49,7 +52,8 @@ class CambioPlanEntreServiciosTest(TestCase):
                     if fam == family)
 
     def _post_cambio(self, old_family, new_family, service_type_from=None,
-                     client_code='CP001', omit_reason=False, same_plan=False):
+                     client_code='CP001', omit_reason=False, same_plan=False,
+                     promotion_id=None):
         plan_to = self.plans[(new_family, 1)]
         plan_from = plan_to if same_plan else self.plans[(old_family, 2)]
         payload = {
@@ -62,8 +66,20 @@ class CambioPlanEntreServiciosTest(TestCase):
             payload['motivoId'] = self.motivo_cambio.id
         if service_type_from:
             payload['serviceTypeFrom'] = service_type_from
+        if promotion_id:
+            payload['promotionId'] = promotion_id
         return self.client_.post(
             '/api/sales', payload, content_type='application/json',
+            HTTP_AUTHORIZATION=f'Bearer {self._token(self.admin, "pass1")}')
+
+    def _post_sale(self, payload):
+        return self.client_.post(
+            '/api/sales', payload, content_type='application/json',
+            HTTP_AUTHORIZATION=f'Bearer {self._token(self.admin, "pass1")}')
+
+    def _put_sale(self, sale, payload):
+        return self.client_.put(
+            f'/api/sales/{sale.id}', payload, content_type='application/json',
             HTTP_AUTHORIZATION=f'Bearer {self._token(self.admin, "pass1")}')
 
     def test_matriz_completa_de_conversiones(self):
@@ -108,7 +124,7 @@ class CambioPlanEntreServiciosTest(TestCase):
         """Un cambio dentro del mismo servicio no inventa una flecha."""
         self._post_cambio('internet', 'internet', client_code='CP003')
         sale = Sale.objects.get(clientCode='CP003')
-        self.assertEqual(sale_service_label(sale), 'INTERNET → INTERNET')
+        self.assertEqual(sale_service_label(sale), 'INTERNET')
 
     def test_servicio_anterior_se_registra(self):
         self._post_cambio('combo', 'internet',
@@ -322,6 +338,183 @@ class CambioPlanEntreServiciosTest(TestCase):
         servicios = [r[3] for r in ws.iter_rows(min_row=2, values_only=True) if r[0]]
         self.assertIn('COMBO → INTERNET', servicios)
         self.assertIn('INTERNET → COMBO', servicios)
+
+    def test_variante_de_combo_se_distingue_en_el_reporte(self):
+        """Combo analogico -> digital no se confunde con un cambio de familia."""
+        combo = self.plans[('combo', 1)]
+        r = self._post_sale({
+            'clientCode': 'CPVAR', 'clientName': 'Cambio de variante',
+            'serviceType': 'combo_digital', 'requestType': 'cambio_plan',
+            'planId': combo.id, 'planFromId': combo.id,
+            'serviceTypeFrom': 'combo_analog',
+            'motivoId': self.motivo_cambio.id,
+        })
+        self.assertEqual(r.status_code, 201)
+        sale = Sale.objects.get(clientCode='CPVAR')
+        self.assertEqual(sale_service_label(sale),
+                         'COMBO ANALÓGICO → COMBO DIGITAL')
+
+    def test_xlsx_separa_plan_anterior_y_plan_actual(self):
+        import io
+        import openpyxl
+        from .reports import build_sales_xlsx
+
+        self._post_cambio('combo', 'internet', client_code='CP001')
+        self._post_sale({
+            'clientCode': 'CPN', 'clientName': 'Nuevo',
+            'serviceType': 'internet', 'requestType': 'nuevo_contrato',
+            'planId': self.plans[('internet', 1)].id,
+        })
+        self._post_sale({
+            'clientCode': 'CPR', 'clientName': 'Retiro',
+            'serviceType': 'internet', 'requestType': 'retiro',
+            'planId': self.plans[('internet', 1)].id,
+            'motivoId': self.motivo_retiro.id,
+        })
+
+        hoy = timezone.localdate().isoformat()
+        ws = openpyxl.load_workbook(
+            io.BytesIO(build_sales_xlsx(hoy, hoy).getvalue())).active
+        headers = [c.value for c in ws[1]]
+        prev_col = headers.index('PLAN ANTERIOR')
+        curr_col = headers.index('PLAN ACTUAL')
+        rows = {row[1]: row for row in ws.iter_rows(
+            min_row=2, values_only=True) if row[0]}
+
+        self.assertEqual(rows['CP001'][prev_col], 'COMBO 2')
+        self.assertEqual(rows['CP001'][curr_col], 'INTERNET 1')
+        self.assertEqual(rows['CPN'][prev_col], '—')
+        self.assertEqual(rows['CPN'][curr_col], 'INTERNET 1')
+        self.assertEqual(rows['CPR'][prev_col], 'INTERNET 1')
+        self.assertEqual(rows['CPR'][curr_col], '—')
+
+    def test_nombres_de_planes_historicos_sobreviven_al_catalogo(self):
+        """Renombrar el catalogo no debe reescribir un movimiento ya emitido."""
+        import io
+        import openpyxl
+        from .reports import build_sales_xlsx
+
+        self._post_cambio('combo', 'internet', client_code='CP001')
+        self.plans[('combo', 2)].label = 'COMBO RENOMBRADO'
+        self.plans[('combo', 2)].save()
+        self.plans[('internet', 1)].label = 'INTERNET RENOMBRADO'
+        self.plans[('internet', 1)].save()
+
+        hoy = timezone.localdate().isoformat()
+        ws = openpyxl.load_workbook(
+            io.BytesIO(build_sales_xlsx(hoy, hoy).getvalue())).active
+        headers = [c.value for c in ws[1]]
+        prev_col = headers.index('PLAN ANTERIOR')
+        curr_col = headers.index('PLAN ACTUAL')
+        row = next(r for r in ws.iter_rows(min_row=2, values_only=True)
+                   if r[1] == 'CP001')
+        self.assertEqual(row[prev_col], 'COMBO 2')
+        self.assertEqual(row[curr_col], 'INTERNET 1')
+
+    def test_edicion_de_plan_limpia_promocion_incompatible(self):
+        today = timezone.localdate()
+        promo = Promotion.objects.create(
+            name='PROMO INTERNET 1', plan=self.plans[('internet', 1)],
+            apply_monthly=True, monthly_price=Decimal('1.00'),
+            start_date=today - timedelta(days=1),
+            end_date=today + timedelta(days=1), active=True)
+
+        r = self._post_cambio('combo', 'internet', promotion_id=promo.id)
+        self.assertEqual(r.status_code, 201)
+        sale = Sale.objects.get(clientCode='CP001')
+        self.assertEqual(sale.promotion_id, promo.id)
+
+        # Editar solo las notas conserva la promocion vigente del plan.
+        r = self._put_sale(sale, {
+            'serviceType': 'internet', 'requestType': 'cambio_plan',
+            'planId': self.plans[('internet', 1)].id,
+            'planFromId': self.plans[('combo', 2)].id,
+            'notes': 'solo notas',
+        })
+        self.assertEqual(r.status_code, 200)
+        sale.refresh_from_db()
+        self.assertEqual(sale.promotion_id, promo.id)
+
+        # Cambiar de plan deja la promocion anterior sin efecto.
+        r = self._put_sale(sale, {
+            'serviceType': 'internet', 'requestType': 'cambio_plan',
+            'planId': self.plans[('internet', 2)].id,
+            'planFromId': self.plans[('combo', 2)].id,
+        })
+        self.assertEqual(r.status_code, 200)
+        sale.refresh_from_db()
+        self.assertIsNone(sale.promotion)
+        self.assertEqual(sale.promotion_name, '')
+        self.assertEqual(sale.total, self.plans[('internet', 2)].monthly)
+
+    def test_cambio_de_tipo_exige_motivo_de_la_categoria(self):
+        r = self._post_sale({
+            'clientCode': 'CPRET', 'clientName': 'Retiro',
+            'serviceType': 'internet', 'requestType': 'retiro',
+            'planId': self.plans[('internet', 1)].id,
+            'motivoId': self.motivo_retiro.id,
+        })
+        self.assertEqual(r.status_code, 201)
+        sale = Sale.objects.get(clientCode='CPRET')
+
+        cambio = {
+            'serviceType': 'internet', 'requestType': 'cambio_plan',
+            'planId': self.plans[('internet', 1)].id,
+            'planFromId': self.plans[('combo', 2)].id,
+        }
+        r = self._put_sale(sale, cambio)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('motivo', r.json()['error'])
+
+        r = self._put_sale(sale, {**cambio,
+                                  'motivoId': self.motivo_retiro.id})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('no corresponde', r.json()['error'])
+
+        r = self._put_sale(sale, {**cambio,
+                                  'motivoId': self.motivo_cambio.id})
+        self.assertEqual(r.status_code, 200)
+        sale.refresh_from_db()
+        self.assertEqual(sale.requestType, 'cambio_plan')
+        self.assertEqual(sale.motivo.categoria, 'cambio')
+
+    def test_plan_legacy_no_puede_ser_destino_de_cambio(self):
+        legacy = Plan.objects.create(
+            code='LEG1', label='LEGACY 1', type='internet',
+            monthly=Decimal('10'), installation=Decimal('0'),
+            active=True, legacy=True)
+
+        r = self._post_sale({
+            'clientCode': 'CPLEG', 'clientName': 'Legacy',
+            'serviceType': 'internet', 'requestType': 'cambio_plan',
+            'planId': legacy.id,
+            'planFromId': self.plans[('combo', 2)].id,
+            'motivoId': self.motivo_cambio.id,
+        })
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('legacy', r.json()['error'])
+
+        self._post_cambio('combo', 'internet')
+        sale = Sale.objects.get(clientCode='CP001')
+        r = self._put_sale(sale, {
+            'serviceType': 'internet', 'requestType': 'cambio_plan',
+            'planId': legacy.id,
+            'planFromId': self.plans[('combo', 2)].id,
+        })
+        self.assertEqual(r.status_code, 400)
+        sale.refresh_from_db()
+        self.assertEqual(sale.plan_id, self.plans[('internet', 1)].id)
+
+    def test_pdf_soporta_nombres_de_plan_largos(self):
+        from .reports import build_sales_pdf
+        self._post_cambio('combo', 'internet')
+        sale = Sale.objects.get(clientCode='CP001')
+        sale.planFrom = 'PLAN ANTERIOR ' + ('A' * 40)
+        sale.planName = 'PLAN ACTUAL ' + ('B' * 100)
+        sale.save(update_fields=['planFrom', 'planName'])
+        hoy = timezone.localdate().isoformat()
+        buf = build_sales_pdf(hoy, hoy, show_motivos=True)
+        self.assertTrue(buf.getvalue().startswith(b'%PDF'))
 
     def test_los_tres_formatos_generan_sin_error(self):
         from .reports import build_sales_pdf, build_sales_png, build_sales_xlsx

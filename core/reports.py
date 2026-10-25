@@ -1,14 +1,15 @@
 from io import BytesIO
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
 
 from .models import Sale
 from .domain import (
     ADDITION_TYPE_LABELS, SERVICE_TYPE_LABELS,
-    SERVICE_TYPE_TO_PLAN_TYPE, sale_service_label,
+    SERVICE_TYPE_TO_PLAN_TYPE, sale_service_label, sale_plan_labels,
     request_type_label, request_type_mode, request_type_catalog,
-    MODO_ADICION, MODO_CAMBIO_PLAN,
+    MODO_ADICION,
 )
 
 SIGNER = TimestampSigner()
@@ -146,23 +147,30 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
         Paragraph('', styles['Normal']),
     )
 
-    header = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD', 'PLAN']
+    header = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD',
+              'PLAN ANTERIOR', 'PLAN ACTUAL']
     if show_motivos:
         header.append('MOTIVO')
     header += ['MONTO', 'OPERADOR']
-    rows = [header]
+
+    # La tabla tiene que caber en A4 horizontal aunque los planes tengan
+    # nombres largos. Los Paragraph hacen wrap dentro de su columna.
+    header_style = styles['Normal'].clone(
+        'ReportHeader', fontName='Helvetica-Bold', fontSize=7, leading=8,
+        textColor=colors.white, alignment=1)
+    cell_style = styles['Normal'].clone(
+        'ReportCell', fontSize=7, leading=8)
+    rows = [[Paragraph(h, header_style) for h in header]]
     for s in sales:
-        # Plan display: cambio_plan shows "anterior → nuevo"
-        plan_label = s.plan.label if s.plan else ''
-        if request_type_mode(s.requestType, catalog) == MODO_CAMBIO_PLAN and s.planFromId:
-            plan_label = f'{s.planFromId.label} → {s.plan.label}'
+        plan_from_label, plan_current_label = sale_plan_labels(s, catalog)
         row = [
             s.date.strftime('%d/%m/%Y') if s.date else '',
             s.clientCode or '',
             s.clientName or '',
             sale_service_label(s, catalog),
             get_request_label(s, catalog),
-            plan_label,
+            plan_from_label,
+            plan_current_label,
         ]
         if show_motivos:
             row.append(s.changeReason or '')
@@ -170,15 +178,16 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
             f'{float(s.total):.2f}',
             s.createdBy.name if s.createdBy else '',
         ]
-        rows.append(row)
+        rows.append([Paragraph(escape(str(v)), cell_style) for v in row])
 
-    table = Table(rows, repeatRows=1)
+    if show_motivos:
+        col_widths = [45, 52, 88, 80, 66, 88, 88, 60, 44, 70]
+    else:
+        col_widths = [52, 56, 104, 92, 74, 104, 104, 46, 80]
+
+    table = Table(rows, colWidths=col_widths, repeatRows=1)
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1d4ed8')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 8),
-        ('FONTSIZE', (0, 1), (-1, -1), 7),
         ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -205,7 +214,8 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
     ws = wb.active
     ws.title = 'SOLICITUDES'
 
-    headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD', 'PLAN']
+    headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD',
+               'PLAN ANTERIOR', 'PLAN ACTUAL']
     if show_motivos:
         headers.append('MOTIVO')
     headers += ['MONTO', 'OPERADOR']
@@ -229,9 +239,7 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
 
     catalog = request_type_catalog()
     for row_idx, s in enumerate(sales, 2):
-        plan_label = s.plan.label if s.plan else ''
-        if request_type_mode(s.requestType, catalog) == MODO_CAMBIO_PLAN and s.planFromId:
-            plan_label = f'{s.planFromId.label} → {s.plan.label}'
+        plan_from_label, plan_current_label = sale_plan_labels(s, catalog)
 
         data_row = [
             s.date.strftime('%d/%m/%Y') if s.date else '',
@@ -239,7 +247,8 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
             s.clientName or '',
             sale_service_label(s, catalog),
             get_request_label(s, catalog),
-            plan_label,
+            plan_from_label,
+            plan_current_label,
         ]
         if show_motivos:
             data_row.append(s.changeReason or '')
@@ -254,7 +263,7 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
             if isinstance(value, float):
                 cell.number_format = '#,##0.00'
 
-    column_widths = [14, 14, 35, 24, 20, 20]
+    column_widths = [14, 14, 35, 24, 20, 20, 20]
     if show_motivos:
         column_widths.append(30)
     column_widths += [14, 20]
@@ -312,8 +321,9 @@ def build_sales_png(from_date, to_date, request_type=None, service_type=None,
     sales = _sales_queryset(from_date, to_date, request_type, service_type,
                             service_type_from)
 
-    headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD', 'PLAN']
-    col_widths = [140, 130, 300, 240, 180, 180]
+    headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD',
+               'PLAN ANTERIOR', 'PLAN ACTUAL']
+    col_widths = [140, 130, 300, 240, 180, 180, 180]
     if show_motivos:
         headers.append('MOTIVO')
         col_widths.append(200)
@@ -341,16 +351,15 @@ def build_sales_png(from_date, to_date, request_type=None, service_type=None,
     catalog = request_type_catalog()
     rows = []
     for s in sales:
-        plan_label = s.plan.label if s.plan else ''
-        if request_type_mode(s.requestType, catalog) == MODO_CAMBIO_PLAN and s.planFromId:
-            plan_label = f'{s.planFromId.label} → {plan_label}'
+        plan_from_label, plan_current_label = sale_plan_labels(s, catalog)
         values = [
             s.date.strftime('%d/%m/%Y') if s.date else '',
             s.clientCode or '',
             s.clientName or '',
             sale_service_label(s, catalog),
             get_request_label(s, catalog),
-            plan_label,
+            plan_from_label,
+            plan_current_label,
         ]
         if show_motivos:
             values.append(s.changeReason or '')
@@ -383,8 +392,8 @@ def build_sales_png(from_date, to_date, request_type=None, service_type=None,
         x += col_widths[i]
     y += row_height
 
-    # Segunda pasada: dibujar. La celda PLAN de un cambio de plan puede
-    # ocupar dos lineas, y la fila crece para que nada invada MONTO.
+    # Segunda pasada: dibujar. Las celdas de planes pueden ocupar varias
+    # lineas, y la fila crece para que nada invada MONTO.
     for idx, (cells, height) in enumerate(rows):
         draw.rectangle([0, y, total_width, y + height], fill='#F8FAFC' if idx % 2 == 0 else '#FFFFFF')
         x = padding

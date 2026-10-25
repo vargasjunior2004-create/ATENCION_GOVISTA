@@ -80,16 +80,18 @@ Los reportes del dashboard (PDF, Excel y Foto del dia) estan disponibles para cu
 
 - **Formato desde filtros:** usuario elige PDF o Excel antes de generar
 - **Columnas unificadas:** todos los reportes comparten las mismas columnas:
-  - FECHA | KARDEX | CLIENTE | SERVICIO | SOLICITUD | PLAN | MOTIVO | MONTO | OPERADOR
-  - La columna **MOTIVO** solo aparece cuando se elige `Si, mostrar motivos` en los filtros; sin ella, el reporte mantiene las 8 columnas originales
+  - FECHA | KARDEX | CLIENTE | SERVICIO | SOLICITUD | PLAN ANTERIOR | PLAN ACTUAL | MOTIVO | MONTO | OPERADOR
+  - La columna **MOTIVO** solo aparece cuando se elige `Si, mostrar motivos` en los filtros; sin ella, el reporte mantiene las 9 columnas base
 - **Fecha:** formato DD/MM/YYYY en titulo y datos
 - **Solicitud:**
   - Adicion muestra "ADICION INTERNET" o "ADICION TV" segun sub-tipo
   - Los demas muestran el label estandar (INSTALACIONES, CAMBIO DE PLAN, etc.)
-- **Plan:**
-  - Cambio de Plan muestra "PLAN ANTERIOR → PLAN NUEVO" en la columna PLAN
-  - Los demas muestran el nombre del plan
-- **Servicio:** en cambios de plan entre servicios distintos muestra la conversion en la misma columna, por ejemplo "COMBO → INTERNET"; si el servicio no cambia, muestra solo el servicio
+- **Plan anterior / Plan actual:**
+  - Cambio de Plan muestra el nombre del plan anterior y el del plan nuevo en columnas separadas
+  - Retiro muestra el plan que tenia el cliente antes de retirarse en **PLAN ANTERIOR** y deja **PLAN ACTUAL** vacio (`—`)
+  - Altas, adiciones y demas movimientos sin plan anterior muestran `—` en **PLAN ANTERIOR**
+  - Los nombres se guardan como snapshot (`planFrom` y `planName`) para que renombrar el catalogo no altere movimientos historicos
+- **Servicio:** en cambios de plan muestra la conversion. Si cambia la familia usa "COMBO → INTERNET"; si solo cambia la variante usa "COMBO ANALÓGICO → COMBO DIGITAL"; si el servicio no cambia, muestra solo el servicio
 - **Filtro por servicio anterior:** disponible en el listado y en los reportes, para encontrar las solicitudes donde el cliente venia de otro servicio
 - **Titulo PDF:** `SOLICITUDES — TIPO SOLICITUD — TIPO SERVICIO` + fechas
 - **Links publicos:** PDF y XLSX con vigencia de 1 hora
