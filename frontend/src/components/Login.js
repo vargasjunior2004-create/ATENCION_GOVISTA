@@ -57,10 +57,10 @@ export default function Login() {
 
           <div className="max-w-xl py-16">
             <p className="mb-5 text-xs font-bold uppercase tracking-[0.24em] text-blue-300">
-              Operación conectada
+              Nos encanta verte conectado
             </p>
             <h1 className="max-w-lg text-4xl font-semibold leading-tight tracking-[-0.03em] text-white xl:text-5xl">
-              Una vista clara para cada solicitud.
+              Gestiona cada solicitud desde un solo lugar.
             </h1>
             <p className="mt-6 max-w-md text-base leading-7 text-blue-100/65">
               Gestión comercial y atención al cliente en un solo lugar, con la información que tu equipo necesita para avanzar.
@@ -97,7 +97,7 @@ export default function Login() {
                 Iniciar sesión
               </h2>
               <p className="mt-3 text-sm leading-6 text-slate-500">
-                Ingresa con tu nombre de usuario para continuar.
+                Ingresa a tu cuenta para continuar.
               </p>
             </div>
 
