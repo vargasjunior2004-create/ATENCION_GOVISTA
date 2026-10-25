@@ -11,13 +11,15 @@ import ComercialLayout from '../modules/comercial/ComercialLayout';
 import Dashboard from '../modules/comercial/pages/Dashboard';
 import SaleForm from '../modules/comercial/pages/SaleForm';
 import SalesList from '../modules/comercial/pages/SalesList';
-import { AdminRoute, ProtectedRoute } from './guards';
+import { AdminRoute, ProtectedRoute, PublicRoute } from './guards';
 import LegacyRedirect from './LegacyRedirect';
 
 export default function AppRoutes() {
   return (
     <Routes>
-      <Route path="/login" element={<Login />} />
+      <Route element={<PublicRoute />}>
+        <Route path="/login" element={<Login />} />
+      </Route>
 
       <Route element={<ProtectedRoute />}>
         <Route path="/" element={<ModuleSelector />} />
