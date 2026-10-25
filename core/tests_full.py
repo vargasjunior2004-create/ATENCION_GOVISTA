@@ -374,6 +374,27 @@ class DashboardTests(TestCase):
             '/api/dashboard/stats?movement_type=ventas', **headers)
         self.assertEqual(unknown_filter.status_code, 400)
 
+    def test_dashboard_operator_is_limited_to_today(self):
+        _create_user('operator-dashboard', 'pass1', 'ventas')
+        yesterday = timezone.localdate() - timedelta(days=1)
+        self._sale('OP001', 'nuevo_contrato', yesterday)
+        self._sale('OP002', 'retiro', timezone.localdate())
+
+        login = self.c.post(
+            '/api/auth/login',
+            {'name': 'operator-dashboard', 'password': 'pass1'},
+            content_type='application/json')
+        token = _json(login)['token']
+        response = self.c.get(
+            f'/api/dashboard/stats?from={yesterday.isoformat()}&to={timezone.localdate().isoformat()}',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        self.assertEqual(response.status_code, 200)
+        analytics = _json(response)['analytics']
+        self.assertEqual(analytics['period']['from'], timezone.localdate().isoformat())
+        self.assertEqual(analytics['period']['to'], timezone.localdate().isoformat())
+        self.assertEqual(analytics['series'][0]['movimientos'], 1)
+
 
 class ReportTests(TestCase):
     def setUp(self):

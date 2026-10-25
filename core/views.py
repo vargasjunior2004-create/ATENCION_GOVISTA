@@ -948,12 +948,16 @@ class DashboardStatsView(APIView):
                     'allowed': sorted(self.MOVEMENT_TYPES),
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            try:
-                from_date, to_date = self._parse_range(
-                    request.query_params, today)
-            except ValueError as exc:
-                return Response({'error': str(exc)},
-                                status=status.HTTP_400_BAD_REQUEST)
+            is_admin = getattr(request.user, 'role', '') == 'admin'
+            if is_admin:
+                try:
+                    from_date, to_date = self._parse_range(
+                        request.query_params, today)
+                except ValueError as exc:
+                    return Response({'error': str(exc)},
+                                    status=status.HTTP_400_BAD_REQUEST)
+            else:
+                from_date = to_date = today
 
             all_sales = Sale.objects.all()
             # Instalaciones y retiros se derivan del MODO de cada tipo,
@@ -964,8 +968,6 @@ class DashboardStatsView(APIView):
             installations = all_sales.filter(
                 requestType__in=categories['instalaciones'])
             retiro_codes = categories['retiros']
-
-            is_admin = getattr(request.user, 'role', '') == 'admin'
 
             def stats(qs, start_date, end_date):
                 filtered = qs.filter(date__gte=start_date, date__lte=end_date)

@@ -26,7 +26,7 @@ export default function ModuleSelector() {
             Selecciona un módulo
           </h1>
           <p className="text-sm sm:text-base text-slate-500 mt-3 leading-relaxed">
-            {user?.name ? `Bienvenido, ${user.name}. ` : ''}
+            {user?.name ? `Bienvenid@, ${user.name}. ` : ''}
             Accede a las áreas disponibles para tu cuenta.
           </p>
         </div>

@@ -29,6 +29,7 @@ import {
 } from 'recharts';
 import api from '../../../services/api';
 import { Alert, Button, Card, Input, Select } from '../../../components/ui';
+import { useAuth } from '../../../context/AuthContext';
 
 const MOVEMENT_OPTIONS = [
   { value: 'all', label: 'Todos los movimientos' },
@@ -37,6 +38,13 @@ const MOVEMENT_OPTIONS = [
   { value: 'cambios_plan', label: 'Cambios de plan' },
   { value: 'adiciones', label: 'Adiciones' },
   { value: 'otros', label: 'Otros' },
+];
+
+const PERIOD_OPTIONS = [
+  ['today', 'Hoy'],
+  ['week', 'Esta semana'],
+  ['month', 'Este mes'],
+  ['custom', 'Rango personalizado'],
 ];
 
 const CHART_COLORS = ['#12894d', '#e56b5d', '#3b82f6', '#d69e2e', '#64748b'];
@@ -165,6 +173,7 @@ function ChartCard({ eyebrow, title, children, className = '' }) {
 }
 
 export default function Dashboard() {
+  const { isAdmin } = useAuth();
   const [period, setPeriod] = useState('today');
   const [movementType, setMovementType] = useState('all');
   const [customFrom, setCustomFrom] = useState(todayInBolivia);
@@ -179,9 +188,10 @@ export default function Dashboard() {
   const [error, setError] = useState('');
   const requestId = useRef(0);
 
+  const visiblePeriod = isAdmin ? period : 'today';
   const range = useMemo(
-    () => (period === 'custom' ? appliedCustomRange : getPresetRange(period)),
-    [period, appliedCustomRange],
+    () => (visiblePeriod === 'custom' ? appliedCustomRange : getPresetRange(visiblePeriod)),
+    [visiblePeriod, appliedCustomRange],
   );
 
   useEffect(() => {
@@ -258,7 +268,7 @@ export default function Dashboard() {
             <div className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-vista-accent">
               <TrendingUp className="h-4 w-4" /> Pulso comercial
             </div>
-            <h1 className="max-w-xl text-3xl font-black tracking-tight sm:text-4xl">Movimiento de clientes</h1>
+            <h1 className="max-w-xl text-3xl font-black tracking-tight sm:text-4xl">Solicitudes de clientes</h1>
             <p className="mt-2 max-w-lg text-sm leading-6 text-green-100/65">
               Una lectura clara de las altas, retiros y cambios registrados por GO VISTA.
             </p>
@@ -286,12 +296,7 @@ export default function Dashboard() {
           )}
         </div>
         <div className="flex flex-wrap gap-2">
-          {[
-            ['today', 'Hoy'],
-            ['week', 'Esta semana'],
-            ['month', 'Este mes'],
-            ['custom', 'Rango personalizado'],
-          ].map(([value, label]) => (
+          {PERIOD_OPTIONS.filter(([value]) => isAdmin || value === 'today').map(([value, label]) => (
             <button
               key={value}
               type="button"
@@ -303,7 +308,7 @@ export default function Dashboard() {
           ))}
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_1.2fr_auto] md:items-end">
-          {period === 'custom' ? (
+          {visiblePeriod === 'custom' ? (
             <>
               <Input label="Desde" type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} error={customError} />
               <Input label="Hasta" type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)} />
@@ -318,13 +323,13 @@ export default function Dashboard() {
               <div className="flex h-[46px] items-center rounded-xl bg-slate-50 px-4 text-sm font-semibold text-slate-700">{periodLabel}</div>
             </div>
           )}
-          {period !== 'custom' && (
+          {visiblePeriod !== 'custom' && (
             <Select label="Tipo de movimiento" value={movementType} onChange={(event) => setMovementType(event.target.value)}>
               {MOVEMENT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </Select>
           )}
         </div>
-        {customError && period !== 'custom' && <p className="mt-2 text-xs font-semibold text-red-600">{customError}</p>}
+        {customError && visiblePeriod !== 'custom' && <p className="mt-2 text-xs font-semibold text-red-600">{customError}</p>}
         <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-400"><Filter className="h-3.5 w-3.5" /> Mostrando {selectedMovementLabel?.toLowerCase()} entre {periodLabel}.</p>
       </Card>
 

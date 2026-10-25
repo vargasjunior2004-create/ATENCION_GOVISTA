@@ -3,7 +3,7 @@ import { Briefcase, Headphones, Router } from 'lucide-react';
 export const MODULES = [
   {
     id: 'comercial',
-    name: 'Gestión Comercial',
+    name: 'Solicitudes de clientes',
     description: 'Solicitudes comerciales, contratos, cambios de plan y reportes.',
     icon: Briefcase,
     to: '/comercial',
