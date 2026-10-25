@@ -563,12 +563,17 @@ class SaleDetailView(IsAdminMixin, APIView):
         except Sale.DoesNotExist:
             return Response({'error': 'Venta no encontrada'}, status=status.HTTP_404_NOT_FOUND)
 
-        from .domain import SERVICE_TYPE_LABELS, SERVICE_TYPE_TO_PLAN_TYPE
+        from .domain import (
+            SERVICE_TYPE_LABELS, SERVICE_TYPE_TO_PLAN_TYPE,
+            motivo_categoria_de_modo)
         from .serializers import (
             SaleSerializer, resolve_sale_prices, validate_cambio_plan,
             resolve_motivo)
 
         data = request.data
+        old_plan_id = sale.plan_id
+        old_plan_from_id = sale.planFromId_id
+
         plan = sale.plan
         if data.get('planId'):
             plan = Plan.objects.filter(id=data['planId'], active=True).first()
@@ -587,6 +592,7 @@ class SaleDetailView(IsAdminMixin, APIView):
             return Response({'error': 'El tipo de solicitud esta inactivo'},
                             status=status.HTTP_400_BAD_REQUEST)
         mode = tipo.modo
+        mode_changed = mode != request_type_mode(sale.requestType, catalog)
 
         if service_type not in SERVICE_TYPE_LABELS:
             return Response({'error': 'Tipo de servicio no valido'},
@@ -594,6 +600,14 @@ class SaleDetailView(IsAdminMixin, APIView):
         if plan.type != SERVICE_TYPE_TO_PLAN_TYPE.get(service_type):
             return Response(
                 {'error': 'El plan no pertenece al tipo de servicio seleccionado'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        # Un cambio de plan no puede apuntar a un plan legacy. Se permite
+        # editar un movimiento historico que ya tenia ese plan como destino.
+        if (mode == MODO_CAMBIO_PLAN and plan.legacy
+                and (plan.id != old_plan_id or mode_changed)):
+            return Response(
+                {'error': 'No se puede cambiar a un plan anterior (legacy)'},
                 status=status.HTTP_400_BAD_REQUEST)
 
         plan_from = sale.planFromId
@@ -607,20 +621,51 @@ class SaleDetailView(IsAdminMixin, APIView):
 
         service_type_from = data.get('serviceTypeFrom', sale.serviceTypeFrom) or None
 
-        # Motivo: solo se toca si el payload trae uno distinto al actual.
-        # Editar un movimiento historico sin re-seleccionar motivo conserva
-        # su motivo y su texto, aunque el motivo ya este inactivo.
+        # Motivo: se conserva el historico (aunque este inactivo) cuando el
+        # modo no cambio. Si cambia el tipo de movimiento, el motivo tiene
+        # que corresponder a la nueva categoria o se exige uno nuevo.
         motivo = sale.motivo
         motivo_id = data.get('motivoId')
-        if motivo_id and str(motivo_id) != str(sale.motivo_id):
+        expected_motive = motivo_categoria_de_modo(mode)
+
+        if motivo_id and str(motivo_id) == str(sale.motivo_id):
+            if (expected_motive and motivo is not None
+                    and motivo.categoria != expected_motive):
+                return Response(
+                    {'error': 'El motivo no corresponde a este tipo de solicitud'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if expected_motive:
+                change_reason = data.get('changeReason', sale.changeReason)
+            else:
+                motivo = None
+                change_reason = ''
+        elif motivo_id:
             motivo_errors = {}
             motivo, _ = resolve_motivo(motivo_id, mode, motivo_errors)
             if motivo_errors:
                 return Response({'error': next(iter(motivo_errors.values()))},
                                 status=status.HTTP_400_BAD_REQUEST)
-            change_reason = motivo.nombre
+            change_reason = motivo.nombre if motivo else ''
+        elif mode_changed:
+            motivo = None
+            change_reason = data.get('changeReason', '') or ''
         else:
             change_reason = data.get('changeReason', sale.changeReason)
+
+        if expected_motive:
+            if motivo is None and mode_changed:
+                etiqueta = ('del cambio' if expected_motive == 'cambio'
+                            else 'del retiro')
+                return Response(
+                    {'error': f'Debe seleccionar el motivo {etiqueta}'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if motivo is not None and motivo.categoria != expected_motive:
+                return Response(
+                    {'error': 'El motivo no corresponde a este tipo de solicitud'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        elif mode_changed:
+            motivo = None
+            change_reason = ''
 
         if mode == MODO_CAMBIO_PLAN:
             errors = validate_cambio_plan(
@@ -632,6 +677,7 @@ class SaleDetailView(IsAdminMixin, APIView):
                                 status=status.HTTP_400_BAD_REQUEST)
         else:
             service_type_from = None
+            plan_from = None
             if mode != MODO_ADICION:
                 data = {**data, 'additionType': ''}
 
@@ -645,10 +691,28 @@ class SaleDetailView(IsAdminMixin, APIView):
         sale.motivo = motivo
         sale.notes = data.get('notes', sale.notes)
         sale.plan = plan
+        if plan.id != old_plan_id or not sale.planName:
+            sale.planName = plan.label
         sale.planFromId = plan_from
+        if plan_from is None:
+            sale.planFrom = ''
+        elif plan_from.id != old_plan_from_id or not sale.planFrom:
+            sale.planFrom = plan_from.label
         sale.serviceTypeFrom = service_type_from
-        sale.planFrom = plan_from.label if plan_from else ''
         sale.totalFrom = plan_from.total if plan_from else None
+
+        # Si el plan cambio, una promocion del plan anterior ya no aplica.
+        # Se limpia para que el total se calcule con las condiciones nuevas.
+        if (sale.promotion is not None
+                and sale.promotion.plan_id != plan.id):
+            sale.promotion = None
+            sale.promotion_name = ''
+        if plan.id != old_plan_id:
+            if sale.promotion:
+                sale.promotion_name = sale.promotion.name
+            else:
+                sale.promotion = None
+                sale.promotion_name = ''
 
         # Mismos precios que en el alta: la edicion no puede inventarse
         # una regla de cobro distinta a la del registro original.

@@ -281,7 +281,7 @@ class Command(BaseCommand):
                 customer=customer, serviceType=stype, requestType=rtype,
                 changeReason=normalize(motivo), planFrom=plan_from,
                 totalFrom=total_from, notes=(comentarios or ''),
-                plan=plan, total=total, createdBy=user,
+                plan=plan, planName=plan.label, total=total, createdBy=user,
             )
             stats['ok'] += 1
 

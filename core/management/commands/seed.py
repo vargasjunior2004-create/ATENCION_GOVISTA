@@ -118,7 +118,8 @@ class Command(BaseCommand):
             plan = plans_by_code[plan_code]
             Sale.objects.create(
                 date=d, clientCode=code, clientName=name,
-                serviceType=plan.type, plan=plan, total=plan.total,
+                serviceType=plan.type, plan=plan, planName=plan.label,
+                total=plan.total,
                 createdBy=admin if d.weekday() < 3 else seller,
             )
         self.stdout.write(f'Creadas {Sale.objects.count()} ventas')

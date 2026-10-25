@@ -519,7 +519,7 @@ export default function SaleForm() {
                   const promoMonthly = promo.apply_monthly
                     ? parseFloat(promo.monthly_price)
                     : parseFloat(selectedPlan.monthly);
-                  const promoTotal = isRetiro || isAdicion ? promoMonthly : promoMonthly + promoInst;
+                  const promoTotal = isRetiro || isAdicion || isCambio ? promoMonthly : promoMonthly + promoInst;
                   const concepts = [];
                   if (promo.apply_installation) concepts.push(`Inst: ${parseFloat(promo.installation_price).toFixed(2)} Bs`);
                   if (promo.apply_monthly) concepts.push(`Mensual: ${parseFloat(promo.monthly_price).toFixed(2)} Bs`);
