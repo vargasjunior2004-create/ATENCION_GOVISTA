@@ -2,7 +2,7 @@ from datetime import date
 
 from django.http import HttpResponse
 from django.utils import timezone
-from rest_framework.permissions import AllowAny, BasePermission
+from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -14,10 +14,10 @@ from .domain import request_type_label
 
 
 class IsAdminRole(BasePermission):
-    """Solo el rol admin puede generar reportes.
+    """Solo el rol admin puede generar los reportes del historial.
 
-    No basta con estar autenticado: los operadores pueden consultar
-    movimientos, pero no descargar planillas.
+    Los reportes del dashboard tienen sus propios endpoints y estan
+    disponibles para cualquier usuario autenticado.
     """
 
     message = 'Se requieren permisos de administrador'
@@ -101,6 +101,45 @@ class SalesPngView(APIView):
                               service_type_from, show_motivos)
         response = HttpResponse(buf.getvalue(), content_type='image/png')
         response['Content-Disposition'] = f'attachment; filename="foto-{from_date}-{to_date}.png"'
+        return response
+
+
+class DashboardPdfView(APIView):
+    """Planilla del dia del dashboard: disponible para admin y operador."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        today = timezone.localdate().isoformat()
+        buf = build_sales_pdf(today, today)
+        return _pdf_response(buf, f'planilla-{today}-{today}.pdf')
+
+
+class DashboardXlsxView(APIView):
+    """Excel del dia del dashboard: disponible para admin y operador."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        today = timezone.localdate().isoformat()
+        buf = build_sales_xlsx(today, today)
+        response = HttpResponse(
+            buf.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = f'attachment; filename="planilla-{today}-{today}.xlsx"'
+        return response
+
+
+class DashboardPngView(APIView):
+    """Foto del dia del dashboard: disponible para admin y operador."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        today = timezone.localdate().isoformat()
+        buf = build_sales_png(today, today)
+        response = HttpResponse(buf.getvalue(), content_type='image/png')
+        response['Content-Disposition'] = f'attachment; filename="foto-{today}-{today}.png"'
         return response
 
 

@@ -272,8 +272,8 @@ export default function SalesList() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-black text-slate-900 tracking-tight">Solicitudes</h1>
-        <p className="text-sm text-slate-400 mt-1">Historial de solicitudes</p>
+        <h1 className="text-2xl font-black text-slate-900 tracking-tight">Historial de Solicitudes</h1>
+        <p className="text-sm text-slate-400 mt-1">Consulta y gestion de solicitudes registradas</p>
       </div>
 
       {/* Filters */}
@@ -325,7 +325,7 @@ export default function SalesList() {
             {generatingReport ? 'Generando...' : 'Reporte'}
           </Button>
           {!isAdmin && (
-            <p className="text-xs text-slate-400">Solo los administradores pueden generar reportes</p>
+            <p className="text-xs text-slate-400">Solo los administradores pueden generar reportes desde el historial</p>
           )}
           {isAdmin && !hasSelection && (
             <p className="text-xs text-slate-400">Selecciona todos los filtros para habilitar el reporte</p>

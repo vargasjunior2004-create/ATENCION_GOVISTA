@@ -26,7 +26,7 @@ Login por **nombre de usuario** (no email):
 
 ## Funcionalidades
 
-### Solicitudes
+### Historial de Solicitudes
 
 - **Registro:** formulario con auto-complete, fecha automatica (Bolivia UTC-4), campos en mayusculas
 - **Tipos de solicitud:**
@@ -71,10 +71,12 @@ Login por **nombre de usuario** (no email):
   - Mostrar motivos: `-- Seleccione --`, `Si, mostrar motivos`, `No mostrar motivos`
 - **Boton Buscar:** solo busca al hacer clic (no automatico)
 - **Mensaje profesional:** cuando los selects estan en `-- Seleccione --` se muestra "Selecciona filtros para mostrar informacion"
-- **Reporte condicionado:** solo admin. El boton queda deshabilitado para operadores (con aviso "Solo los administradores pueden generar reportes") y tambien hasta seleccionar los 4 filtros (solicitud, servicio, formato y mostrar motivos)
+- **Reporte condicionado:** desde el historial solo admin. El boton queda deshabilitado para operadores (con aviso "Solo los administradores pueden generar reportes desde el historial") y tambien hasta seleccionar los 4 filtros (solicitud, servicio, formato y mostrar motivos)
 - **Mostrar motivos:** es obligatorio elegirlo. Con `Si` agrega la columna **MOTIVO** a la tabla y a los reportes PDF y Excel; con `No` no la incluye. Solo afecta la visualizacion/exportacion, nunca los datos
 
 ### Reportes (normalizados)
+
+Los reportes del dashboard (PDF, Excel y Foto del dia) estan disponibles para cualquier usuario autenticado. Los reportes filtrados del historial son solo para administradores.
 
 - **Formato desde filtros:** usuario elige PDF o Excel antes de generar
 - **Columnas unificadas:** todos los reportes comparten las mismas columnas:
@@ -122,7 +124,7 @@ Catalogo administrable de motivos para cambios de plan y retiros (solo admin). R
 
 ### Dashboard
 
-- Resumen diario con botones PDF, Excel y Foto
+- Resumen diario con botones PDF, Excel y Foto (admin y operador)
 - Botones deshabilitados cuando no hay registros del dia
 - Estadisticas: solicitudes, instalaciones (nuevo contrato + recontratacion), retiros (hoy, semana, mes)
 
@@ -176,8 +178,8 @@ Respaldo **manual** de PostgreSQL. Solo administradores.
 
 ## Roles
 
-- **ADMINISTRADOR:** acceso total (crear, editar, eliminar solicitudes, planes, usuarios, promociones, motivos y generar reportes)
-- **OPERADOR:** solo puede registrar y consultar solicitudes; no puede generar reportes (botones deshabilitados y API responde 403)
+- **ADMINISTRADOR:** acceso total (crear, editar, eliminar solicitudes, planes, usuarios, promociones, motivos y generar reportes del historial)
+- **OPERADOR:** registra y consulta solicitudes y genera los reportes del dashboard (PDF, Excel, Foto); no puede generar reportes del historial (botones deshabilitados y API responde 403)
 
 ## Estructura
 
@@ -238,9 +240,12 @@ Sales_Tracker/
 | POST | /api/users | Admin | Crear usuario |
 | PUT | /api/users/:id | Admin | Editar usuario |
 | DELETE | /api/users/:id | Admin | Eliminar usuario |
-| GET | /api/reports/pdf?from=&to=&requestType=&serviceType=&showMotivos= | Admin | PDF planilla |
-| GET | /api/reports/xlsx?from=&to=&requestType=&serviceType=&showMotivos= | Admin | XLSX planilla |
-| GET | /api/reports/png?from=&to=&requestType=&serviceType=&showMotivos= | Admin | PNG imagen del reporte |
+| GET | /api/reports/dashboard/pdf | Si | PDF del dia (dashboard) |
+| GET | /api/reports/dashboard/xlsx | Si | XLSX del dia (dashboard) |
+| GET | /api/reports/dashboard/png | Si | PNG del dia (dashboard) |
+| GET | /api/reports/pdf?from=&to=&requestType=&serviceType=&showMotivos= | Admin | PDF planilla del historial |
+| GET | /api/reports/xlsx?from=&to=&requestType=&serviceType=&showMotivos= | Admin | XLSX planilla del historial |
+| GET | /api/reports/png?from=&to=&requestType=&serviceType=&showMotivos= | Admin | PNG imagen del historial |
 | GET | /api/reports/pdf-link?from=&to=&requestType=&serviceType=&showMotivos= | Admin | Link publico PDF (1h) |
 | GET | /api/reports/xlsx-link?from=&to=&requestType=&serviceType=&showMotivos= | Admin | Link publico XLSX (1h) |
 | GET | /api/health | No | Estado del servicio y de la base de datos |

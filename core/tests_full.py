@@ -343,20 +343,36 @@ class ReportTests(TestCase):
         r = self.c.get('/api/reports/pdf?from=2026-01-01&to=2026-01-01')
         self.assertEqual(r.status_code, 401)
 
-    def test_reportes_solo_admin(self):
+    def test_dashboard_report_no_auth(self):
+        r = self.c.get('/api/reports/dashboard/pdf')
+        self.assertEqual(r.status_code, 401)
+
+    def test_operador_reporta_dashboard_pero_no_historial(self):
         _create_user('op4', 'pass2', 'ventas')
         r = self.c.post('/api/auth/login',
                         {'name': 'op4', 'password': 'pass2'},
                         content_type='application/json')
         token = _json(r)['token']
-        urls = (
+
+        dashboard_urls = (
+            '/api/reports/dashboard/pdf',
+            '/api/reports/dashboard/xlsx',
+            '/api/reports/dashboard/png',
+        )
+        for url in dashboard_urls:
+            with self.subTest(url=url):
+                resp = self.c.get(
+                    url, HTTP_AUTHORIZATION=f'Bearer {token}')
+                self.assertEqual(resp.status_code, 200)
+
+        history_urls = (
             '/api/reports/pdf?from=2026-01-01&to=2026-01-01',
             '/api/reports/xlsx?from=2026-01-01&to=2026-01-01',
             '/api/reports/png?from=2026-01-01&to=2026-01-01',
             '/api/reports/pdf-link?from=2026-01-01&to=2026-01-01',
             '/api/reports/xlsx-link?from=2026-01-01&to=2026-01-01',
         )
-        for url in urls:
+        for url in history_urls:
             with self.subTest(url=url):
                 resp = self.c.get(
                     url, HTTP_AUTHORIZATION=f'Bearer {token}')
