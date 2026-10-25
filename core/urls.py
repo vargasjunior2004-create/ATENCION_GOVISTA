@@ -31,6 +31,9 @@ urlpatterns = [
 
     path('customers', views.CustomerListView.as_view()),
 
+    path('reports/dashboard/pdf', report_views.DashboardPdfView.as_view()),
+    path('reports/dashboard/xlsx', report_views.DashboardXlsxView.as_view()),
+    path('reports/dashboard/png', report_views.DashboardPngView.as_view()),
     path('reports/pdf', report_views.SalesPdfView.as_view()),
     path('reports/xlsx', report_views.SalesXlsxView.as_view()),
     path('reports/png', report_views.SalesPngView.as_view()),

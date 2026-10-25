@@ -141,6 +141,9 @@ const api = {
     if (showMotivos) params.set('showMotivos', 'si');
     return request(`/api/reports/png?${params.toString()}`);
   },
+  getDashboardPDF: () => request('/api/reports/dashboard/pdf'),
+  getDashboardXLSX: () => request('/api/reports/dashboard/xlsx'),
+  getDashboardPNG: () => request('/api/reports/dashboard/png'),
 
   // Backups
   getBackups: () => request('/api/backups'),
