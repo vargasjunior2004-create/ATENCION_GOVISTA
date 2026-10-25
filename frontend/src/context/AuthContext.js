@@ -5,11 +5,19 @@ const AuthContext = createContext(null);
 
 const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutos
 
-export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
+function getStoredUser() {
+  try {
     const saved = localStorage.getItem('user');
     return saved ? JSON.parse(saved) : null;
-  });
+  } catch {
+    localStorage.removeItem('user');
+    return null;
+  }
+}
+
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(getStoredUser);
+  const [sessionReady, setSessionReady] = useState(() => !localStorage.getItem('token'));
 
   const logoutTimer = useRef(null);
 
@@ -22,7 +30,33 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     setOnAuthExpired(logout);
-    return () => setOnAuthExpired(null);
+
+    let cancelled = false;
+    const token = localStorage.getItem('token');
+
+    if (!token) {
+      setUser(null);
+      setSessionReady(true);
+      return () => setOnAuthExpired(null);
+    }
+
+    api.me()
+      .then((data) => {
+        if (cancelled) return;
+        localStorage.setItem('user', JSON.stringify(data.user));
+        setUser(data.user);
+        setSessionReady(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        logout();
+        setSessionReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+      setOnAuthExpired(null);
+    };
   }, [logout]);
 
   const resetTimer = useCallback(() => {
@@ -54,6 +88,7 @@ export function AuthProvider({ children }) {
   const value = {
     user,
     token: localStorage.getItem('token'),
+    sessionReady,
     login,
     logout,
     isAdmin: user?.role === 'admin',
