@@ -148,6 +148,11 @@ Catalogo administrable de motivos para cambios de plan y retiros (solo admin). R
 - Resumen diario con botones PDF, Excel y Foto (admin y operador)
 - Botones deshabilitados cuando no hay registros del dia
 - Estadisticas: solicitudes, instalaciones (nuevo contrato + recontratacion), retiros (hoy, semana, mes)
+- Analisis filtrable por periodo (`Hoy`, `Esta semana`, `Este mes` o rango personalizado) y categoria de movimiento
+- `GET /api/dashboard/stats` conserva los campos anteriores y acepta `from`, `to` y `movement_type`
+- `movement_type` admite `all`, `instalaciones`, `retiros`, `cambios_plan`, `adiciones` y `otros`
+- La respuesta agrega `analytics.period`, conteos de instalaciones/retiros/cambios, `balance_neto`, series diarias, distribucion por servicio y desglose por categoria
+- Las series usan la fecha operativa `Sale.date`; no se generan intervalos horarios porque ese campo no almacena hora
 
 ### Planes
 

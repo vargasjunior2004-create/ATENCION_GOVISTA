@@ -1,325 +1,433 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Activity,
+  ArrowDownRight,
+  ArrowUpRight,
+  CalendarDays,
+  Download,
+  FileText,
+  Filter,
+  Image,
+  RefreshCw,
+  SlidersHorizontal,
+  TrendingUp,
+} from 'lucide-react';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import api from '../../../services/api';
-import { useAuth } from '../../../context/AuthContext';
-import { Button, Card, Alert } from '../../../components/ui';
+import { Alert, Button, Card, Input, Select } from '../../../components/ui';
 
-function formatNum(n) {
-  return parseFloat(n || 0).toFixed(2);
+const MOVEMENT_OPTIONS = [
+  { value: 'all', label: 'Todos los movimientos' },
+  { value: 'instalaciones', label: 'Instalaciones' },
+  { value: 'retiros', label: 'Retiros' },
+  { value: 'cambios_plan', label: 'Cambios de plan' },
+  { value: 'adiciones', label: 'Adiciones' },
+  { value: 'otros', label: 'Otros' },
+];
+
+const CHART_COLORS = ['#12894d', '#e56b5d', '#3b82f6', '#d69e2e', '#64748b'];
+
+function todayInBolivia() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/La_Paz',
+  }).format(new Date());
 }
 
-function MetricCard({ label, count, total, icon, color = 'brand' }) {
-  const colors = {
-    brand: {
-      bg: 'bg-brand-500/5',
-      iconBg: 'bg-brand-500/10',
-      iconText: 'text-brand-600',
-      bar: 'from-brand-500 to-vista-accent',
-      totalText: 'text-brand-700',
-    },
-    red: {
-      bg: 'bg-red-500/5',
-      iconBg: 'bg-red-500/10',
-      iconText: 'text-red-600',
-      bar: 'from-red-500 to-red-400',
-      totalText: 'text-red-700',
-    },
-    green: {
-      bg: 'bg-green-500/5',
-      iconBg: 'bg-green-500/10',
-      iconText: 'text-green-600',
-      bar: 'from-green-500 to-green-400',
-      totalText: 'text-green-700',
-    },
-  };
-  const c = colors[color] || colors.brand;
-
-  return (
-    <Card className="p-5 relative overflow-hidden group">
-      <div className={`absolute top-0 right-0 w-20 h-20 ${c.bg} rounded-full -mr-6 -mt-6 transition-transform duration-300 group-hover:scale-110`} />
-      <div className="relative">
-        <div className="flex items-center justify-between mb-3">
-          <div className={`w-9 h-9 rounded-xl ${c.iconBg} flex items-center justify-center ${c.iconText}`}>
-            {icon}
-          </div>
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{label}</span>
-        </div>
-        <div className="stat-number text-3xl mb-1">{count}</div>
-        <p className="text-xs text-slate-400 mb-2 font-medium">solicitudes</p>
-        <div className="flex items-center gap-2">
-          <div className="h-1 flex-1 bg-slate-100 rounded-full overflow-hidden">
-            <div className={`h-full bg-gradient-to-r ${c.bar} rounded-full`} style={{ width: `${Math.min(total / 50, 100)}%` }} />
-          </div>
-          <span className={`text-sm font-bold ${c.totalText} tabular-nums`}>{formatNum(total)} Bs</span>
-        </div>
-      </div>
-    </Card>
-  );
+function calendarDate(value) {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
 }
 
-function SectionHeader({ title, color = 'brand' }) {
-  const colors = {
-    brand: 'text-brand-700 border-brand-200',
-    red: 'text-red-700 border-red-200',
-    green: 'text-green-700 border-green-200',
-  };
+function formatCalendarDate(value) {
+  return value.toISOString().slice(0, 10);
+}
+
+function getPresetRange(period) {
+  const today = todayInBolivia();
+  const current = calendarDate(today);
+
+  if (period === 'today') return { from: today, to: today };
+  if (period === 'week') {
+    const mondayOffset = (current.getUTCDay() + 6) % 7;
+    current.setUTCDate(current.getUTCDate() - mondayOffset);
+    return { from: formatCalendarDate(current), to: today };
+  }
+  current.setUTCDate(1);
+  return { from: formatCalendarDate(current), to: today };
+}
+
+function readableDate(value) {
+  if (!value) return '';
+  const [year, month, day] = value.split('-');
+  return `${day}/${month}/${year}`;
+}
+
+function readableShortDate(value) {
+  if (!value) return '';
+  const [, month, day] = value.split('-');
+  return `${day}/${month}`;
+}
+
+function number(value) {
+  return Number(value || 0).toLocaleString('es-BO');
+}
+
+function money(value) {
+  return Number(value || 0).toLocaleString('es-BO', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function ChartTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
   return (
-    <div className={`border-l-4 pl-3 ${colors[color]}`}>
-      <h2 className="text-lg font-black tracking-tight">{title}</h2>
+    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-xl">
+      <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+        {readableDate(label) || label}
+      </p>
+      {payload.map((item) => (
+        <div key={item.dataKey} className="flex items-center justify-between gap-5 text-xs">
+          <span className="text-slate-500">{item.name}</span>
+          <strong className="tabular-nums text-slate-800">{number(item.value)}</strong>
+        </div>
+      ))}
     </div>
   );
 }
 
+function EmptyChart({ message = 'No hay movimientos en este período' }) {
+  return (
+    <div className="flex h-[280px] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-6 text-center">
+      <div>
+        <Activity className="mx-auto mb-3 h-7 w-7 text-slate-300" strokeWidth={1.5} />
+        <p className="text-sm font-semibold text-slate-500">{message}</p>
+        <p className="mt-1 text-xs text-slate-400">Prueba otro período o filtro.</p>
+      </div>
+    </div>
+  );
+}
+
+function MetricCard({ label, count, total, icon: Icon, tone, detail }) {
+  const tones = {
+    green: 'border-brand-200 bg-brand-50/60 text-brand-700',
+    red: 'border-red-200 bg-red-50/70 text-red-700',
+    blue: 'border-blue-200 bg-blue-50/70 text-blue-700',
+    slate: 'border-slate-200 bg-slate-50 text-slate-700',
+  };
+  return (
+    <Card className="relative overflow-hidden p-5">
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">{label}</p>
+          <p className="mt-3 text-3xl font-black tracking-tight text-slate-900">{number(count)}</p>
+        </div>
+        <div className={`rounded-2xl border p-3 ${tones[tone]}`}>
+          <Icon className="h-5 w-5" strokeWidth={1.8} />
+        </div>
+      </div>
+      {total !== undefined ? (
+        <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+          <span className="text-xs font-medium text-slate-400">Importe registrado</span>
+          <span className="text-sm font-bold tabular-nums text-slate-700">{money(total)} Bs</span>
+        </div>
+      ) : (
+        <p className="border-t border-slate-100 pt-3 text-xs font-medium text-slate-400">{detail}</p>
+      )}
+    </Card>
+  );
+}
+
+function ChartCard({ eyebrow, title, children, className = '' }) {
+  return (
+    <Card className={`p-5 sm:p-6 ${className}`}>
+      <div className="mb-5">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-600">{eyebrow}</p>
+        <h2 className="mt-1 text-lg font-black tracking-tight text-slate-900">{title}</h2>
+      </div>
+      {children}
+    </Card>
+  );
+}
+
 export default function Dashboard() {
-  const { isAdmin } = useAuth();
+  const [period, setPeriod] = useState('today');
+  const [movementType, setMovementType] = useState('all');
+  const [customFrom, setCustomFrom] = useState(todayInBolivia);
+  const [customTo, setCustomTo] = useState(todayInBolivia);
+  const [appliedCustomRange, setAppliedCustomRange] = useState(() => ({
+    from: todayInBolivia(),
+    to: todayInBolivia(),
+  }));
+  const [customError, setCustomError] = useState('');
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
-  const [generatingXlsx, setGeneratingXlsx] = useState(false);
-  const [generatingFoto, setGeneratingFoto] = useState(false);
-  const [msg, setMsg] = useState('');
+  const [error, setError] = useState('');
+  const requestId = useRef(0);
 
-  const loadStats = useCallback(async () => {
-    try {
-      const res = await api.getDashboardStats();
-      setStats(res);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const range = useMemo(
+    () => (period === 'custom' ? appliedCustomRange : getPresetRange(period)),
+    [period, appliedCustomRange],
+  );
 
-  useEffect(() => { loadStats(); }, [loadStats]);
+  useEffect(() => {
+    const currentRequest = ++requestId.current;
+    setLoading(true);
+    setError('');
 
-  const getToday = () => {
-    const now = new Date();
-    const bolivia = new Date(now.toLocaleString('en-US', { timeZone: 'America/La_Paz' }));
-    return `${bolivia.getFullYear()}-${String(bolivia.getMonth() + 1).padStart(2, '0')}-${String(bolivia.getDate()).padStart(2, '0')}`;
-  };
+    api.getDashboardStats(range.from, range.to, movementType)
+      .then((data) => {
+        if (currentRequest !== requestId.current) return;
+        setStats(data);
+      })
+      .catch((err) => {
+        if (currentRequest !== requestId.current) return;
+        setError(err?.error || 'No se pudieron cargar las estadísticas. Intenta nuevamente.');
+      })
+      .finally(() => {
+        if (currentRequest === requestId.current) setLoading(false);
+      });
+  }, [range.from, range.to, movementType]);
 
-  const handleGenerateReport = async () => {
-    setGenerating(true);
-    setMsg('');
-    try {
-      const today = getToday();
-      const blob = await api.getDashboardPDF();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `planilla-${today}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      setMsg('PDF descargado correctamente.');
-    } catch (err) {
-      setMsg(err.error || 'Sin solicitudes hoy para generar planilla');
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const handleGenerateXLSX = async () => {
-    setGeneratingXlsx(true);
-    setMsg('');
-    try {
-      const today = getToday();
-      const blob = await api.getDashboardXLSX();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `planilla-${today}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      setMsg('Archivo Excel descargado.');
-    } catch (err) {
-      setMsg(err.error || 'Sin solicitudes hoy para generar el archivo');
-    } finally {
-      setGeneratingXlsx(false);
-    }
-  };
-
-  const handleGenerateFoto = async () => {
-    setGeneratingFoto(true);
-    setMsg('');
-    try {
-      const today = getToday();
-      const blob = await api.getDashboardPNG();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `foto-${today}.png`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      setMsg('Foto descargada correctamente.');
-    } catch (err) {
-      setMsg(err.error || 'Sin solicitudes hoy para generar foto');
-    } finally {
-      setGeneratingFoto(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-32">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-brand-500/20 border-t-brand-500 rounded-full animate-spin" />
-          <p className="text-sm text-slate-400 font-medium">Cargando...</p>
-        </div>
-      </div>
-    );
-  }
-
+  const analytics = stats?.analytics;
+  const series = analytics?.series || [];
+  const services = analytics?.servicios || [];
+  const categories = analytics?.categorias || [];
+  const hasData = series.some((item) => item.movimientos > 0);
   const hasTodaySales = (stats?.movimientos?.today?.count || 0) > 0;
+  const selectedMovementLabel = MOVEMENT_OPTIONS.find(
+    (item) => item.value === movementType,
+  )?.label;
+  const periodLabel = `${readableDate(range.from)} — ${readableDate(range.to)}`;
 
-  const CalendarIcon = (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-    </svg>
-  );
-  const WeekIcon = (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
-    </svg>
-  );
-  const MonthIcon = (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.148 2.148A12.061 12.061 0 0116.5 7.605" />
-    </svg>
-  );
+  const applyCustomRange = () => {
+    if (!customFrom || !customTo) {
+      setCustomError('Selecciona la fecha inicial y la fecha final.');
+      return;
+    }
+    if (customFrom > customTo) {
+      setCustomError('La fecha inicial no puede superar la fecha final.');
+      return;
+    }
+    setCustomError('');
+    setAppliedCustomRange({ from: customFrom, to: customTo });
+  };
+
+  const download = async (kind) => {
+    try {
+      const methods = {
+        pdf: api.getDashboardPDF,
+        xlsx: api.getDashboardXLSX,
+        png: api.getDashboardPNG,
+      };
+      const blob = await methods[kind]();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${kind === 'png' ? 'foto' : 'planilla'}-${todayInBolivia()}.${kind}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err?.error || 'No se pudo generar el reporte del día.');
+    }
+  };
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Dashboard</h1>
-          <p className="text-sm text-slate-400 mt-1">Resumen general</p>
+    <div className="space-y-6 pb-8">
+      <header className="relative overflow-hidden rounded-[1.5rem] bg-vista-sidebar px-5 py-6 text-white shadow-xl shadow-brand-900/10 sm:px-8 sm:py-8">
+        <div className="absolute -right-16 -top-24 h-64 w-64 rounded-full border-[28px] border-vista-accent/10" />
+        <div className="absolute bottom-0 left-0 h-1 w-full bg-gradient-to-r from-vista-accent via-brand-400 to-transparent" />
+        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-vista-accent">
+              <TrendingUp className="h-4 w-4" /> Pulso comercial
+            </div>
+            <h1 className="max-w-xl text-3xl font-black tracking-tight sm:text-4xl">Movimiento de clientes</h1>
+            <p className="mt-2 max-w-lg text-sm leading-6 text-green-100/65">
+              Una lectura clara de las altas, retiros y cambios registrados por GO VISTA.
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+            <CalendarDays className="h-5 w-5 text-vista-accent" />
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-green-100/50">Período activo</p>
+              <p className="mt-0.5 text-sm font-bold">{periodLabel}</p>
+            </div>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant={hasTodaySales ? 'secondary' : 'secondary'} size="lg" onClick={handleGenerateXLSX} disabled={!hasTodaySales || generatingXlsx}>
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-            </svg>
-            {generatingXlsx ? 'Generando...' : hasTodaySales ? 'Excel' : 'Sin registros'}
-          </Button>
-          <Button variant={hasTodaySales ? 'secondary' : 'secondary'} size="lg" onClick={handleGenerateFoto} disabled={!hasTodaySales || generatingFoto}>
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
-            </svg>
-            {generatingFoto ? 'Generando...' : hasTodaySales ? 'Foto' : 'Sin registros'}
-          </Button>
-          <Button variant={hasTodaySales ? 'primary' : 'secondary'} size="lg" onClick={handleGenerateReport} disabled={!hasTodaySales || generating}>
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-            </svg>
-            {generating ? 'Generando...' : hasTodaySales ? 'Planilla PDF' : 'Sin registros'}
-          </Button>
-        </div>
-      </div>
+      </header>
 
-      {msg && <Alert type={msg.includes('Sin solicitudes') ? 'error' : 'success'}>{msg}</Alert>}
-
-      {/* Solicitudes del dia */}
-      <div className="space-y-3">
-        <SectionHeader title={isAdmin ? "Solicitudes" : "Mis Solicitudes"} color="brand" />
-        <div className={`grid grid-cols-1 gap-4 ${isAdmin ? 'sm:grid-cols-3' : 'sm:grid-cols-1 max-w-sm'}`}>
-          <MetricCard
-            label="Hoy"
-            count={stats?.movimientos?.today?.count || 0}
-            total={stats?.movimientos?.today?.total || 0}
-            icon={CalendarIcon}
-            color="brand"
-          />
-          {isAdmin && (
-            <>
-              <MetricCard
-                label="Esta Semana"
-                count={stats?.movimientos?.week?.count || 0}
-                total={stats?.movimientos?.week?.total || 0}
-                icon={WeekIcon}
-                color="brand"
-              />
-              <MetricCard
-                label="Este Mes"
-                count={stats?.movimientos?.month?.count || 0}
-                total={stats?.movimientos?.month?.total || 0}
-                icon={MonthIcon}
-                color="brand"
-              />
-            </>
+      <Card className="p-4 sm:p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <SlidersHorizontal className="h-4 w-4 text-brand-600" />
+            <h2 className="text-sm font-black text-slate-800">Filtros de análisis</h2>
+          </div>
+          {loading && stats && (
+            <span className="flex items-center gap-2 text-xs font-semibold text-brand-600">
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Actualizando
+            </span>
           )}
         </div>
-      </div>
-
-      {/* Instalaciones */}
-      <div className="space-y-3">
-        <SectionHeader title="Instalaciones" color="green" />
-        <div className={`grid grid-cols-1 gap-4 ${isAdmin ? 'sm:grid-cols-3' : 'sm:grid-cols-1 max-w-sm'}`}>
-          <MetricCard
-            label="Hoy"
-            count={stats?.instalaciones?.today?.count || 0}
-            total={stats?.instalaciones?.today?.total || 0}
-            icon={CalendarIcon}
-            color="green"
-          />
-          {isAdmin && (
+        <div className="flex flex-wrap gap-2">
+          {[
+            ['today', 'Hoy'],
+            ['week', 'Esta semana'],
+            ['month', 'Este mes'],
+            ['custom', 'Rango personalizado'],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => { setPeriod(value); setCustomError(''); }}
+              className={`rounded-xl px-3.5 py-2 text-xs font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500/30 ${period === value ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_1.2fr_auto] md:items-end">
+          {period === 'custom' ? (
             <>
-              <MetricCard
-                label="Esta Semana"
-                count={stats?.instalaciones?.week?.count || 0}
-                total={stats?.instalaciones?.week?.total || 0}
-                icon={WeekIcon}
-                color="green"
-              />
-              <MetricCard
-                label="Este Mes"
-                count={stats?.instalaciones?.month?.count || 0}
-                total={stats?.instalaciones?.month?.total || 0}
-                icon={MonthIcon}
-                color="green"
-              />
+              <Input label="Desde" type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} error={customError} />
+              <Input label="Hasta" type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)} />
+              <Select label="Tipo de movimiento" value={movementType} onChange={(event) => setMovementType(event.target.value)}>
+                {MOVEMENT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </Select>
+              <Button type="button" size="md" onClick={applyCustomRange}>Aplicar rango</Button>
             </>
+          ) : (
+            <div className="md:col-span-2">
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Período consultado</p>
+              <div className="flex h-[46px] items-center rounded-xl bg-slate-50 px-4 text-sm font-semibold text-slate-700">{periodLabel}</div>
+            </div>
+          )}
+          {period !== 'custom' && (
+            <Select label="Tipo de movimiento" value={movementType} onChange={(event) => setMovementType(event.target.value)}>
+              {MOVEMENT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </Select>
           )}
         </div>
-      </div>
+        {customError && period !== 'custom' && <p className="mt-2 text-xs font-semibold text-red-600">{customError}</p>}
+        <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-400"><Filter className="h-3.5 w-3.5" /> Mostrando {selectedMovementLabel?.toLowerCase()} entre {periodLabel}.</p>
+      </Card>
 
-      {/* Retiros */}
-      <div className="space-y-3">
-        <SectionHeader title="Retiros" color="red" />
-        <div className={`grid grid-cols-1 gap-4 ${isAdmin ? 'sm:grid-cols-3' : 'sm:grid-cols-1 max-w-sm'}`}>
-          <MetricCard
-            label="Hoy"
-            count={stats?.retiros?.today?.count || 0}
-            total={stats?.retiros?.today?.total || 0}
-            icon={CalendarIcon}
-            color="red"
-          />
-          {isAdmin && (
+      {error && <Alert type="error">{error}</Alert>}
+
+      {loading && !stats ? (
+        <Card className="flex min-h-[320px] items-center justify-center p-8">
+          <div className="text-center">
+            <RefreshCw className="mx-auto mb-3 h-8 w-8 animate-spin text-brand-600" />
+            <p className="text-sm font-semibold text-slate-500">Consultando movimientos reales...</p>
+          </div>
+        </Card>
+      ) : stats && (
+        <>
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <MetricCard label="Instalaciones" count={analytics?.instalaciones?.count} total={analytics?.instalaciones?.total} icon={ArrowUpRight} tone="green" />
+            <MetricCard label="Retiros" count={analytics?.retiros?.count} total={analytics?.retiros?.total} icon={ArrowDownRight} tone="red" />
+            <MetricCard label="Cambios de plan" count={analytics?.cambios_plan?.count} total={analytics?.cambios_plan?.total} icon={RefreshCw} tone="blue" />
+            <MetricCard label="Balance neto" count={analytics?.balance_neto} icon={Activity} tone="slate" detail="Instalaciones menos retiros" />
+          </section>
+
+          {!hasData ? (
+            <Card className="p-5 sm:p-6"><EmptyChart message="No hay movimientos para analizar" /></Card>
+          ) : (
             <>
-              <MetricCard
-                label="Esta Semana"
-                count={stats?.retiros?.week?.count || 0}
-                total={stats?.retiros?.week?.total || 0}
-                icon={WeekIcon}
-                color="red"
-              />
-              <MetricCard
-                label="Este Mes"
-                count={stats?.retiros?.month?.count || 0}
-                total={stats?.retiros?.month?.total || 0}
-                icon={MonthIcon}
-                color="red"
-              />
+              <section className="grid gap-5 xl:grid-cols-[1.35fr_1fr]">
+                <ChartCard eyebrow="Comparativa diaria" title="Instalaciones frente a retiros">
+                  <div className="h-[300px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={series} margin={{ top: 4, right: 4, left: -18, bottom: 4 }}>
+                        <CartesianGrid stroke="#e8eee9" vertical={false} />
+                        <XAxis dataKey="date" tickFormatter={readableShortDate} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                        <Tooltip content={<ChartTooltip />} />
+                        <Legend iconType="circle" wrapperStyle={{ fontSize: 11, paddingTop: 12 }} />
+                        <Bar name="Instalaciones" dataKey="instalaciones" fill="#12894d" radius={[5, 5, 0, 0]} />
+                        <Bar name="Retiros" dataKey="retiros" fill="#e56b5d" radius={[5, 5, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </ChartCard>
+                <ChartCard eyebrow="Ritmo de actividad" title="Evolución de movimientos">
+                  <div className="h-[300px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={series} margin={{ top: 4, right: 4, left: -18, bottom: 4 }}>
+                        <CartesianGrid stroke="#e8eee9" vertical={false} />
+                        <XAxis dataKey="date" tickFormatter={readableShortDate} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                        <Tooltip content={<ChartTooltip />} />
+                        <Legend iconType="circle" wrapperStyle={{ fontSize: 11, paddingTop: 12 }} />
+                        <Line name="Movimientos" type="monotone" dataKey="movimientos" stroke="#0d2b1b" strokeWidth={3} dot={{ r: 3, fill: '#00d67b', strokeWidth: 0 }} activeDot={{ r: 5 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </ChartCard>
+              </section>
+
+              <section className="grid gap-5 lg:grid-cols-[1fr_1.2fr]">
+                <ChartCard eyebrow="Composición del período" title="Distribución por servicio">
+                  {services.length ? (
+                    <div className="h-[300px] w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie data={services} dataKey="count" nameKey="label" cx="50%" cy="46%" innerRadius={62} outerRadius={96} paddingAngle={3}>
+                            {services.map((entry, index) => <Cell key={entry.serviceType} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}
+                          </Pie>
+                          <Tooltip content={<ChartTooltip />} />
+                          <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : <EmptyChart />}
+                </ChartCard>
+                <ChartCard eyebrow="Lectura operativa" title="Desglose por categoría">
+                  <div className="space-y-4 pt-2">
+                    {categories.map((item, index) => (
+                      <div key={item.type}>
+                        <div className="mb-1.5 flex items-center justify-between gap-3 text-sm">
+                          <span className="flex items-center gap-2 font-semibold text-slate-600"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: CHART_COLORS[index] }} />{item.label}</span>
+                          <span className="font-black tabular-nums text-slate-800">{number(item.count)}</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full" style={{ width: `${Math.min((item.count / Math.max(analytics?.series?.reduce((sum, row) => sum + row.movimientos, 0), 1)) * 100, 100)}%`, backgroundColor: CHART_COLORS[index] }} /></div>
+                      </div>
+                    ))}
+                  </div>
+                </ChartCard>
+              </section>
             </>
           )}
-        </div>
-      </div>
+
+          <Card className="flex flex-col gap-4 border-brand-100 bg-brand-50/40 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-black text-slate-800">Reportes del día</p>
+              <p className="mt-1 text-xs text-slate-500">Las exportaciones conservan su alcance actual: movimientos de hoy.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" size="sm" disabled={!hasTodaySales} onClick={() => download('xlsx')}><Download className="h-4 w-4" /> Excel</Button>
+              <Button variant="secondary" size="sm" disabled={!hasTodaySales} onClick={() => download('png')}><Image className="h-4 w-4" /> Foto</Button>
+              <Button size="sm" disabled={!hasTodaySales} onClick={() => download('pdf')}><FileText className="h-4 w-4" /> PDF</Button>
+            </div>
+          </Card>
+        </>
+      )}
     </div>
   );
 }

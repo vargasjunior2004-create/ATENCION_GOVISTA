@@ -1,6 +1,7 @@
 from django.test import TestCase, Client
 from django.utils import timezone
 from decimal import Decimal
+from datetime import timedelta
 
 from .models import User, Plan, Sale, Motivo
 
@@ -289,6 +290,89 @@ class DashboardTests(TestCase):
     def test_dashboard_no_auth(self):
         r = self.c.get('/api/dashboard/stats')
         self.assertEqual(r.status_code, 401)
+
+    def _sale(self, code, request_type, movement_date, service='internet', total=100):
+        return Sale.objects.create(
+            date=movement_date,
+            clientCode=code,
+            clientName=f'DASH_{code}',
+            serviceType=service,
+            requestType=request_type,
+            plan=self.plan,
+            planName=self.plan.label,
+            total=Decimal(str(total)),
+            createdBy=self.admin,
+        )
+
+    def test_dashboard_analytics_custom_range_and_series(self):
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+        self._sale('A001', 'nuevo_contrato', yesterday, total=120)
+        self._sale('A002', 'retiro', today, total=80)
+        self._sale('A003', 'cambio_plan', today, service='tv_digital')
+        self._sale('A004', 'adicion', today, service='combo_digital')
+
+        token = self._token()
+        r = self.c.get(
+            f'/api/dashboard/stats?from={yesterday.isoformat()}&to={today.isoformat()}',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(r.status_code, 200)
+        data = _json(r)
+        analytics = data['analytics']
+
+        self.assertEqual(analytics['period']['from'], yesterday.isoformat())
+        self.assertEqual(analytics['period']['to'], today.isoformat())
+        self.assertEqual(analytics['instalaciones']['count'], 1)
+        self.assertEqual(analytics['retiros']['count'], 1)
+        self.assertEqual(analytics['cambios_plan']['count'], 1)
+        self.assertEqual(analytics['balance_neto'], 0)
+        self.assertEqual(len(analytics['series']), 2)
+        self.assertEqual(analytics['series'][0]['instalaciones'], 1)
+        self.assertEqual(analytics['series'][1]['retiros'], 1)
+        self.assertEqual(
+            {item['serviceType'] for item in analytics['servicios']},
+            {'internet', 'tv_digital', 'combo_digital'},
+        )
+
+    def test_dashboard_analytics_movement_filter_excludes_other_categories(self):
+        today = timezone.localdate()
+        self._sale('B001', 'nuevo_contrato', today)
+        self._sale('B002', 'retiro', today)
+        self._sale('B003', 'cambio_plan', today)
+        self._sale('B004', 'adicion', today)
+
+        token = self._token()
+        r = self.c.get(
+            f'/api/dashboard/stats?from={today.isoformat()}&to={today.isoformat()}'
+            '&movement_type=cambios_plan',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        data = _json(r)
+        analytics = data['analytics']
+
+        self.assertEqual(analytics['period']['movement_type'], 'cambios_plan')
+        self.assertEqual(analytics['series'][0]['movimientos'], 1)
+        self.assertEqual(analytics['cambios_plan']['count'], 1)
+        self.assertEqual(analytics['instalaciones']['count'], 0)
+        self.assertEqual(analytics['retiros']['count'], 0)
+
+    def test_dashboard_analytics_rejects_invalid_ranges_and_filters(self):
+        token = self._token()
+        today = timezone.localdate()
+        tomorrow = today + timedelta(days=1)
+        headers = {'HTTP_AUTHORIZATION': f'Bearer {token}'}
+
+        reversed_range = self.c.get(
+            f'/api/dashboard/stats?from={tomorrow.isoformat()}&to={today.isoformat()}',
+            **headers)
+        self.assertEqual(reversed_range.status_code, 400)
+
+        incomplete_range = self.c.get(
+            f'/api/dashboard/stats?from={today.isoformat()}', **headers)
+        self.assertEqual(incomplete_range.status_code, 400)
+
+        unknown_filter = self.c.get(
+            '/api/dashboard/stats?movement_type=ventas', **headers)
+        self.assertEqual(unknown_filter.status_code, 400)
 
 
 class ReportTests(TestCase):
