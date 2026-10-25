@@ -1,6 +1,6 @@
-# GO VISTA — Planilla de Solicitudes
+# GO VISTA — Portal de Gestion
 
-Sistema web para registro y control de solicitudes diarias de telecomunicaciones FTTH (GO VISTA, Cobija — Bolivia).
+Portal modular para registro y control de solicitudes diarias de telecomunicaciones FTTH (GO VISTA, Cobija — Bolivia).
 
 **Produccion:** https://atencion-govista-2.onrender.com
 
@@ -25,6 +25,25 @@ Login por **nombre de usuario** (no email):
 | JUNIOR | ADMINISTRADOR | `admin123` |
 
 ## Funcionalidades
+
+### Navegacion por modulos
+
+Despues del login se muestra un selector de modulos:
+
+- **Gestion Comercial:** disponible. Agrupa Dashboard, Nueva Solicitud e Historial, ademas de las herramientas administrativas (Planes, Motivos, Promociones, Usuarios y Copias de Seguridad).
+- **Atencion al Cliente** y **Gestion de Equipos:** visibles como "Proximamente", deshabilitados y sin rutas ni datos ficticios.
+- **Volver a modulos** regresa al selector sin cerrar sesion.
+- Las rutas antiguas se conservan como redirecciones y mantienen los parametros de la URL:
+
+| Ruta anterior | Ruta nueva |
+|---------------|------------|
+| `/nueva-venta` | `/comercial/solicitudes/nueva` |
+| `/ventas` | `/comercial/solicitudes` |
+| `/planes` | `/comercial/planes` |
+| `/motivos` | `/comercial/motivos` |
+| `/promociones` | `/comercial/promociones` |
+| `/usuarios` | `/comercial/usuarios` |
+| `/backups` | `/comercial/backups` |
 
 ### Historial de Solicitudes
 
@@ -203,12 +222,41 @@ Sales_Tracker/
 │       └── backup_database.py # genera el respaldo (pg_dump / SQLite)
 ├── frontend_build/           # build del frontend (servido por Django)
 ├── frontend/                 # codigo fuente React
+│   └── src/
+│       ├── App.js            # providers y router
+│       ├── routes/           # AppRoutes, guards y redirecciones heredadas
+│       ├── modules/
+│       │   ├── registry.js   # catalogo de modulos y estados
+│       │   └── comercial/    # layout, navegacion y paginas del modulo
+│       ├── components/
+│       │   ├── layout/       # marca, menu de cuenta y cambio de contrasena
+│       │   ├── modules/      # selector y tarjetas de modulo
+│       │   └── ...           # Login, ui y modulos administrativos
+│       ├── hooks/
+│       └── services/
 ├── staticfiles/              # archivos estaticos (WhiteNoise)
 ├── build.sh                  # build script Render
 ├── render.yaml               # config Render
 ├── requirements.txt
 └── run.sh
 ```
+
+## Rutas del frontend
+
+| Ruta | Descripcion | Acceso |
+|------|-------------|--------|
+| `/` | Selector de modulos | Autenticado |
+| `/comercial` | Redirige a `/comercial/dashboard` | Autenticado |
+| `/comercial/dashboard` | Dashboard diario y reportes del dia | Autenticado |
+| `/comercial/solicitudes/nueva` | Registrar solicitud | Autenticado |
+| `/comercial/solicitudes` | Historial, filtros y reportes | Autenticado |
+| `/comercial/planes` | Catalogo de planes | Admin |
+| `/comercial/motivos` | Catalogo de motivos | Admin |
+| `/comercial/promociones` | Promociones | Admin |
+| `/comercial/usuarios` | Usuarios | Admin |
+| `/comercial/backups` | Copias de seguridad | Admin |
+
+Los filtros del historial se guardan en la URL (`from`, `to`, `requestType`, `serviceType`, `format`, `motivos`, `page`) y se restauran al volver a la pantalla.
 
 ## API
 
@@ -260,7 +308,8 @@ Sales_Tracker/
 - **Hosting:** Render free tier (512MB RAM, 0.1 CPU, 750 hrs/mes)
 - **Database:** Supabase PostgreSQL 17.6
 - **Estaticos:** WhiteNoise sirve archivos desde `staticfiles/`
-- **Build:** `build.sh` instala `postgresql-client-17` (PGDG) y ejecuta `collectstatic`
+- **Frontend:** se compila con `cd frontend && npm run build` y el resultado se copia a `frontend_build/` antes del deploy (`cp -r build/. ../frontend_build/`). Ese directorio va committeado
+- **Build:** `build.sh` instala `postgresql-client-17` (PGDG), aplica migraciones y ejecuta `collectstatic`. No compila React
 - **Inicio:** `gunicorn salestracker.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 60`
 
 ### Variables de entorno en Render
@@ -305,6 +354,8 @@ Y comparalo con el campo `checksum` del historial en la app.
 ### Notas
 
 - `frontend_build/` y `staticfiles/` van committeados (archivos servidos por WhiteNoise)
+- El selector de modulos es solo navegacion; la autorizacion real sigue siendo por rol en el backend. Aun no existen permisos por modulo
+- Atencion al Cliente y Gestion de Equipos estan deshabilitados hasta implementar su backend y permisos
 - `wsgi.py` ejecuta migraciones + seed automaticamente si no hay datos
 - Pooler de Supabase usa IPv4, compatible con Render free tier
 - Planes legacy no aparecen en el select al registrar nuevas solicitudes
