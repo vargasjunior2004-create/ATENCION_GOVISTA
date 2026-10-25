@@ -43,7 +43,16 @@ const api = {
     }),
 
   // Dashboard
-  getDashboardStats: () => request('/api/dashboard/stats'),
+  getDashboardStats: (from = '', to = '', movementType = 'all') => {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    if (movementType && movementType !== 'all') {
+      params.set('movement_type', movementType);
+    }
+    const query = params.toString();
+    return request(`/api/dashboard/stats${query ? `?${query}` : ''}`);
+  },
 
   // Planes
   getPlans: () => request('/api/plans'),

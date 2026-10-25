@@ -1,7 +1,9 @@
+import logging
 import os
 import threading
+from datetime import date, timedelta
 
-from django.db.models import Sum, Q
+from django.db.models import Count, Q, Sum
 from django.http import FileResponse
 from django.utils import timezone
 from rest_framework import status
@@ -22,6 +24,7 @@ from .serializers import (
 from .domain import (
     request_type_mode, request_type_catalog, codes_with_modes,
     MODOS_INSTALACION, MODO_RETIRO, MODO_CAMBIO_PLAN, MODO_ADICION,
+    MODO_SIMPLE,
 )
 from .reports import build_sales_pdf, build_sales_xlsx
 
@@ -30,6 +33,7 @@ from .reports import build_sales_pdf, build_sales_xlsx
 # administrador y evita agotar la CPU del plan gratuito.
 _backup_lock = threading.Lock()
 _backup_in_progress = False
+logger = logging.getLogger(__name__)
 
 
 class _BackupFileResponse(FileResponse):
@@ -780,37 +784,202 @@ class UserDetailView(IsAdminMixin, APIView):
 
 
 class DashboardStatsView(APIView):
+    MOVEMENT_TYPES = {
+        'all', 'instalaciones', 'retiros', 'cambios_plan',
+        'adiciones', 'otros',
+    }
+
+    @staticmethod
+    def _parse_range(params, today):
+        from_value = params.get('from')
+        to_value = params.get('to')
+        if bool(from_value) != bool(to_value):
+            raise ValueError('Los parametros from y to deben enviarse juntos')
+
+        if not from_value:
+            return today, today
+
+        try:
+            from_date = date.fromisoformat(from_value)
+            to_date = date.fromisoformat(to_value)
+        except (TypeError, ValueError):
+            raise ValueError('Las fechas deben usar el formato YYYY-MM-DD')
+
+        if from_date > to_date:
+            raise ValueError('La fecha inicial no puede superar la fecha final')
+        return from_date, to_date
+
+    @staticmethod
+    def _category_codes(catalog):
+        categories = {
+            'instalaciones': codes_with_modes(MODOS_INSTALACION, catalog),
+            'retiros': codes_with_modes((MODO_RETIRO,), catalog),
+            'cambios_plan': codes_with_modes((MODO_CAMBIO_PLAN,), catalog),
+            'adiciones': codes_with_modes((MODO_ADICION,), catalog),
+        }
+        known = {
+            code for codes in categories.values() for code in codes
+        }
+        categories['otros'] = [
+            code for code, tipo in catalog.items()
+            if code not in known and tipo.modo == MODO_SIMPLE
+        ]
+        return categories
+
+    @staticmethod
+    def _amount(value):
+        return float(value or 0)
+
+    @classmethod
+    def _summary(cls, queryset):
+        data = queryset.aggregate(count=Count('id'), total=Sum('total'))
+        return {
+            'count': data['count'] or 0,
+            'total': cls._amount(data['total']),
+        }
+
+    @classmethod
+    def _analytics(cls, queryset, categories, from_date, to_date,
+                   movement_type):
+        category_querysets = {
+            name: queryset.filter(requestType__in=codes)
+            for name, codes in categories.items()
+        }
+        summaries = {
+            name: cls._summary(category_qs)
+            for name, category_qs in category_querysets.items()
+        }
+
+        daily_rows = queryset.values('date').annotate(
+            count=Count('id'),
+            installations=Count(
+                'id', filter=Q(requestType__in=categories['instalaciones'])),
+            retiros=Count(
+                'id', filter=Q(requestType__in=categories['retiros'])),
+            cambios_plan=Count(
+                'id', filter=Q(requestType__in=categories['cambios_plan'])),
+            adiciones=Count(
+                'id', filter=Q(requestType__in=categories['adiciones'])),
+            otros=Count(
+                'id', filter=Q(requestType__in=categories['otros'])),
+        )
+        daily_by_date = {row['date']: row for row in daily_rows}
+
+        series = []
+        current = from_date
+        while current <= to_date:
+            row = daily_by_date.get(current, {})
+            series.append({
+                'date': current.isoformat(),
+                'movimientos': row.get('count', 0),
+                'instalaciones': row.get('installations', 0),
+                'retiros': row.get('retiros', 0),
+                'cambios_plan': row.get('cambios_plan', 0),
+                'adiciones': row.get('adiciones', 0),
+                'otros': row.get('otros', 0),
+            })
+            current += timedelta(days=1)
+
+        service_rows = queryset.values('serviceType').annotate(
+            count=Count('id'), total=Sum('total')).order_by('serviceType')
+        service_labels = {
+            'internet': 'Internet',
+            'tv': 'TV analógica',
+            'tv_digital': 'TV digital',
+            'combo_analog': 'Internet + TV analógica',
+            'combo_digital': 'Internet + TV digital',
+        }
+        services = [
+            {
+                'serviceType': row['serviceType'],
+                'label': service_labels.get(row['serviceType'], row['serviceType']),
+                'count': row['count'],
+                'total': cls._amount(row['total']),
+            }
+            for row in service_rows
+        ]
+
+        movement_breakdown = [
+            {
+                'type': name,
+                'label': {
+                    'instalaciones': 'Instalaciones',
+                    'retiros': 'Retiros',
+                    'cambios_plan': 'Cambios de plan',
+                    'adiciones': 'Adiciones',
+                    'otros': 'Otros',
+                }[name],
+                **summaries[name],
+            }
+            for name in ('instalaciones', 'retiros', 'cambios_plan',
+                         'adiciones', 'otros')
+        ]
+
+        return {
+            'period': {
+                'from': from_date.isoformat(),
+                'to': to_date.isoformat(),
+                'movement_type': movement_type,
+                'granularity': 'day',
+            },
+            'instalaciones': summaries['instalaciones'],
+            'retiros': summaries['retiros'],
+            'cambios_plan': summaries['cambios_plan'],
+            'balance_neto': (
+                summaries['instalaciones']['count']
+                - summaries['retiros']['count']
+            ),
+            'series': series,
+            'comparativa': series,
+            'servicios': services,
+            'categorias': movement_breakdown,
+        }
+
     def get(self, request):
         try:
             today = timezone.localdate()
-            week_start = today - __import__('datetime').timedelta(days=today.weekday())
+            week_start = today - timedelta(days=today.weekday())
             month_start = today.replace(day=1)
+
+            movement_type = request.query_params.get('movement_type', 'all')
+            if movement_type not in self.MOVEMENT_TYPES:
+                return Response({
+                    'error': 'movement_type no valido',
+                    'allowed': sorted(self.MOVEMENT_TYPES),
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                from_date, to_date = self._parse_range(
+                    request.query_params, today)
+            except ValueError as exc:
+                return Response({'error': str(exc)},
+                                status=status.HTTP_400_BAD_REQUEST)
 
             all_sales = Sale.objects.all()
             # Instalaciones y retiros se derivan del MODO de cada tipo,
             # no de una lista de codigos. Un tipo nuevo entra en la
             # categoria que su modo declare, sin tocar esta vista.
             catalog = request_type_catalog()
+            categories = self._category_codes(catalog)
             installations = all_sales.filter(
-                requestType__in=codes_with_modes(MODOS_INSTALACION, catalog))
-            retiro_codes = codes_with_modes((MODO_RETIRO,), catalog)
+                requestType__in=categories['instalaciones'])
+            retiro_codes = categories['retiros']
 
             is_admin = getattr(request.user, 'role', '') == 'admin'
 
-            def stats(qs, from_date, to_date):
-                filtered = qs.filter(date__gte=from_date, date__lte=to_date)
-                total = filtered.aggregate(s=Sum('total'))['s'] or 0
-                return {'count': filtered.count(), 'total': float(total)}
+            def stats(qs, start_date, end_date):
+                filtered = qs.filter(date__gte=start_date, date__lte=end_date)
+                return self._summary(filtered)
 
-            def retiros_stats(from_date, to_date):
+            def retiros_stats(start_date, end_date):
                 sale_retiros = all_sales.filter(requestType__in=retiro_codes,
-                                               date__gte=from_date, date__lte=to_date)
-                total = sale_retiros.aggregate(s=Sum('total'))['s'] or 0
-                return {'count': sale_retiros.count(), 'total': float(total)}
+                                               date__gte=start_date,
+                                               date__lte=end_date)
+                return self._summary(sale_retiros)
 
             empty = {'count': 0, 'total': 0}
 
-            return Response({
+            legacy = {
                 'movimientos': {
                     'today': stats(all_sales, today, today),
                     'week': stats(all_sales, week_start, today) if is_admin else empty,
@@ -827,29 +996,27 @@ class DashboardStatsView(APIView):
                     'month': retiros_stats(month_start, today) if is_admin else empty,
                 },
                 'role': request.user.role,
+            }
+
+            selected_sales = all_sales.filter(
+                date__gte=from_date, date__lte=to_date)
+            if movement_type != 'all':
+                selected_sales = selected_sales.filter(
+                    requestType__in=categories[movement_type])
+
+            return Response({
+                **legacy,
+                'analytics': self._analytics(
+                    selected_sales, categories, from_date, to_date,
+                    movement_type),
             })
         except Exception:
-            # Antes era un `except Exception as e` mudo: un error de codigo
-            # devolvia el dashboard en ceros, indistinguible de un dia sin
-            # movimientos. Se loguea para que no vuelva a pasar inadvertido.
+            # No devolver ceros ante un fallo: el frontend debe distinguir un
+            # error de consulta de un período sin movimientos.
             logger.exception('Error calculando estadisticas del dashboard')
-            return Response({
-                'movimientos': {
-                    'today': {'count': 0, 'total': 0},
-                    'week': {'count': 0, 'total': 0},
-                    'month': {'count': 0, 'total': 0},
-                },
-                'instalaciones': {
-                    'today': {'count': 0, 'total': 0},
-                    'week': {'count': 0, 'total': 0},
-                    'month': {'count': 0, 'total': 0},
-                },
-                'retiros': {
-                    'today': {'count': 0, 'total': 0},
-                    'week': {'count': 0, 'total': 0},
-                    'month': {'count': 0, 'total': 0},
-                },
-            })
+            return Response(
+                {'error': 'No se pudieron calcular las estadísticas'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 def _first_error(serializer):
