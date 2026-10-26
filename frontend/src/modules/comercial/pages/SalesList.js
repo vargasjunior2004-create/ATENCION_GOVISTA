@@ -5,6 +5,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { Button, Input, Select, Card, Alert, Badge } from '../../../components/ui';
 import useRequestTypes, { MODO_COLOR } from '../../../hooks/useRequestTypes';
 import useMotivos from '../../../hooks/useMotivos';
+import SalePreviewModal from '../../../components/SalePreview';
 
 const typeColor = { internet: 'blue', tv: 'amber', combo: 'violet' };
 
@@ -48,7 +49,35 @@ const SERVICE_LABEL_BY_VALUE = {
   combo_analog: 'Internet + TV Analoga', combo_digital: 'Internet + TV Digital',
 };
 
-function SaleCard({ sale, isAdmin, onEdit, onDelete, requestMode, requestLabel, showMotivos }) {
+const SERVICE_LABELS = {
+  internet: 'INTERNET', tv: 'TV ANALOGA', tv_digital: 'TV DIGITAL',
+  combo_analog: 'INTERNET + TV ANALOGA', combo_digital: 'INTERNET + TV DIGITAL',
+};
+
+const formatDate = (date) => {
+  if (!date) return '—';
+  const [year, month, day] = date.split('-');
+  return `${day}/${month}/${year}`;
+};
+
+function EyeButton({ onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Ver vista previa"
+      title="Ver vista previa"
+      className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-brand-700 hover:bg-brand-50 focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+    >
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12s3.5-6 9.75-6 9.75 6 9.75 6-3.5 6-9.75 6-9.75-6-9.75-6z" />
+        <circle cx="12" cy="12" r="2.5" />
+      </svg>
+    </button>
+  );
+}
+
+function SaleCard({ sale, isAdmin, onPreview, onEdit, onDelete, requestMode, requestLabel, showMotivos }) {
   return (
     <Card className="p-4 space-y-3">
       <div className="flex items-start justify-between">
@@ -90,12 +119,15 @@ function SaleCard({ sale, isAdmin, onEdit, onDelete, requestMode, requestLabel, 
           )}
           <div className="flex items-center justify-between">
             <span className="text-xs text-slate-400">por {sale.creator?.name || '-'}</span>
-            {isAdmin && (
-              <div className="flex gap-2">
-                <Button variant="ghost" size="sm" onClick={() => onEdit(sale)}>Editar</Button>
-                <Button variant="danger" size="sm" onClick={() => onDelete(sale)}>Eliminar</Button>
-              </div>
-            )}
+            <div className="flex items-center gap-1">
+              <EyeButton onClick={() => onPreview(sale)} />
+              {isAdmin && (
+                <>
+                  <Button variant="ghost" size="sm" onClick={() => onEdit(sale)}>Editar</Button>
+                  <Button variant="danger" size="sm" onClick={() => onDelete(sale)}>Eliminar</Button>
+                </>
+              )}
+            </div>
           </div>
         </div>
     </Card>
@@ -125,6 +157,7 @@ export default function SalesList() {
   const [generatingReport, setGeneratingReport] = useState(false);
   const [msg, setMsg] = useState('');
   const [deletingSale, setDeletingSale] = useState(null);
+  const [previewSale, setPreviewSale] = useState(null);
 
   // El catalogo es administrable: etiqueta y color del movimiento salen de
   // aqui, no de un mapa fijo por code.
@@ -137,6 +170,25 @@ export default function SalesList() {
     }
     return nombreOf(sale.requestType);
   };
+
+  const previewData = (sale) => ({
+    date: formatDate(sale.date),
+    clientCode: sale.clientCode,
+    clientName: sale.clientName,
+    requestLabel: requestLabel(sale),
+    serviceLabel: SERVICE_LABELS[sale.serviceType] || sale.serviceType,
+    previousServiceLabel: sale.previousService?.serviceType
+      ? SERVICE_LABELS[sale.previousService.serviceType] || sale.previousService.label
+      : sale.previousService?.label,
+    previousPlanLabel: sale.previousPlan?.label,
+    planLabel: sale.Plan?.label,
+    promotionName: sale.promotion_name,
+    installation: sale.applied_installation == null ? null : parseFloat(sale.applied_installation).toFixed(2),
+    monthly: sale.applied_monthly == null ? null : parseFloat(sale.applied_monthly).toFixed(2),
+    total: parseFloat(sale.total ?? 0).toFixed(2),
+    motivo: sale.changeReason,
+    notes: sale.notes,
+  });
 
   const showMotivosColumn = showMotivos === 'si';
   const hasSelection = requestType !== '' && serviceType !== '' && reportFormat !== '' && showMotivos !== '';
@@ -475,6 +527,11 @@ export default function SalesList() {
         </div>
       )}
 
+      <SalePreviewModal
+        sale={previewSale && previewData(previewSale)}
+        onClose={() => setPreviewSale(null)}
+      />
+
       {/* Sales */}
       {!hasSelection ? (
         <Card className="p-16 text-center">
@@ -527,14 +584,17 @@ export default function SalesList() {
                     )}
                     <td className="px-5 py-3.5 text-right font-bold text-brand-700 tabular-nums">{parseFloat(s.total).toFixed(2)} Bs</td>
                     <td className="px-5 py-3.5 text-slate-500 text-xs">{s.creator?.name || '-'}</td>
-                    {isAdmin && (
-                      <td className="px-5 py-3.5">
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => startEdit(s)}>Editar</Button>
-                          <Button variant="danger" size="sm" onClick={() => setDeletingSale(s)}>Eliminar</Button>
-                        </div>
-                      </td>
-                    )}
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-1">
+                        <EyeButton onClick={() => setPreviewSale(s)} />
+                        {isAdmin && (
+                          <>
+                            <Button variant="ghost" size="sm" onClick={() => startEdit(s)}>Editar</Button>
+                            <Button variant="danger" size="sm" onClick={() => setDeletingSale(s)}>Eliminar</Button>
+                          </>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -544,7 +604,7 @@ export default function SalesList() {
           {/* Mobile cards */}
           <div className="md:hidden space-y-3">
             {sales.map((s) => (
-              <SaleCard key={s.id} sale={s} isAdmin={isAdmin} onEdit={startEdit} onDelete={(sale) => setDeletingSale(sale)} requestMode={requestMode} requestLabel={requestLabel} showMotivos={showMotivosColumn} />
+              <SaleCard key={s.id} sale={s} isAdmin={isAdmin} onPreview={setPreviewSale} onEdit={startEdit} onDelete={(sale) => setDeletingSale(sale)} requestMode={requestMode} requestLabel={requestLabel} showMotivos={showMotivosColumn} />
             ))}
           </div>
 
