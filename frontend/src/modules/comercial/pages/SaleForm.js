@@ -3,6 +3,7 @@ import api from '../../../services/api';
 import { Button, Input, Select, Card, Alert, TotalDisplay } from '../../../components/ui';
 import useRequestTypes from '../../../hooks/useRequestTypes';
 import useMotivos from '../../../hooks/useMotivos';
+import SalePreviewModal from '../../../components/SalePreview';
 
 const SERVICE_TYPES = [
   { value: 'internet', label: 'INTERNET' },
@@ -300,6 +301,23 @@ export default function SaleForm() {
   };
 
   const getMotivoLabel = () => motivoNombreOf(form.motivoId);
+
+  const previewSale = {
+    date: formatDate(form.date),
+    clientCode: form.clientCode,
+    clientName: form.clientName,
+    requestLabel: getRequestLabel(form.requestType),
+    serviceLabel: getServiceLabel(form.serviceType),
+    previousServiceLabel: SERVICE_TYPE_LABELS[form.serviceTypeFrom] || FAMILY_LABELS[previousFamily],
+    previousPlanLabel: selectedPreviousPlan?.label,
+    planLabel: selectedPlan?.label,
+    promotionName: selectedPromotion?.name,
+    installation: effectivePrices.installation.toFixed(2),
+    monthly: effectivePrices.monthly.toFixed(2),
+    total: effectivePrices.total.toFixed(2),
+    motivo: getMotivoLabel(),
+    notes: form.notes,
+  };
 
   return (
     <div className="space-y-6">
@@ -621,49 +639,15 @@ export default function SaleForm() {
       </Card>
 
       {showPreview && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-4">
-            <div className="text-center">
-              <h2 className="text-xl font-black text-slate-900">Confirmar Registro</h2>
-              <p className="text-xs text-slate-400 mt-1">Revise los datos antes de guardar</p>
-            </div>
-            {selectedPlan && (
-              <div className="bg-slate-50 rounded-2xl p-4 space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-slate-400">Fecha:</span><span className="font-medium">{formatDate(form.date)}</span></div>
-                <div className="flex justify-between"><span className="text-slate-400">Kardex:</span><span className="font-medium">{form.clientCode}</span></div>
-                <div className="flex justify-between"><span className="text-slate-400">Cliente:</span><span className="font-medium">{form.clientName}</span></div>
-                <div className="flex justify-between"><span className="text-slate-400">Solicitud:</span><span className="font-medium">{getRequestLabel(form.requestType)}</span></div>
-                {isCambio && selectedPreviousPlan ? (
-                  <>
-                    <div className="flex justify-between"><span className="text-slate-400">Servicio anterior:</span><span className="font-medium text-amber-600">{SERVICE_TYPE_LABELS[form.serviceTypeFrom] || FAMILY_LABELS[previousFamily]}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-400">Plan Anterior:</span><span className="font-medium text-amber-600">{selectedPreviousPlan.label}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-400">Servicio nuevo:</span><span className="font-medium">{getServiceLabel(form.serviceType)}</span></div>
-                  </>
-                ) : (
-                  <div className="flex justify-between"><span className="text-slate-400">Servicio:</span><span className="font-medium">{getServiceLabel(form.serviceType)}</span></div>
-                )}
-                <div className="flex justify-between"><span className="text-slate-400">Plan:</span><span className="font-medium">{selectedPlan.label}</span></div>
-                {selectedPromotion && (
-                  <div className="flex justify-between"><span className="text-slate-400">Promocion:</span><span className="font-medium text-emerald-600">{selectedPromotion.name}</span></div>
-                )}
-                <div className="flex justify-between"><span className="text-slate-400">Instalacion:</span><span className="font-medium">{effectivePrices.installation.toFixed(2)} Bs</span></div>
-                <div className="flex justify-between"><span className="text-slate-400">Mensualidad:</span><span className="font-medium">{effectivePrices.monthly.toFixed(2)} Bs</span></div>
-                <div className="flex justify-between border-t border-slate-200 pt-2"><span className="text-slate-400">Monto:</span><span className="font-bold text-brand-700 text-lg">Bs. {effectivePrices.total.toFixed(2)}</span></div>
-                {getMotivoLabel() && (
-                  <div className="flex justify-between"><span className="text-slate-400">Motivo:</span><span className="font-medium">{getMotivoLabel()}</span></div>
-                )}
-              </div>
-            )}
-            <div className="flex gap-3">
-              <Button type="button" variant="secondary" size="lg" className="flex-1" onClick={() => setShowPreview(false)}>
-                Cancelar
-              </Button>
-              <Button type="button" size="lg" className="flex-1" onClick={handleSubmit} disabled={loading}>
-                {loading ? 'Guardando...' : 'Confirmar'}
-              </Button>
-            </div>
-          </div>
-        </div>
+        <SalePreviewModal
+          sale={previewSale}
+          title="Confirmar Registro"
+          subtitle="Revise los datos antes de guardar"
+          onClose={() => setShowPreview(false)}
+          onConfirm={handleSubmit}
+          confirmLabel="Confirmar"
+          loading={loading}
+        />
       )}
     </div>
   );
