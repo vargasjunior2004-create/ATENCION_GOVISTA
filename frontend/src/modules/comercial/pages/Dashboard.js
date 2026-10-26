@@ -32,7 +32,7 @@ import { Alert, Button, Card, Input, Select } from '../../../components/ui';
 import { useAuth } from '../../../context/AuthContext';
 
 const MOVEMENT_OPTIONS = [
-  { value: 'all', label: 'Todos los movimientos' },
+  { value: 'all', label: 'Todas las solicitudes' },
   { value: 'instalaciones', label: 'Instalaciones' },
   { value: 'retiros', label: 'Retiros' },
   { value: 'cambios_plan', label: 'Cambios de plan' },
@@ -118,7 +118,7 @@ function ChartTooltip({ active, payload, label }) {
   );
 }
 
-function EmptyChart({ message = 'No hay movimientos en este período' }) {
+function EmptyChart({ message = 'No hay solicitudes en este período' }) {
   return (
     <div className="flex h-[280px] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-6 text-center">
       <div>
@@ -266,11 +266,11 @@ export default function Dashboard() {
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <div className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-vista-accent">
-              <TrendingUp className="h-4 w-4" /> Pulso comercial
+              <TrendingUp className="h-4 w-4" /> Gestion comercial
             </div>
             <h1 className="max-w-xl text-3xl font-black tracking-tight sm:text-4xl">Solicitudes de clientes</h1>
             <p className="mt-2 max-w-lg text-sm leading-6 text-green-100/65">
-              Una lectura clara de las altas, retiros y cambios registrados por GO VISTA.
+              Una lectura clara de las solicitudes, retiros y cambios registrados por GO VISTA.
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
@@ -312,7 +312,7 @@ export default function Dashboard() {
             <>
               <Input label="Desde" type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} error={customError} />
               <Input label="Hasta" type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)} />
-              <Select label="Tipo de movimiento" value={movementType} onChange={(event) => setMovementType(event.target.value)}>
+              <Select label="Tipo de solicitud" value={movementType} onChange={(event) => setMovementType(event.target.value)}>
                 {MOVEMENT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </Select>
               <Button type="button" size="md" onClick={applyCustomRange}>Aplicar rango</Button>
@@ -324,7 +324,7 @@ export default function Dashboard() {
             </div>
           )}
           {visiblePeriod !== 'custom' && (
-            <Select label="Tipo de movimiento" value={movementType} onChange={(event) => setMovementType(event.target.value)}>
+            <Select label="Tipo de solicitud" value={movementType} onChange={(event) => setMovementType(event.target.value)}>
               {MOVEMENT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </Select>
           )}
@@ -339,7 +339,7 @@ export default function Dashboard() {
         <Card className="flex min-h-[320px] items-center justify-center p-8">
           <div className="text-center">
             <RefreshCw className="mx-auto mb-3 h-8 w-8 animate-spin text-brand-600" />
-            <p className="text-sm font-semibold text-slate-500">Consultando movimientos reales...</p>
+            <p className="text-sm font-semibold text-slate-500">Consultando solicitudes reales...</p>
           </div>
         </Card>
       ) : stats && (
@@ -352,7 +352,7 @@ export default function Dashboard() {
           </section>
 
           {!hasData ? (
-            <Card className="p-5 sm:p-6"><EmptyChart message="No hay movimientos para analizar" /></Card>
+            <Card className="p-5 sm:p-6"><EmptyChart message="No hay solicitudes para analizar" /></Card>
           ) : (
             <>
               <section className="grid gap-5 xl:grid-cols-[1.35fr_1fr]">
@@ -371,7 +371,7 @@ export default function Dashboard() {
                     </ResponsiveContainer>
                   </div>
                 </ChartCard>
-                <ChartCard eyebrow="Ritmo de actividad" title="Evolución de movimientos">
+                <ChartCard eyebrow="Ritmo de actividad" title="Evolución de solicitudes">
                   <div className="h-[300px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={series} margin={{ top: 4, right: 4, left: -18, bottom: 4 }}>
