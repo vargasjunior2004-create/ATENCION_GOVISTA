@@ -423,7 +423,7 @@ export default function Dashboard() {
           <Card className="flex flex-col gap-4 border-brand-100 bg-brand-50/40 p-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-black text-slate-800">Reportes del día</p>
-              <p className="mt-1 text-xs text-slate-500">Las exportaciones conservan su alcance actual: movimientos de hoy.</p>
+              <p className="mt-1 text-xs text-slate-500">Las exportaciones conservan su alcance actual: solicitudes comerciales de hoy.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" size="sm" disabled={!hasTodaySales} onClick={() => download('xlsx')}><Download className="h-4 w-4" /> Excel</Button>
