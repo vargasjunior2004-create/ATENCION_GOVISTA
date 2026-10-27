@@ -381,7 +381,7 @@ def build_sales_png(from_date, to_date, request_type=None, service_type=None,
     # Title
     title_from = datetime.strptime(from_date, '%Y-%m-%d').strftime('%d/%m/%Y')
     title_to = datetime.strptime(to_date, '%Y-%m-%d').strftime('%d/%m/%Y')
-    draw.text((padding, 15), f'SOLICITUDES COMERCIALES DEL  {title_from} al {title_to}', fill='#1D4ED8', font=font_title)
+    draw.text((padding, 15), f'SOLICITUDES COMERCIALES  {title_from} al {title_to}', fill='#1D4ED8', font=font_title)
 
     # Header row
     y = title_height
