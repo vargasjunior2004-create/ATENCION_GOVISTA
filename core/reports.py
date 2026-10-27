@@ -140,7 +140,7 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
     request_label = (request_type_label(request_type, catalog) if request_type
                      else 'TODAS LAS SOLICITUDES')
     service_label = _service_filter_label(service_type, service_type_from)
-    title = f'SOLICITUDES — {request_label} — {service_label}'
+    title = f'SOLICITUDES COMERCIALES DEL — {request_label} — {service_label}'
 
     story = _report_header(
         Paragraph(f'{title}<br/><font size="9">{title_from} al {title_to}</font>', styles['Title']),
@@ -381,7 +381,7 @@ def build_sales_png(from_date, to_date, request_type=None, service_type=None,
     # Title
     title_from = datetime.strptime(from_date, '%Y-%m-%d').strftime('%d/%m/%Y')
     title_to = datetime.strptime(to_date, '%Y-%m-%d').strftime('%d/%m/%Y')
-    draw.text((padding, 15), f'SOLICITUDES  {title_from} al {title_to}', fill='#1D4ED8', font=font_title)
+    draw.text((padding, 15), f'SOLICITUDES COMERCIALES DEL  {title_from} al {title_to}', fill='#1D4ED8', font=font_title)
 
     # Header row
     y = title_height
