@@ -140,7 +140,7 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
     request_label = (request_type_label(request_type, catalog) if request_type
                      else 'TODAS LAS SOLICITUDES')
     service_label = _service_filter_label(service_type, service_type_from)
-    title = f'SOLICITUDES COMERCIALES DEL — {request_label} — {service_label}'
+    title = f'SOLICITUDES COMERCIALES — {request_label} — {service_label}'
 
     story = _report_header(
         Paragraph(f'{title}<br/><font size="9">{title_from} al {title_to}</font>', styles['Title']),
