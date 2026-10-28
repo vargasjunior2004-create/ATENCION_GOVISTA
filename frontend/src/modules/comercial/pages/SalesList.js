@@ -242,7 +242,7 @@ export default function SalesList() {
 
   const startEdit = (sale) => {
     setEditingSale(sale);
-    setEditForm({ date: sale.date, clientCode: sale.clientCode, clientName: sale.clientName, serviceType: sale.serviceType, requestType: sale.requestType, additionType: sale.additionType || '', planFromId: sale.previousPlan?.id || '', serviceTypeFrom: sale.serviceTypeFrom || '', planId: sale.planId, motivoId: sale.motivo || '', notes: sale.notes || '', appliedInstallation: sale.applied_installation ?? '', appliedMonthly: sale.applied_monthly ?? '' });
+    setEditForm({ date: sale.date, clientCode: sale.clientCode, clientName: sale.clientName, serviceType: sale.serviceType, requestType: sale.requestType, additionType: sale.additionType || '', planFromId: sale.previousPlan?.id || '', serviceTypeFrom: sale.serviceTypeFrom || '', planId: sale.planId, motivoId: sale.motivo || '', notes: sale.notes || '', appliedInstallation: sale.applied_installation ?? '', appliedMonthly: sale.applied_monthly ?? '', debtApplies: Boolean(sale.debtApplies), debtAmount: sale.debtAmount ?? '0.00' });
     setEditError('');
   };
 
@@ -289,14 +289,19 @@ export default function SalesList() {
     setEditError('');
     try {
        const payload = { date: editForm.date, clientCode: editForm.clientCode, clientName: editForm.clientName, serviceType: editForm.serviceType, requestType: editForm.requestType, additionType: editModo === 'adicion' ? editForm.additionType : '', planFromId: editModo === 'cambio_plan' && editForm.planFromId ? Number(editForm.planFromId) : null, serviceTypeFrom: editModo === 'cambio_plan' && editForm.serviceTypeFrom ? editForm.serviceTypeFrom : null, planId: Number(editForm.planId), notes: editForm.notes, appliedInstallation: Number(editForm.appliedInstallation), appliedMonthly: Number(editForm.appliedMonthly) };
+       if (editForm.requestType === 'recontratacion') {
+         payload.debtApplies = editForm.debtApplies;
+         payload.debtAmount = editForm.debtApplies ? Number(editForm.debtAmount) : 0;
+       }
       // Solo se envia si el usuario eligio un motivo; si no, el backend
       // conserva el motivo y el texto del registro original.
       if ((editModo === 'cambio_plan' || editModo === 'retiro') && editForm.motivoId) {
         payload.motivoId = Number(editForm.motivoId);
       }
-      await api.updateSale(editingSale.id, payload);
-      setEditingSale(null);
-      loadSales(page);
+       await api.updateSale(editingSale.id, payload);
+       setEditingSale(null);
+       setMsg('Solicitud actualizada correctamente.');
+       loadSales(page);
     } catch (err) {
       setEditError(err.error || 'Error al editar');
     }
@@ -515,6 +520,17 @@ export default function SalesList() {
                 <Input label="Instalación aplicada (Bs)" name="appliedInstallation" type="number" min="0" step="0.01" value={editForm.appliedInstallation} onChange={handleEditChange} required />
                 <Input label="Mensualidad aplicada (Bs)" name="appliedMonthly" type="number" min="0" step="0.01" value={editForm.appliedMonthly} onChange={handleEditChange} required />
               </div>
+              {editForm.requestType === 'recontratacion' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Select label="¿Tiene adeudo?" name="debtApplies" value={String(editForm.debtApplies)} onChange={(e) => setEditForm((prev) => ({ ...prev, debtApplies: e.target.value === 'true', debtAmount: e.target.value === 'true' ? prev.debtAmount : '0.00' }))}>
+                    <option value="false">No</option>
+                    <option value="true">Sí</option>
+                  </Select>
+                  {editForm.debtApplies && (
+                    <Input label="Adeudo (Bs)" name="debtAmount" type="number" min="0.01" step="0.01" value={editForm.debtAmount} onChange={handleEditChange} required />
+                  )}
+                </div>
+              )}
               {(editModo === 'cambio_plan' || editModo === 'retiro') && (
                 <Select
                   label={editModo === 'retiro' ? 'Motivo del Retiro' : 'Motivo del Cambio'}
