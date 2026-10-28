@@ -346,7 +346,7 @@ export default function Dashboard() {
       ) : stats && (
         <>
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <MetricCard label="Nuevo contrato" count={analytics?.nuevo_contrato?.count} total={analytics?.nuevo_contrato?.total} icon={ArrowUpRight} tone="green" />
+            <MetricCard label="Nuevos contratos" count={analytics?.nuevo_contrato?.count} total={analytics?.nuevo_contrato?.total} icon={ArrowUpRight} tone="green" />
             <MetricCard label="Recontrataciones" count={analytics?.recontrataciones?.count} total={analytics?.recontrataciones?.total} icon={RefreshCw} tone="blue" />
             <MetricCard label="Retiros" count={analytics?.retiros?.count} total={analytics?.retiros?.total} icon={ArrowDownRight} tone="red" />
             <MetricCard label="Cambios de plan" count={analytics?.cambios_plan?.count} total={analytics?.cambios_plan?.total} icon={RefreshCw} tone="blue" />
@@ -367,7 +367,7 @@ export default function Dashboard() {
                         <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                         <Tooltip content={<ChartTooltip />} />
                         <Legend iconType="circle" wrapperStyle={{ fontSize: 11, paddingTop: 12 }} />
-                        <Bar name="Nuevo contrato" dataKey="nuevo_contrato" fill="#12894d" radius={[5, 5, 0, 0]} />
+                        <Bar name="Nuevos contratos" dataKey="nuevo_contrato" fill="#12894d" radius={[5, 5, 0, 0]} />
                         <Bar name="Recontrataciones" dataKey="recontrataciones" fill="#7c3aed" radius={[5, 5, 0, 0]} />
                         <Bar name="Retiros" dataKey="retiros" fill="#e56b5d" radius={[5, 5, 0, 0]} />
                       </BarChart>
