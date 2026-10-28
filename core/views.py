@@ -759,10 +759,31 @@ class SaleDetailView(IsAdminMixin, APIView):
                 sale.promotion = None
                 sale.promotion_name = ''
 
-        # Mismos precios que en el alta: la edicion no puede inventarse
-        # una regla de cobro distinta a la del registro original.
-        installation, monthly, total = resolve_sale_prices(
-            plan, sale.promotion, request_type)
+        # Solo admin puede llegar a esta vista. Permitir importes manuales
+        # para este registro; si no vienen, se conserva el calculo vigente
+        # derivado del plan y la promocion.
+        manual_installation = data.get('appliedInstallation')
+        manual_monthly = data.get('appliedMonthly')
+        if (manual_installation is None) != (manual_monthly is None):
+            return Response(
+                {'error': 'Debe indicar instalación y mensualidad juntas'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if manual_installation is not None:
+            try:
+                installation = Decimal(str(manual_installation))
+                monthly = Decimal(str(manual_monthly))
+            except (InvalidOperation, TypeError, ValueError):
+                return Response(
+                    {'error': 'Los importes no son validos'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if installation < 0 or monthly < 0:
+                return Response(
+                    {'error': 'Los importes no pueden ser negativos'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            total = installation + monthly
+        else:
+            installation, monthly, total = resolve_sale_prices(
+                plan, sale.promotion, request_type)
         sale.applied_installation = installation
         sale.applied_monthly = monthly
         sale.total = total

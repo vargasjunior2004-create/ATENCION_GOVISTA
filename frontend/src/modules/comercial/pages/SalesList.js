@@ -93,7 +93,7 @@ function SaleCard({ sale, isAdmin, onPreview, onEdit, onDelete, requestMode, req
             ? <>{sale.previousPlan.label} <span className="text-amber-500">&rarr;</span> {sale.Plan?.label || '-'}</>
             : (sale.Plan?.label || '-')}
         </span>
-        <span className="font-bold text-brand-700 tabular-nums">{parseFloat(sale.total).toFixed(2)} Bs</span>
+        <span className="font-bold text-brand-700 tabular-nums">{parseFloat(sale.totalToCollect ?? sale.total).toFixed(2)} Bs</span>
       </div>
       {sale.isServiceChange && sale.previousService && (
         <div className="text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-lg px-2 py-1 inline-block">
@@ -173,6 +173,7 @@ export default function SalesList() {
 
   const previewData = (sale) => ({
     date: formatDate(sale.date),
+    requestType: sale.requestType,
     clientCode: sale.clientCode,
     clientName: sale.clientName,
     requestLabel: requestLabel(sale),
@@ -186,6 +187,12 @@ export default function SalesList() {
     installation: sale.applied_installation == null ? null : parseFloat(sale.applied_installation).toFixed(2),
     monthly: sale.applied_monthly == null ? null : parseFloat(sale.applied_monthly).toFixed(2),
     total: parseFloat(sale.total ?? 0).toFixed(2),
+    debtAmount: sale.requestType === 'recontratacion' && sale.debtAmount != null
+      ? parseFloat(sale.debtAmount).toFixed(2) : null,
+    totalToCollect: sale.requestType === 'recontratacion' && sale.totalToCollect != null
+      ? parseFloat(sale.totalToCollect).toFixed(2) : null,
+    equipmentRetained: sale.requestType === 'recontratacion' ? sale.equipmentRetained : null,
+    requiresTechnicalVisit: sale.requestType === 'recontratacion' ? sale.requiresTechnicalVisit : null,
     motivo: sale.changeReason,
     notes: sale.notes,
   });
@@ -235,7 +242,7 @@ export default function SalesList() {
 
   const startEdit = (sale) => {
     setEditingSale(sale);
-    setEditForm({ date: sale.date, clientCode: sale.clientCode, clientName: sale.clientName, serviceType: sale.serviceType, requestType: sale.requestType, additionType: sale.additionType || '', planFromId: sale.previousPlan?.id || '', serviceTypeFrom: sale.serviceTypeFrom || '', planId: sale.planId, motivoId: sale.motivo || '', notes: sale.notes || '' });
+    setEditForm({ date: sale.date, clientCode: sale.clientCode, clientName: sale.clientName, serviceType: sale.serviceType, requestType: sale.requestType, additionType: sale.additionType || '', planFromId: sale.previousPlan?.id || '', serviceTypeFrom: sale.serviceTypeFrom || '', planId: sale.planId, motivoId: sale.motivo || '', notes: sale.notes || '', appliedInstallation: sale.applied_installation ?? '', appliedMonthly: sale.applied_monthly ?? '' });
     setEditError('');
   };
 
@@ -281,7 +288,7 @@ export default function SalesList() {
     e.preventDefault();
     setEditError('');
     try {
-      const payload = { date: editForm.date, clientCode: editForm.clientCode, clientName: editForm.clientName, serviceType: editForm.serviceType, requestType: editForm.requestType, additionType: editModo === 'adicion' ? editForm.additionType : '', planFromId: editModo === 'cambio_plan' && editForm.planFromId ? Number(editForm.planFromId) : null, serviceTypeFrom: editModo === 'cambio_plan' && editForm.serviceTypeFrom ? editForm.serviceTypeFrom : null, planId: Number(editForm.planId), notes: editForm.notes };
+       const payload = { date: editForm.date, clientCode: editForm.clientCode, clientName: editForm.clientName, serviceType: editForm.serviceType, requestType: editForm.requestType, additionType: editModo === 'adicion' ? editForm.additionType : '', planFromId: editModo === 'cambio_plan' && editForm.planFromId ? Number(editForm.planFromId) : null, serviceTypeFrom: editModo === 'cambio_plan' && editForm.serviceTypeFrom ? editForm.serviceTypeFrom : null, planId: Number(editForm.planId), notes: editForm.notes, appliedInstallation: Number(editForm.appliedInstallation), appliedMonthly: Number(editForm.appliedMonthly) };
       // Solo se envia si el usuario eligio un motivo; si no, el backend
       // conserva el motivo y el texto del registro original.
       if ((editModo === 'cambio_plan' || editModo === 'retiro') && editForm.motivoId) {
@@ -504,6 +511,10 @@ export default function SalesList() {
                   </optgroup>
                 )}
               </Select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input label="Instalación aplicada (Bs)" name="appliedInstallation" type="number" min="0" step="0.01" value={editForm.appliedInstallation} onChange={handleEditChange} required />
+                <Input label="Mensualidad aplicada (Bs)" name="appliedMonthly" type="number" min="0" step="0.01" value={editForm.appliedMonthly} onChange={handleEditChange} required />
+              </div>
               {(editModo === 'cambio_plan' || editModo === 'retiro') && (
                 <Select
                   label={editModo === 'retiro' ? 'Motivo del Retiro' : 'Motivo del Cambio'}
@@ -562,7 +573,7 @@ export default function SalesList() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100">
-                  {['Fecha', 'Cod.', 'Nombre', 'Solicitud', 'Plan', ...(showMotivosColumn ? ['Motivo'] : []), 'Total', 'Por', ''].map((h) => (
+                  {['Fecha', 'Cod.', 'Nombre', 'Solicitud', 'Plan', ...(showMotivosColumn ? ['Motivo'] : []), 'Total cobro', 'Por', ''].map((h) => (
                     <th key={h} className="text-left px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">{h}</th>
                   ))}
                 </tr>
@@ -582,7 +593,7 @@ export default function SalesList() {
                     {showMotivosColumn && (
                       <td className="px-5 py-3.5 text-slate-500 text-xs">{s.changeReason || '—'}</td>
                     )}
-                    <td className="px-5 py-3.5 text-right font-bold text-brand-700 tabular-nums">{parseFloat(s.total).toFixed(2)} Bs</td>
+                    <td className="px-5 py-3.5 text-right font-bold text-brand-700 tabular-nums">{parseFloat(s.totalToCollect ?? s.total).toFixed(2)} Bs</td>
                     <td className="px-5 py-3.5 text-slate-500 text-xs">{s.creator?.name || '-'}</td>
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-1">

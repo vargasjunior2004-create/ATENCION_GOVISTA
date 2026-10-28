@@ -121,3 +121,26 @@ class RecontratacionTests(TestCase):
 
         self.assertEqual(all_sales.count(), 2)
         self.assertEqual(technical_sales.count(), 1)
+
+    def test_only_admin_can_update_record_amounts(self):
+        created = self._create(self.operator)
+        self.assertEqual(created.status_code, 201, created.content)
+        sale_id = created.json()['id']
+
+        forbidden = self.client.put(
+            f'/api/sales/{sale_id}',
+            {'appliedInstallation': 10, 'appliedMonthly': 20},
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Bearer {self._token(self.operator)}')
+        self.assertEqual(forbidden.status_code, 403)
+
+        updated = self.client.put(
+            f'/api/sales/{sale_id}',
+            {'appliedInstallation': '50.00', 'appliedMonthly': '300.00'},
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Bearer {self._token(self.admin)}')
+        self.assertEqual(updated.status_code, 200, updated.content)
+        data = updated.json()
+        self.assertEqual(Decimal(data['applied_installation']), Decimal('50.00'))
+        self.assertEqual(Decimal(data['applied_monthly']), Decimal('300.00'))
+        self.assertEqual(Decimal(data['total']), Decimal('350.00'))
