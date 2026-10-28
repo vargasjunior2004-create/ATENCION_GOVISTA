@@ -185,7 +185,7 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
         row += [
             f'{float(s.total):.2f}',
             f'{float(s.debt_amount or 0):.2f}',
-            f'{float((s.total or 0) + (s.debt_amount or 0)):.2f}',
+            f'{float(s.total or 0):.2f}',
             s.createdBy.name if s.createdBy else '',
         ]
         rows.append([Paragraph(escape(str(v)), cell_style) for v in row])
@@ -266,7 +266,7 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
         data_row += [
             float(s.total),
             float(s.debt_amount or 0),
-            float((s.total or 0) + (s.debt_amount or 0)),
+            float(s.total or 0),
             s.createdBy.name if s.createdBy else '',
         ]
 
@@ -380,7 +380,7 @@ def build_sales_png(from_date, to_date, request_type=None, service_type=None,
         values += [
             f'{float(s.total):.2f}',
             f'{float(s.debt_amount or 0):.2f}',
-            f'{float((s.total or 0) + (s.debt_amount or 0)):.2f}',
+            f'{float(s.total or 0):.2f}',
             s.createdBy.name if s.createdBy else '',
         ]
         cells = [

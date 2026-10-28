@@ -38,11 +38,10 @@ export function SalePreviewDetails({ sale }) {
       {sale.promotionName && <PreviewRow label="Promoción" value={sale.promotionName} />}
       <PreviewRow label="Instalación" value={amountLabel(sale.installation)} />
       <PreviewRow label="Mensualidad" value={amountLabel(sale.monthly)} />
-      <PreviewRow label="Monto" value={sale.total == null ? '—' : `Bs. ${sale.total}`} emphasis />
+      <PreviewRow label="Monto total" value={sale.total == null ? '—' : `Bs. ${sale.total}`} emphasis />
       {isRehire && sale.debtAmount != null && (
         <>
           <PreviewRow label="Adeudo" value={amountLabel(sale.debtAmount)} />
-          <PreviewRow label="Total a cobrar" value={amountLabel(sale.totalToCollect)} emphasis />
         </>
       )}
       {isRehire && sale.equipmentRetained != null && (
