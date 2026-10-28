@@ -144,3 +144,17 @@ class RecontratacionTests(TestCase):
         self.assertEqual(Decimal(data['applied_installation']), Decimal('50.00'))
         self.assertEqual(Decimal(data['applied_monthly']), Decimal('300.00'))
         self.assertEqual(Decimal(data['total']), Decimal('350.00'))
+
+        debt_updated = self.client.put(
+            f'/api/sales/{sale_id}',
+            {
+                'appliedInstallation': '50.00',
+                'appliedMonthly': '300.00',
+                'debtApplies': True,
+                'debtAmount': '25.00',
+            },
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Bearer {self._token(self.admin)}')
+        self.assertEqual(debt_updated.status_code, 200, debt_updated.content)
+        self.assertEqual(
+            Decimal(debt_updated.json()['total']), Decimal('375.00'))
