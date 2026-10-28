@@ -268,8 +268,8 @@ class DashboardTests(TestCase):
         r = self.c.get('/api/dashboard/stats', HTTP_AUTHORIZATION=f'Bearer {token}')
         data = _json(r)
         self.assertEqual(data['movimientos']['today']['count'], 3)
-        # Aqui si se agrupan: nuevo contrato + recontratacion = instalaciones
-        self.assertEqual(data['instalaciones']['today']['count'], 2)
+        self.assertEqual(data['nuevo_contrato']['today']['count'], 1)
+        self.assertEqual(data['recontrataciones']['today']['count'], 1)
         self.assertEqual(data['retiros']['today']['count'], 1)
 
     def test_dashboard_no_agrupa_cambio_plan_ni_adicion(self):
@@ -322,16 +322,22 @@ class DashboardTests(TestCase):
 
         self.assertEqual(analytics['period']['from'], yesterday.isoformat())
         self.assertEqual(analytics['period']['to'], today.isoformat())
-        self.assertEqual(analytics['instalaciones']['count'], 1)
+        self.assertEqual(analytics['nuevo_contrato']['count'], 1)
+        self.assertEqual(analytics['recontrataciones']['count'], 0)
         self.assertEqual(analytics['retiros']['count'], 1)
         self.assertEqual(analytics['cambios_plan']['count'], 1)
         self.assertEqual(analytics['balance_neto'], 0)
         self.assertEqual(len(analytics['series']), 2)
-        self.assertEqual(analytics['series'][0]['instalaciones'], 1)
+        self.assertEqual(analytics['series'][0]['nuevo_contrato'], 1)
+        self.assertEqual(analytics['series'][0]['recontrataciones'], 0)
         self.assertEqual(analytics['series'][1]['retiros'], 1)
         self.assertEqual(
             {item['serviceType'] for item in analytics['servicios']},
             {'internet', 'tv_digital', 'combo_digital'},
+        )
+        self.assertEqual(
+            sum(item['count'] for item in analytics['categorias']),
+            4,
         )
 
     def test_dashboard_analytics_movement_filter_excludes_other_categories(self):
@@ -352,7 +358,8 @@ class DashboardTests(TestCase):
         self.assertEqual(analytics['period']['movement_type'], 'cambios_plan')
         self.assertEqual(analytics['series'][0]['movimientos'], 1)
         self.assertEqual(analytics['cambios_plan']['count'], 1)
-        self.assertEqual(analytics['instalaciones']['count'], 0)
+        self.assertEqual(analytics['nuevo_contrato']['count'], 0)
+        self.assertEqual(analytics['recontrataciones']['count'], 0)
         self.assertEqual(analytics['retiros']['count'], 0)
 
     def test_dashboard_analytics_rejects_invalid_ranges_and_filters(self):

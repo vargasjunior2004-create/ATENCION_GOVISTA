@@ -33,7 +33,8 @@ import { useAuth } from '../../../context/AuthContext';
 
 const MOVEMENT_OPTIONS = [
   { value: 'all', label: 'Todas las solicitudes' },
-  { value: 'instalaciones', label: 'Instalaciones' },
+  { value: 'nuevo_contrato', label: 'Nuevo contrato' },
+  { value: 'recontrataciones', label: 'Recontrataciones' },
   { value: 'retiros', label: 'Retiros' },
   { value: 'cambios_plan', label: 'Cambios de plan' },
   { value: 'adiciones', label: 'Adiciones' },
@@ -47,7 +48,7 @@ const PERIOD_OPTIONS = [
   ['custom', 'Rango personalizado'],
 ];
 
-const CHART_COLORS = ['#12894d', '#e56b5d', '#3b82f6', '#d69e2e', '#64748b'];
+const CHART_COLORS = ['#12894d', '#7c3aed', '#e56b5d', '#3b82f6', '#d69e2e', '#64748b'];
 
 function todayInBolivia() {
   return new Intl.DateTimeFormat('en-CA', {
@@ -344,11 +345,12 @@ export default function Dashboard() {
         </Card>
       ) : stats && (
         <>
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <MetricCard label="Instalaciones" count={analytics?.instalaciones?.count} total={analytics?.instalaciones?.total} icon={ArrowUpRight} tone="green" />
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            <MetricCard label="Nuevo contrato" count={analytics?.nuevo_contrato?.count} total={analytics?.nuevo_contrato?.total} icon={ArrowUpRight} tone="green" />
+            <MetricCard label="Recontrataciones" count={analytics?.recontrataciones?.count} total={analytics?.recontrataciones?.total} icon={RefreshCw} tone="blue" />
             <MetricCard label="Retiros" count={analytics?.retiros?.count} total={analytics?.retiros?.total} icon={ArrowDownRight} tone="red" />
             <MetricCard label="Cambios de plan" count={analytics?.cambios_plan?.count} total={analytics?.cambios_plan?.total} icon={RefreshCw} tone="blue" />
-            <MetricCard label="Balance neto" count={analytics?.balance_neto} icon={Activity} tone="slate" detail="Instalaciones menos retiros" />
+            <MetricCard label="Balance neto" count={analytics?.balance_neto} icon={Activity} tone="slate" detail="Altas comerciales menos retiros" />
           </section>
 
           {!hasData ? (
@@ -356,7 +358,7 @@ export default function Dashboard() {
           ) : (
             <>
               <section className="grid gap-5 xl:grid-cols-[1.35fr_1fr]">
-                <ChartCard eyebrow="Comparativa diaria" title="Instalaciones frente a retiros">
+                <ChartCard eyebrow="Comparativa diaria" title="Altas comerciales frente a retiros">
                   <div className="h-[300px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={series} margin={{ top: 4, right: 4, left: -18, bottom: 4 }}>
@@ -365,7 +367,8 @@ export default function Dashboard() {
                         <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                         <Tooltip content={<ChartTooltip />} />
                         <Legend iconType="circle" wrapperStyle={{ fontSize: 11, paddingTop: 12 }} />
-                        <Bar name="Instalaciones" dataKey="instalaciones" fill="#12894d" radius={[5, 5, 0, 0]} />
+                        <Bar name="Nuevo contrato" dataKey="nuevo_contrato" fill="#12894d" radius={[5, 5, 0, 0]} />
+                        <Bar name="Recontrataciones" dataKey="recontrataciones" fill="#7c3aed" radius={[5, 5, 0, 0]} />
                         <Bar name="Retiros" dataKey="retiros" fill="#e56b5d" radius={[5, 5, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
