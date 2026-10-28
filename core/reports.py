@@ -159,7 +159,7 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
               'PLAN ANTERIOR', 'PLAN ACTUAL']
     if show_motivos:
         header.append('MOTIVO')
-    header += ['MONTO', 'ADEUDO', 'OPERADOR']
+    header += ['MONTO', 'OPERADOR']
 
     # La tabla tiene que caber en A4 horizontal aunque los planes tengan
     # nombres largos. Los Paragraph hacen wrap dentro de su columna.
@@ -184,15 +184,14 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
             row.append(s.changeReason or '')
         row += [
             f'{float(s.total):.2f}',
-            f'{float(s.debt_amount or 0):.2f}',
             s.createdBy.name if s.createdBy else '',
         ]
         rows.append([Paragraph(escape(str(v)), cell_style) for v in row])
 
     if show_motivos:
-        col_widths = [45, 52, 88, 80, 66, 88, 88, 60, 44, 60, 70]
+        col_widths = [45, 52, 88, 80, 66, 88, 88, 60, 44, 70]
     else:
-        col_widths = [42, 46, 80, 72, 58, 72, 72, 42, 50, 64]
+        col_widths = [42, 46, 80, 72, 58, 72, 72, 42, 64]
 
     table = Table(rows, colWidths=col_widths, repeatRows=1)
     table.setStyle(TableStyle([
@@ -228,7 +227,7 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
                'PLAN ANTERIOR', 'PLAN ACTUAL']
     if show_motivos:
         headers.append('MOTIVO')
-    headers += ['MONTO', 'ADEUDO', 'OPERADOR']
+    headers += ['MONTO', 'OPERADOR']
 
     header_font = Font(bold=True, color='FFFFFF')
     header_fill = PatternFill('solid', fgColor='1D4ED8')
@@ -264,7 +263,6 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
             data_row.append(s.changeReason or '')
         data_row += [
             float(s.total),
-            float(s.debt_amount or 0),
             s.createdBy.name if s.createdBy else '',
         ]
 
@@ -277,7 +275,7 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
     column_widths = [14, 14, 35, 24, 20, 20, 20]
     if show_motivos:
         column_widths.append(30)
-    column_widths += [14, 14, 20]
+    column_widths += [14, 20]
     for i, width in enumerate(column_widths, 1):
         ws.column_dimensions[chr(64 + i)].width = width
 
@@ -339,8 +337,8 @@ def build_sales_png(from_date, to_date, request_type=None, service_type=None,
     if show_motivos:
         headers.append('MOTIVO')
         col_widths.append(200)
-    headers += ['MONTO', 'ADEUDO', 'OPERADOR']
-    col_widths += [120, 120, 240]
+    headers += ['MONTO', 'OPERADOR']
+    col_widths += [120, 240]
     row_height = 40
     padding = 16
 
@@ -377,7 +375,6 @@ def build_sales_png(from_date, to_date, request_type=None, service_type=None,
             values.append(s.changeReason or '')
         values += [
             f'{float(s.total):.2f}',
-            f'{float(s.debt_amount or 0):.2f}',
             s.createdBy.name if s.createdBy else '',
         ]
         cells = [
