@@ -319,6 +319,7 @@ export default function SaleForm() {
 
   const previewSale = {
     date: formatDate(form.date),
+    requestType: form.requestType,
     clientCode: form.clientCode,
     clientName: form.clientName,
     requestLabel: getRequestLabel(form.requestType),
@@ -330,10 +331,10 @@ export default function SaleForm() {
     installation: effectivePrices.installation.toFixed(2),
     monthly: effectivePrices.monthly.toFixed(2),
     total: effectivePrices.total.toFixed(2),
-    debtAmount: isRecontratacion && form.debtApplies ? Number(form.debtAmount || 0).toFixed(2) : '0.00',
+    debtAmount: isRecontratacion ? Number(form.debtAmount || 0).toFixed(2) : null,
     totalToCollect: isRecontratacion
       ? (effectivePrices.total + (form.debtApplies ? Number(form.debtAmount || 0) : 0)).toFixed(2)
-      : effectivePrices.total.toFixed(2),
+      : null,
     equipmentRetained: isRecontratacion ? form.equipmentRetained : null,
     requiresTechnicalVisit: isRecontratacion ? form.requiresTechnicalVisit : null,
     motivo: getMotivoLabel(),

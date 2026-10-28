@@ -17,6 +17,7 @@ function amountLabel(value) {
 
 export function SalePreviewDetails({ sale }) {
   const isChange = Boolean(sale.previousPlanLabel);
+  const isRehire = sale.requestType === 'recontratacion';
 
   return (
     <div className="bg-slate-50 rounded-2xl p-4 space-y-2 text-sm">
@@ -38,16 +39,16 @@ export function SalePreviewDetails({ sale }) {
       <PreviewRow label="Instalación" value={amountLabel(sale.installation)} />
       <PreviewRow label="Mensualidad" value={amountLabel(sale.monthly)} />
       <PreviewRow label="Monto" value={sale.total == null ? '—' : `Bs. ${sale.total}`} emphasis />
-      {sale.debtAmount != null && (
+      {isRehire && sale.debtAmount != null && (
         <>
           <PreviewRow label="Adeudo" value={amountLabel(sale.debtAmount)} />
           <PreviewRow label="Total a cobrar" value={amountLabel(sale.totalToCollect)} emphasis />
         </>
       )}
-      {sale.equipmentRetained != null && (
+      {isRehire && sale.equipmentRetained != null && (
         <PreviewRow label="Conserva router/ONU" value={sale.equipmentRetained ? 'Sí' : 'No'} />
       )}
-      {sale.requiresTechnicalVisit != null && (
+      {isRehire && sale.requiresTechnicalVisit != null && (
         <PreviewRow label="Requiere visita técnica" value={sale.requiresTechnicalVisit ? 'Sí' : 'No'} />
       )}
       {sale.motivo && <PreviewRow label="Motivo" value={sale.motivo} />}
