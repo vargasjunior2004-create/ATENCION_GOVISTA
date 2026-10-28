@@ -111,7 +111,7 @@ class DashboardPdfView(APIView):
 
     def get(self, request):
         today = timezone.localdate().isoformat()
-        buf = build_sales_pdf(today, today, technical_only=True)
+        buf = build_sales_pdf(today, today)
         return _pdf_response(buf, f'planilla-{today}-{today}.pdf')
 
 
@@ -122,7 +122,7 @@ class DashboardXlsxView(APIView):
 
     def get(self, request):
         today = timezone.localdate().isoformat()
-        buf = build_sales_xlsx(today, today, technical_only=True)
+        buf = build_sales_xlsx(today, today)
         response = HttpResponse(
             buf.getvalue(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -137,7 +137,7 @@ class DashboardPngView(APIView):
 
     def get(self, request):
         today = timezone.localdate().isoformat()
-        buf = build_sales_png(today, today, technical_only=True)
+        buf = build_sales_png(today, today)
         response = HttpResponse(buf.getvalue(), content_type='image/png')
         response['Content-Disposition'] = f'attachment; filename="foto-{today}-{today}.png"'
         return response

@@ -4,7 +4,9 @@ from datetime import date
 from django.test import TestCase, Client
 
 from .models import Plan, Sale, User
-from .reports import _sales_queryset
+from .reports import (
+    _sales_queryset, build_sales_pdf, build_sales_png, build_sales_xlsx,
+)
 
 
 class RecontratacionTests(TestCase):
@@ -121,6 +123,14 @@ class RecontratacionTests(TestCase):
 
         self.assertEqual(all_sales.count(), 2)
         self.assertEqual(technical_sales.count(), 1)
+
+        commercial_builders = (
+            build_sales_pdf, build_sales_xlsx, build_sales_png)
+        for builder in commercial_builders:
+            with self.subTest(builder=builder.__name__):
+                report = builder(
+                    date.today().isoformat(), date.today().isoformat())
+                self.assertTrue(report.getvalue())
 
     def test_only_admin_can_update_record_amounts(self):
         created = self._create(self.operator)
