@@ -282,6 +282,14 @@ class SaleSerializer(serializers.ModelSerializer):
     previousService = serializers.SerializerMethodField()
     isServiceChange = serializers.SerializerMethodField()
     motivoNombre = serializers.SerializerMethodField()
+    equipmentRetained = serializers.BooleanField(
+        source='equipment_retained', read_only=True)
+    requiresTechnicalVisit = serializers.BooleanField(
+        source='requires_technical_visit', read_only=True)
+    debtApplies = serializers.BooleanField(source='debt_applies', read_only=True)
+    debtAmount = serializers.DecimalField(
+        source='debt_amount', max_digits=12, decimal_places=2, read_only=True)
+    totalToCollect = serializers.SerializerMethodField()
 
     class Meta:
         model = Sale
@@ -289,9 +297,12 @@ class SaleSerializer(serializers.ModelSerializer):
                   'requestType', 'additionType', 'changeReason', 'motivo',
                   'motivoNombre', 'planFrom',
                   'serviceTypeFrom', 'previousService', 'isServiceChange',
-                  'totalFrom', 'notes', 'planId', 'total', 'Plan', 'creator',
-                  'promotion', 'promotion_name',
-                  'applied_installation', 'applied_monthly', 'previousPlan']
+                   'totalFrom', 'notes', 'planId', 'total', 'Plan', 'creator',
+                   'promotion', 'promotion_name',
+                   'applied_installation', 'applied_monthly', 'previousPlan']
+        fields = fields + [
+            'equipmentRetained', 'requiresTechnicalVisit', 'debtApplies',
+            'debtAmount', 'totalToCollect']
 
     def get_motivoNombre(self, obj):
         """Nombre del motivo: el snapshot si existe, o el texto historico."""
@@ -329,6 +340,9 @@ class SaleSerializer(serializers.ModelSerializer):
     def get_creator(self, obj):
         return {'id': obj.createdBy.id, 'name': obj.createdBy.name}
 
+    def get_totalToCollect(self, obj):
+        return (obj.total or Decimal('0')) + (obj.debt_amount or Decimal('0'))
+
 
 class SaleCreateSerializer(serializers.Serializer):
     """Crea una venta. El total se calcula en el servidor a partir del plan."""
@@ -353,6 +367,15 @@ class SaleCreateSerializer(serializers.Serializer):
         required=False, allow_blank=True, default='')
     planFromId = serializers.IntegerField(required=False, allow_null=True)
     motivoId = serializers.IntegerField(required=False, allow_null=True)
+    equipmentRetained = serializers.BooleanField(
+        source='equipment_retained', required=False, allow_null=True)
+    requiresTechnicalVisit = serializers.BooleanField(
+        source='requires_technical_visit', required=False, allow_null=True)
+    debtApplies = serializers.BooleanField(
+        source='debt_applies', required=False, default=False)
+    debtAmount = serializers.DecimalField(
+        source='debt_amount', max_digits=12, decimal_places=2,
+        required=False, allow_null=True, default=Decimal('0'))
 
     def validate(self, attrs):
         catalog = request_type_catalog()
@@ -365,6 +388,36 @@ class SaleCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {'requestType': 'El tipo de solicitud esta inactivo'})
         mode = tipo.modo
+
+        is_rehire = request_type == 'recontratacion'
+        equipment_retained = attrs.get('equipment_retained')
+        requires_technical_visit = attrs.get('requires_technical_visit')
+        debt_applies = attrs.get('debt_applies', False)
+        debt_amount = attrs.get('debt_amount')
+
+        if is_rehire:
+            if equipment_retained is None:
+                raise serializers.ValidationError(
+                    {'equipmentRetained': 'Indique si conserva el router/ONU'})
+            if requires_technical_visit is None:
+                raise serializers.ValidationError(
+                    {'requiresTechnicalVisit': 'Indique si requiere visita tecnica'})
+            if debt_applies:
+                if debt_amount is None or debt_amount <= 0:
+                    raise serializers.ValidationError(
+                        {'debtAmount': 'Ingrese un adeudo mayor que cero'})
+            elif debt_amount not in (None, Decimal('0')):
+                raise serializers.ValidationError(
+                    {'debtAmount': 'El adeudo debe ser cero si no aplica'})
+            attrs['debt_amount'] = debt_amount or Decimal('0')
+        else:
+            if debt_applies or (debt_amount not in (None, Decimal('0'))):
+                raise serializers.ValidationError(
+                    {'debtAmount': 'El adeudo solo aplica a recontrataciones'})
+            attrs['equipment_retained'] = None
+            attrs['requires_technical_visit'] = None
+            attrs['debt_applies'] = False
+            attrs['debt_amount'] = Decimal('0')
 
         try:
             plan = Plan.objects.get(id=attrs['planId'], active=True)
@@ -493,6 +546,10 @@ class SaleCreateSerializer(serializers.Serializer):
             promotion_name=promotion.name if promotion else '',
             applied_installation=installation,
             applied_monthly=monthly,
+            equipment_retained=validated_data.get('equipment_retained'),
+            requires_technical_visit=validated_data.get('requires_technical_visit'),
+            debt_applies=validated_data.get('debt_applies', False),
+            debt_amount=validated_data.get('debt_amount', Decimal('0')),
             createdBy=user,
         )
 

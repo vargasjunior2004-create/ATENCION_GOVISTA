@@ -257,7 +257,9 @@ class DashboardTests(TestCase):
         self.c.post('/api/sales', {
             'clientCode': 'D003', 'clientName': 'DASH3',
             'serviceType': 'internet', 'requestType': 'recontratacion',
-            'planId': self.plan.id
+            'planId': self.plan.id, 'equipmentRetained': True,
+            'requiresTechnicalVisit': False, 'debtApplies': False,
+            'debtAmount': 0
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.c.post('/api/sales', {
             'clientCode': 'D002', 'clientName': 'DASH2',
