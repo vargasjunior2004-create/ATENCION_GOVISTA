@@ -22,8 +22,8 @@ from .serializers import (
     TipoSolicitudPublicSerializer, MotivoSerializer, MotivoPublicSerializer,
 )
 from .domain import (
-    request_type_mode, request_type_catalog, codes_with_modes,
-    MODOS_INSTALACION, MODO_RETIRO, MODO_CAMBIO_PLAN, MODO_ADICION,
+    request_type_mode, request_type_catalog,
+    MODO_RETIRO, MODO_CAMBIO_PLAN, MODO_ADICION,
     MODO_SIMPLE,
 )
 from .reports import build_sales_pdf, build_sales_xlsx
@@ -785,7 +785,8 @@ class UserDetailView(IsAdminMixin, APIView):
 
 class DashboardStatsView(APIView):
     MOVEMENT_TYPES = {
-        'all', 'instalaciones', 'retiros', 'cambios_plan',
+        'all', 'nuevo_contrato', 'recontrataciones', 'instalaciones',
+        'retiros', 'cambios_plan',
         'adiciones', 'otros',
     }
 
@@ -811,18 +812,32 @@ class DashboardStatsView(APIView):
 
     @staticmethod
     def _category_codes(catalog):
+        # Estos dos tipos comparten el modo "nuevo", pero son categorías
+        # comerciales distintas y deben medirse por separado.
         categories = {
-            'instalaciones': codes_with_modes(MODOS_INSTALACION, catalog),
-            'retiros': codes_with_modes((MODO_RETIRO,), catalog),
-            'cambios_plan': codes_with_modes((MODO_CAMBIO_PLAN,), catalog),
-            'adiciones': codes_with_modes((MODO_ADICION,), catalog),
+            'nuevo_contrato': [
+                code for code in catalog if code == 'nuevo_contrato'],
+            'recontrataciones': [
+                code for code in catalog if code == 'recontratacion'],
         }
-        known = {
-            code for codes in categories.values() for code in codes
-        }
+        classified = set(categories['nuevo_contrato']) | set(
+            categories['recontrataciones'])
+        for name, mode in (
+            ('retiros', MODO_RETIRO),
+            ('cambios_plan', MODO_CAMBIO_PLAN),
+            ('adiciones', MODO_ADICION),
+        ):
+            categories[name] = [
+                code for code, tipo in catalog.items()
+                if code not in classified and tipo.modo == mode]
+            classified.update(categories[name])
+        # Compatibilidad para consumidores antiguos del endpoint. No se
+        # expone como categoría nueva ni se incluye en el desglose.
+        categories['instalaciones'] = (
+            categories['nuevo_contrato'] + categories['recontrataciones'])
         categories['otros'] = [
             code for code, tipo in catalog.items()
-            if code not in known and tipo.modo == MODO_SIMPLE
+            if code not in classified and tipo.modo == MODO_SIMPLE
         ]
         return categories
 
@@ -844,6 +859,7 @@ class DashboardStatsView(APIView):
         category_querysets = {
             name: queryset.filter(requestType__in=codes)
             for name, codes in categories.items()
+            if name != 'instalaciones'
         }
         summaries = {
             name: cls._summary(category_qs)
@@ -852,8 +868,10 @@ class DashboardStatsView(APIView):
 
         daily_rows = queryset.values('date').annotate(
             count=Count('id'),
-            installations=Count(
-                'id', filter=Q(requestType__in=categories['instalaciones'])),
+            nuevo_contrato=Count(
+                'id', filter=Q(requestType__in=categories['nuevo_contrato'])),
+            recontrataciones=Count(
+                'id', filter=Q(requestType__in=categories['recontrataciones'])),
             retiros=Count(
                 'id', filter=Q(requestType__in=categories['retiros'])),
             cambios_plan=Count(
@@ -872,7 +890,8 @@ class DashboardStatsView(APIView):
             series.append({
                 'date': current.isoformat(),
                 'movimientos': row.get('count', 0),
-                'instalaciones': row.get('installations', 0),
+                'nuevo_contrato': row.get('nuevo_contrato', 0),
+                'recontrataciones': row.get('recontrataciones', 0),
                 'retiros': row.get('retiros', 0),
                 'cambios_plan': row.get('cambios_plan', 0),
                 'adiciones': row.get('adiciones', 0),
@@ -903,7 +922,8 @@ class DashboardStatsView(APIView):
             {
                 'type': name,
                 'label': {
-                    'instalaciones': 'Instalaciones',
+                    'nuevo_contrato': 'Nuevo contrato',
+                    'recontrataciones': 'Recontrataciones',
                     'retiros': 'Retiros',
                     'cambios_plan': 'Cambios de plan',
                     'adiciones': 'Adiciones',
@@ -911,7 +931,7 @@ class DashboardStatsView(APIView):
                 }[name],
                 **summaries[name],
             }
-            for name in ('instalaciones', 'retiros', 'cambios_plan',
+            for name in ('nuevo_contrato', 'recontrataciones', 'retiros', 'cambios_plan',
                          'adiciones', 'otros')
         ]
 
@@ -922,11 +942,13 @@ class DashboardStatsView(APIView):
                 'movement_type': movement_type,
                 'granularity': 'day',
             },
-            'instalaciones': summaries['instalaciones'],
+            'nuevo_contrato': summaries['nuevo_contrato'],
+            'recontrataciones': summaries['recontrataciones'],
             'retiros': summaries['retiros'],
             'cambios_plan': summaries['cambios_plan'],
             'balance_neto': (
-                summaries['instalaciones']['count']
+                summaries['nuevo_contrato']['count']
+                + summaries['recontrataciones']['count']
                 - summaries['retiros']['count']
             ),
             'series': series,
@@ -960,13 +982,16 @@ class DashboardStatsView(APIView):
                 from_date = to_date = today
 
             all_sales = Sale.objects.all()
-            # Instalaciones y retiros se derivan del MODO de cada tipo,
-            # no de una lista de codigos. Un tipo nuevo entra en la
-            # categoria que su modo declare, sin tocar esta vista.
+            # Retiros y cambios se derivan del MODO del catálogo. Los dos
+            # tipos de alta comerciales se separan por su código histórico.
             catalog = request_type_catalog()
             categories = self._category_codes(catalog)
             installations = all_sales.filter(
                 requestType__in=categories['instalaciones'])
+            new_contracts = all_sales.filter(
+                requestType__in=categories['nuevo_contrato'])
+            rehires = all_sales.filter(
+                requestType__in=categories['recontrataciones'])
             retiro_codes = categories['retiros']
 
             def stats(qs, start_date, end_date):
@@ -991,6 +1016,16 @@ class DashboardStatsView(APIView):
                     'today': stats(installations, today, today),
                     'week': stats(installations, week_start, today) if is_admin else empty,
                     'month': stats(installations, month_start, today) if is_admin else empty,
+                },
+                'nuevo_contrato': {
+                    'today': stats(new_contracts, today, today),
+                    'week': stats(new_contracts, week_start, today) if is_admin else empty,
+                    'month': stats(new_contracts, month_start, today) if is_admin else empty,
+                },
+                'recontrataciones': {
+                    'today': stats(rehires, today, today),
+                    'week': stats(rehires, week_start, today) if is_admin else empty,
+                    'month': stats(rehires, month_start, today) if is_admin else empty,
                 },
                 'retiros': {
                     'today': retiros_stats(today, today),
