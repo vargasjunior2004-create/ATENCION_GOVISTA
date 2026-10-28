@@ -33,7 +33,7 @@ import { useAuth } from '../../../context/AuthContext';
 
 const MOVEMENT_OPTIONS = [
   { value: 'all', label: 'Todas las solicitudes' },
-  { value: 'nuevo_contrato', label: 'Nuevo contrato' },
+  { value: 'nuevo_contrato', label: 'Nuevos contratos' },
   { value: 'recontrataciones', label: 'Recontrataciones' },
   { value: 'retiros', label: 'Retiros' },
   { value: 'cambios_plan', label: 'Cambios de plan' },
