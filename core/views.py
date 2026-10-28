@@ -784,6 +784,8 @@ class SaleDetailView(IsAdminMixin, APIView):
         else:
             installation, monthly, total = resolve_sale_prices(
                 plan, sale.promotion, request_type)
+        if is_rehire:
+            total += debt_amount
         sale.applied_installation = installation
         sale.applied_monthly = monthly
         sale.total = total

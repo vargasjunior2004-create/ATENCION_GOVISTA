@@ -209,6 +209,9 @@ export default function SaleForm() {
   };
 
   const effectivePrices = getEffectivePrices();
+  const debtValue = isRecontratacion && form.debtApplies
+    ? Number(form.debtAmount || 0) : 0;
+  const totalWithDebt = effectivePrices.total + debtValue;
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -330,10 +333,10 @@ export default function SaleForm() {
     promotionName: selectedPromotion?.name,
     installation: effectivePrices.installation.toFixed(2),
     monthly: effectivePrices.monthly.toFixed(2),
-    total: effectivePrices.total.toFixed(2),
+    total: totalWithDebt.toFixed(2),
     debtAmount: isRecontratacion ? Number(form.debtAmount || 0).toFixed(2) : null,
     totalToCollect: isRecontratacion
-      ? (effectivePrices.total + (form.debtApplies ? Number(form.debtAmount || 0) : 0)).toFixed(2)
+      ? totalWithDebt.toFixed(2)
       : null,
     equipmentRetained: isRecontratacion ? form.equipmentRetained : null,
     requiresTechnicalVisit: isRecontratacion ? form.requiresTechnicalVisit : null,
@@ -665,14 +668,12 @@ export default function SaleForm() {
                 <div className="font-medium">{effectivePrices.installation.toFixed(2)} Bs</div>
                 <div><span className="text-slate-400">Mensualidad:</span></div>
                 <div className="font-medium">{effectivePrices.monthly.toFixed(2)} Bs</div>
-                <div><span className="text-slate-400">Monto:</span></div>
-                <div className="font-bold text-brand-700">Bs. {effectivePrices.total.toFixed(2)}</div>
+                 <div><span className="text-slate-400">Monto total:</span></div>
+                 <div className="font-bold text-brand-700">Bs. {totalWithDebt.toFixed(2)}</div>
                 {isRecontratacion && (
                   <>
                     <div><span className="text-slate-400">Adeudo:</span></div>
                     <div className="font-medium">{form.debtApplies ? `${Number(form.debtAmount || 0).toFixed(2)} Bs` : '0.00 Bs'}</div>
-                    <div><span className="text-slate-400">Total a cobrar:</span></div>
-                    <div className="font-bold text-violet-700">Bs. {(effectivePrices.total + (form.debtApplies ? Number(form.debtAmount || 0) : 0)).toFixed(2)}</div>
                   </>
                 )}
                 {getMotivoLabel() && (

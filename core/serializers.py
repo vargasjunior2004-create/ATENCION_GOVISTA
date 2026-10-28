@@ -341,7 +341,7 @@ class SaleSerializer(serializers.ModelSerializer):
         return {'id': obj.createdBy.id, 'name': obj.createdBy.name}
 
     def get_totalToCollect(self, obj):
-        return (obj.total or Decimal('0')) + (obj.debt_amount or Decimal('0'))
+        return obj.total or Decimal('0')
 
 
 class SaleCreateSerializer(serializers.Serializer):
@@ -522,6 +522,8 @@ class SaleCreateSerializer(serializers.Serializer):
 
         installation, monthly, sale_total = resolve_sale_prices(
             plan, promotion, request_type)
+        if request_type == 'recontratacion':
+            sale_total += validated_data.get('debt_amount', Decimal('0'))
 
         return Sale.objects.create(
             date=validated_data['date'],

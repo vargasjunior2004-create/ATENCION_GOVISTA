@@ -72,13 +72,13 @@ class RecontratacionTests(TestCase):
         self.assertEqual(Decimal(data['total']), Decimal('300.00'))
         self.assertEqual(Decimal(data['totalToCollect']), Decimal('300.00'))
 
-    def test_rehire_with_debt_is_separate_from_service_total(self):
+    def test_rehire_with_debt_becomes_the_record_total(self):
         response = self._create(
             self.admin, debtApplies=True, debtAmount='80.50')
 
         self.assertEqual(response.status_code, 201, response.content)
         data = response.json()
-        self.assertEqual(Decimal(data['total']), Decimal('300.00'))
+        self.assertEqual(Decimal(data['total']), Decimal('380.50'))
         self.assertEqual(Decimal(data['debtAmount']), Decimal('80.50'))
         self.assertEqual(Decimal(data['totalToCollect']), Decimal('380.50'))
 
