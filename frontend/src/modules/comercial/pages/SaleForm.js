@@ -58,6 +58,8 @@ export default function SaleForm() {
     requestType: 'nuevo_contrato', additionType: '', planFromId: '',
     serviceTypeFrom: '', motivoId: '', notes: '',
     planId: '',
+    equipmentRetained: null, requiresTechnicalVisit: null,
+    debtApplies: false, debtAmount: '',
   });
   const { tipos: requestTypes, modoOf, nombreOf } = useRequestTypes();
   const { porCategoria, nombreOf: motivoNombreOf } = useMotivos();
@@ -120,6 +122,7 @@ export default function SaleForm() {
   const isRetiro = modo === 'retiro';
   const isCambio = modo === 'cambio_plan';
   const isAdicion = modo === 'adicion';
+  const isRecontratacion = form.requestType === 'recontratacion';
 
   // Motivos del catalogo segun el formulario que corresponde.
   const motivosCambio = porCategoria('cambio');
@@ -229,6 +232,12 @@ export default function SaleForm() {
           next.planFromId = '';
           next.serviceTypeFrom = '';
         }
+        if (value !== 'recontratacion') {
+          next.equipmentRetained = null;
+          next.requiresTechnicalVisit = null;
+          next.debtApplies = false;
+          next.debtAmount = '';
+        }
       }
       return next;
     });
@@ -266,12 +275,18 @@ export default function SaleForm() {
         notes: form.notes,
         planId: Number(form.planId),
       };
+      if (isRecontratacion) {
+        payload.equipmentRetained = form.equipmentRetained;
+        payload.requiresTechnicalVisit = form.requiresTechnicalVisit;
+        payload.debtApplies = form.debtApplies;
+        payload.debtAmount = form.debtApplies ? Number(form.debtAmount) : 0;
+      }
       if (selectedPromotion) {
         payload.promotionId = selectedPromotion.id;
       }
       await api.createSale(payload);
       setSuccess('Registro guardado correctamente');
-      setForm({ date: today, clientCode: '', clientName: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '' });
+       setForm({ date: today, clientCode: '', clientName: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', equipmentRetained: null, requiresTechnicalVisit: null, debtApplies: false, debtAmount: '' });
       setSelectedPlan(null); setSelectedCustomer(null); setQuery(''); setCustomers([]);
       setPromotions([]); setSelectedPromotion(null); setPriceMode('normal');
       setShowPreview(false);
@@ -315,6 +330,12 @@ export default function SaleForm() {
     installation: effectivePrices.installation.toFixed(2),
     monthly: effectivePrices.monthly.toFixed(2),
     total: effectivePrices.total.toFixed(2),
+    debtAmount: isRecontratacion && form.debtApplies ? Number(form.debtAmount || 0).toFixed(2) : '0.00',
+    totalToCollect: isRecontratacion
+      ? (effectivePrices.total + (form.debtApplies ? Number(form.debtAmount || 0) : 0)).toFixed(2)
+      : effectivePrices.total.toFixed(2),
+    equipmentRetained: isRecontratacion ? form.equipmentRetained : null,
+    requiresTechnicalVisit: isRecontratacion ? form.requiresTechnicalVisit : null,
     motivo: getMotivoLabel(),
     notes: form.notes,
   };
@@ -505,6 +526,35 @@ export default function SaleForm() {
             </Select>
           )}
 
+          {isRecontratacion && (
+            <div className="rounded-2xl border-2 border-dashed border-violet-200 bg-violet-50/40 p-4 space-y-4">
+              <p className="text-xs font-bold text-violet-700 uppercase tracking-wider">
+                Datos de la recontratación
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Select label="¿Conserva el router/ONU? *" name="equipmentRetained" value={form.equipmentRetained === null ? '' : String(form.equipmentRetained)} onChange={(e) => setForm((prev) => ({ ...prev, equipmentRetained: e.target.value === '' ? null : e.target.value === 'true' }))} required>
+                  <option value="">--Seleccione--</option>
+                  <option value="true">Sí</option>
+                  <option value="false">No</option>
+                </Select>
+                <Select label="¿Requiere visita técnica? *" name="requiresTechnicalVisit" value={form.requiresTechnicalVisit === null ? '' : String(form.requiresTechnicalVisit)} onChange={(e) => setForm((prev) => ({ ...prev, requiresTechnicalVisit: e.target.value === '' ? null : e.target.value === 'true' }))} required>
+                  <option value="">--Seleccione--</option>
+                  <option value="true">Sí</option>
+                  <option value="false">No</option>
+                </Select>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Select label="¿Tiene adeudo pendiente? *" name="debtApplies" value={String(form.debtApplies)} onChange={(e) => setForm((prev) => ({ ...prev, debtApplies: e.target.value === 'true', debtAmount: e.target.value === 'true' ? prev.debtAmount : '' }))} required>
+                  <option value="false">No</option>
+                  <option value="true">Sí</option>
+                </Select>
+                {form.debtApplies && (
+                  <Input label="Adeudo pendiente (Bs) *" name="debtAmount" type="number" min="0.01" step="0.01" value={form.debtAmount} onChange={handleChange} required />
+                )}
+              </div>
+            </div>
+          )}
+
           <Input label="Comentarios (opcional)" name="notes" value={form.notes} onChange={handleChange} placeholder="Notas internas" />
 
           {/* Price mode selection */}
@@ -616,6 +666,14 @@ export default function SaleForm() {
                 <div className="font-medium">{effectivePrices.monthly.toFixed(2)} Bs</div>
                 <div><span className="text-slate-400">Monto:</span></div>
                 <div className="font-bold text-brand-700">Bs. {effectivePrices.total.toFixed(2)}</div>
+                {isRecontratacion && (
+                  <>
+                    <div><span className="text-slate-400">Adeudo:</span></div>
+                    <div className="font-medium">{form.debtApplies ? `${Number(form.debtAmount || 0).toFixed(2)} Bs` : '0.00 Bs'}</div>
+                    <div><span className="text-slate-400">Total a cobrar:</span></div>
+                    <div className="font-bold text-violet-700">Bs. {(effectivePrices.total + (form.debtApplies ? Number(form.debtAmount || 0) : 0)).toFixed(2)}</div>
+                  </>
+                )}
                 {getMotivoLabel() && (
                   <>
                     <div><span className="text-slate-400">Motivo:</span></div>
@@ -632,7 +690,7 @@ export default function SaleForm() {
             </div>
           )}
 
-          <Button type="submit" size="lg" className="w-full" disabled={!form.planId || samePlanSelected || ((isCambio || isRetiro) && !form.motivoId)}>
+           <Button type="submit" size="lg" className="w-full" disabled={!form.planId || samePlanSelected || ((isCambio || isRetiro) && !form.motivoId) || (isRecontratacion && (form.equipmentRetained === null || form.requiresTechnicalVisit === null || (form.debtApplies && (!form.debtAmount || Number(form.debtAmount) <= 0))))}>
             Revisar Registro
           </Button>
         </form>

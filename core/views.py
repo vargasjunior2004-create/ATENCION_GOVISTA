@@ -1,6 +1,7 @@
 import logging
 import os
 import threading
+from decimal import Decimal, InvalidOperation
 from datetime import date, timedelta
 
 from django.db.models import Count, Q, Sum
@@ -598,6 +599,42 @@ class SaleDetailView(IsAdminMixin, APIView):
         mode = tipo.modo
         mode_changed = mode != request_type_mode(sale.requestType, catalog)
 
+        is_rehire = request_type == 'recontratacion'
+        if is_rehire:
+            equipment_retained = data.get(
+                'equipmentRetained', sale.equipment_retained)
+            requires_technical_visit = data.get(
+                'requiresTechnicalVisit', sale.requires_technical_visit)
+            debt_applies = data.get('debtApplies', sale.debt_applies)
+            debt_raw = data.get('debtAmount', sale.debt_amount)
+            if equipment_retained is None:
+                return Response(
+                    {'error': 'Indique si conserva el router/ONU'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if requires_technical_visit is None:
+                return Response(
+                    {'error': 'Indique si requiere visita tecnica'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            try:
+                debt_amount = Decimal(str(debt_raw or 0))
+            except (InvalidOperation, TypeError, ValueError):
+                return Response(
+                    {'error': 'El adeudo no es valido'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if debt_applies and debt_amount <= 0:
+                return Response(
+                    {'error': 'Ingrese un adeudo mayor que cero'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if not debt_applies and debt_amount != 0:
+                return Response(
+                    {'error': 'El adeudo debe ser cero si no aplica'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        else:
+            equipment_retained = None
+            requires_technical_visit = None
+            debt_applies = False
+            debt_amount = Decimal('0')
+
         if service_type not in SERVICE_TYPE_LABELS:
             return Response({'error': 'Tipo de servicio no valido'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -704,6 +741,10 @@ class SaleDetailView(IsAdminMixin, APIView):
             sale.planFrom = plan_from.label
         sale.serviceTypeFrom = service_type_from
         sale.totalFrom = plan_from.total if plan_from else None
+        sale.equipment_retained = equipment_retained
+        sale.requires_technical_visit = requires_technical_visit
+        sale.debt_applies = debt_applies
+        sale.debt_amount = debt_amount
 
         # Si el plan cambio, una promocion del plan anterior ya no aplica.
         # Se limpia para que el total se calcule con las condiciones nuevas.

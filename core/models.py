@@ -234,6 +234,18 @@ class Sale(models.Model):
     applied_monthly = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True,
         help_text='Mensualidad aplicada')
+    equipment_retained = models.BooleanField(
+        null=True, blank=True,
+        help_text='Si la recontratacion conserva el router/ONU')
+    requires_technical_visit = models.BooleanField(
+        null=True, blank=True,
+        help_text='Si la recontratacion requiere una visita tecnica')
+    debt_applies = models.BooleanField(
+        default=False,
+        help_text='Si la recontratacion incluye un adeudo pendiente')
+    debt_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        help_text='Adeudo registrado al momento de la recontratacion')
     createdBy = models.ForeignKey(
         User, on_delete=models.PROTECT, related_name='sales_created')
     lastEditedBy = models.ForeignKey(
