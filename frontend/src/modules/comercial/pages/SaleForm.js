@@ -42,12 +42,6 @@ const ADDITION_TYPES = [
   { value: 'adicion_tv', label: 'ADICION TV' },
 ];
 
-const TRANSFER_SERVICE_OPTIONS = [
-  { value: 'internet', label: 'INTERNET' },
-  { value: 'tv', label: 'TV ANALÓGICA' },
-  { value: 'combo_analog', label: 'COMBO' },
-];
-
 export default function SaleForm() {
   const getToday = () => {
     const now = new Date();
@@ -437,22 +431,16 @@ export default function SaleForm() {
                 <option key={t.code} value={t.code}>{t.nombre}</option>
               ))}
             </Select>
-             {isTransfer ? (
-               <Select label="Tipo de Servicio *" name="serviceType" value={form.serviceType} onChange={handleChange} required>
-                 {TRANSFER_SERVICE_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-               </Select>
-             ) : (
-               <Select
-                 label={isCambio ? 'Tipo de Servicio Nuevo *' : 'Tipo de Servicio *'}
-                 name="serviceType"
-                 value={form.serviceType}
-                 onChange={handleChange}
-               >
-                 {SERVICE_TYPES.map((t) => (
-                   <option key={t.value} value={t.value}>{t.label}</option>
-                 ))}
-               </Select>
-             )}
+             <Select
+               label={isCambio ? 'Tipo de Servicio Nuevo *' : 'Tipo de Servicio *'}
+               name="serviceType"
+               value={form.serviceType}
+               onChange={handleChange}
+             >
+               {SERVICE_TYPES.map((t) => (
+                 <option key={t.value} value={t.value}>{t.label}</option>
+               ))}
+             </Select>
           </div>
 
           {isAdicion && (

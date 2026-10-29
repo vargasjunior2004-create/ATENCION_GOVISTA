@@ -74,7 +74,7 @@ export default function TransferTariffs() {
           <Card className="w-full max-w-md space-y-5 p-6" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between"><div><h2 className="text-lg font-black text-slate-900">Editar tarifa</h2><p className="mt-1 text-xs text-slate-400">{editing.name}</p></div><button type="button" onClick={() => setEditing(null)} className="text-slate-400 hover:text-slate-700"><X className="h-5 w-5" /></button></div>
             <form onSubmit={save} className="space-y-4">
-              <Input label="Nombre" value={editing.name} onChange={(event) => setEditing({ ...editing, name: event.target.value })} required />
+              <Input label="Nombre" value={editing.name} readOnly className="cursor-not-allowed opacity-70" />
               <Input label="Importe (Bs)" type="number" min="0" step="0.01" value={editing.amount} onChange={(event) => setEditing({ ...editing, amount: event.target.value })} required />
               <Select label="Estado" value={String(editing.active)} onChange={(event) => setEditing({ ...editing, active: event.target.value === 'true' })}><option value="true">Activa</option><option value="false">Inactiva</option></Select>
               <div className="flex gap-3"><Button type="submit"><Save className="h-4 w-4" />Guardar</Button><Button type="button" variant="secondary" onClick={() => setEditing(null)}>Cancelar</Button></div>
