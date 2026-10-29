@@ -1,0 +1,164 @@
+Creating test database for alias 'default'...
+.SaleListView POST data: {'date': '2026-10-29', 'clientCode': 'CLI-1', 'clientName': 'Cliente Uno', 'serviceType': 'internet', 'planId': 1}
+.SaleListView POST data: {'date': '2026-10-29', 'clientCode': 'CLI-2', 'clientName': 'Cliente Dos', 'serviceType': 'internet', 'planId': 1, 'total': 1.0}
+.SaleListView POST data: {'date': '2026-10-29', 'clientCode': 'CLI-3', 'clientName': 'Cliente Tres', 'serviceType': 'tv', 'planId': 1}
+Bad Request: /api/sales
+..SaleListView POST data: {'date': '2026-10-29', 'clientCode': 'CLI-4', 'clientName': 'Cliente Cuatro', 'serviceType': 'internet', 'planId': 1}
+.Forbidden: /api/sales/1
+...Unauthorized: /api/auth/login
+..Unauthorized: /api/auth/me
+.Forbidden: /api/plans
+.Bad Request: /api/reports/pdf-public/
+....Forbidden: /api/users
+...............Unauthorized: /api/backups
+.Unauthorized: /api/backups
+.Unauthorized: /api/auth/login
+Forbidden: /api/backups
+.Forbidden: /api/backups
+.Forbidden: /api/backups/1
+.Forbidden: /api/backups
+..SaleListView POST data: {'clientCode': 'CLI-UTC', 'clientName': 'Cliente UTC Test', 'serviceType': 'internet', 'planId': 1, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'CLI-TZ-1', 'clientName': 'Cliente TZ', 'serviceType': 'internet', 'planId': 1, 'date': '2026-10-29'}
+.Unauthorized: /api/sales
+.SaleListView POST data: {'clientCode': 'CP001', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 6, 'date': '2026-10-29'}
+Bad Request: /api/sales
+.SaleListView POST data: {'clientCode': 'CPY', 'clientName': 'Sin anterior', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'changeReason': 'X', 'date': '2026-10-29'}
+Bad Request: /api/sales
+.SaleListView POST data: {'clientCode': 'CPRET', 'clientName': 'Retiro', 'serviceType': 'internet', 'requestType': 'retiro', 'planId': 1, 'motivoId': 17, 'date': '2026-10-29'}
+Bad Request: /api/sales/1
+Bad Request: /api/sales/1
+.SaleListView POST data: {'clientCode': 'CP001', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 6, 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'CP001', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 6, 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'CP001', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 6, 'motivoId': 16, 'promotionId': 1, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'CP001', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 6, 'motivoId': 16, 'date': '2026-10-29'}
+Bad Request: /api/sales/1
+.SaleListView POST data: {'clientCode': 'CP001', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 6, 'motivoId': 16, 'date': '2026-10-29'}
+SaleListView POST data: {'clientCode': 'CP002', 'clientName': 'Cambio Test', 'serviceType': 'combo_analog', 'requestType': 'cambio_plan', 'planId': 5, 'planFromId': 2, 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'F1', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 6, 'motivoId': 16, 'date': '2026-10-29'}
+SaleListView POST data: {'clientCode': 'F2', 'clientName': 'Cambio Test', 'serviceType': 'combo_analog', 'requestType': 'cambio_plan', 'planId': 5, 'planFromId': 2, 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'CP001', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 6, 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'MAT00', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 2, 'motivoId': 16, 'date': '2026-10-29'}
+SaleListView POST data: {'clientCode': 'MAT01', 'clientName': 'Cambio Test', 'serviceType': 'tv', 'requestType': 'cambio_plan', 'planId': 3, 'planFromId': 4, 'motivoId': 16, 'date': '2026-10-29'}
+SaleListView POST data: {'clientCode': 'MAT02', 'clientName': 'Cambio Test', 'serviceType': 'combo_analog', 'requestType': 'cambio_plan', 'planId': 5, 'planFromId': 6, 'motivoId': 16, 'date': '2026-10-29'}
+SaleListView POST data: {'clientCode': 'MAT03', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 6, 'motivoId': 16, 'date': '2026-10-29'}
+SaleListView POST data: {'clientCode': 'MAT04', 'clientName': 'Cambio Test', 'serviceType': 'tv', 'requestType': 'cambio_plan', 'planId': 3, 'planFromId': 6, 'motivoId': 16, 'date': '2026-10-29'}
+SaleListView POST data: {'clientCode': 'MAT05', 'clientName': 'Cambio Test', 'serviceType': 'combo_analog', 'requestType': 'cambio_plan', 'planId': 5, 'planFromId': 2, 'motivoId': 16, 'date': '2026-10-29'}
+SaleListView POST data: {'clientCode': 'MAT06', 'clientName': 'Cambio Test', 'serviceType': 'combo_analog', 'requestType': 'cambio_plan', 'planId': 5, 'planFromId': 4, 'motivoId': 16, 'date': '2026-10-29'}
+SaleListView POST data: {'clientCode': 'MAT07', 'clientName': 'Cambio Test', 'serviceType': 'tv', 'requestType': 'cambio_plan', 'planId': 3, 'planFromId': 2, 'motivoId': 16, 'date': '2026-10-29'}
+SaleListView POST data: {'clientCode': 'MAT08', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 4, 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'CPV', 'clientName': 'Cambio de variante', 'serviceType': 'combo_digital', 'requestType': 'cambio_plan', 'planId': 5, 'planFromId': 5, 'serviceTypeFrom': 'combo_analog', 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'CP001', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 1, 'motivoId': 16, 'date': '2026-10-29'}
+Bad Request: /api/sales
+.SaleListView POST data: {'clientCode': 'CP001', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 6, 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'CP001', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 6, 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'CP001', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 6, 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'CP001', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 6, 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'CP001', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 6, 'motivoId': 16, 'date': '2026-10-29'}
+Bad Request: /api/plans/6
+.SaleListView POST data: {'clientCode': 'CPLEG', 'clientName': 'Legacy', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 7, 'planFromId': 6, 'motivoId': 16, 'date': '2026-10-29'}
+Bad Request: /api/sales
+SaleListView POST data: {'clientCode': 'CP001', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 6, 'motivoId': 16, 'date': '2026-10-29'}
+Bad Request: /api/sales/1
+.SaleListView POST data: {'clientCode': 'CPX', 'clientName': 'Malo', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 5, 'planFromId': 2, 'changeReason': 'X', 'date': '2026-10-29'}
+Bad Request: /api/sales
+.SaleListView POST data: {'clientCode': 'CP001', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 6, 'motivoId': 16, 'date': '2026-10-29'}
+SaleListView POST data: {'clientCode': 'CP001', 'clientName': 'Cambio Test', 'serviceType': 'combo_analog', 'requestType': 'cambio_plan', 'planId': 5, 'planFromId': 2, 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'CP001', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 6, 'motivoId': 16, 'date': '2026-10-29'}
+SaleListView POST data: {'clientCode': 'CP002', 'clientName': 'Cambio Test', 'serviceType': 'combo_analog', 'requestType': 'cambio_plan', 'planId': 5, 'planFromId': 2, 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'CP001', 'clientName': 'Cambio Test', 'serviceType': 'combo_analog', 'requestType': 'cambio_plan', 'planId': 5, 'planFromId': 2, 'motivoId': 16, 'serviceTypeFrom': 'combo_analog', 'date': '2026-10-29'}
+Bad Request: /api/sales
+.SaleListView POST data: {'clientCode': 'CP001', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 6, 'motivoId': 16, 'serviceTypeFrom': 'combo_analog', 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'CP003', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 2, 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'CP001', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 6, 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'CP001', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 6, 'motivoId': 16, 'date': '2026-10-29'}
+Forbidden: /api/sales/1
+.SaleListView POST data: {'clientCode': 'CPV2', 'clientName': 'Registrado por ventas', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 6, 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'CPVAR', 'clientName': 'Cambio de variante', 'serviceType': 'combo_digital', 'requestType': 'cambio_plan', 'planId': 5, 'planFromId': 5, 'serviceTypeFrom': 'combo_analog', 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'CP001', 'clientName': 'Cambio Test', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 6, 'motivoId': 16, 'date': '2026-10-29'}
+SaleListView POST data: {'clientCode': 'CPN', 'clientName': 'Nuevo', 'serviceType': 'internet', 'requestType': 'nuevo_contrato', 'planId': 1, 'date': '2026-10-29'}
+SaleListView POST data: {'clientCode': 'CPR', 'clientName': 'Retiro', 'serviceType': 'internet', 'requestType': 'retiro', 'planId': 1, 'motivoId': 17, 'date': '2026-10-29'}
+..Bad Request: /api/auth/login
+.Bad Request: /api/auth/login
+.Unauthorized: /api/auth/login
+..Unauthorized: /api/auth/login
+..Unauthorized: /api/auth/me
+....Bad Request: /api/dashboard/stats
+Bad Request: /api/dashboard/stats
+Bad Request: /api/dashboard/stats
+..Unauthorized: /api/dashboard/stats
+...SaleListView POST data: {'clientCode': 'D001', 'clientName': 'DASH1', 'serviceType': 'internet', 'requestType': 'nuevo_contrato', 'planId': 1, 'date': '2026-10-29'}
+SaleListView POST data: {'clientCode': 'D003', 'clientName': 'DASH3', 'serviceType': 'internet', 'requestType': 'recontratacion', 'planId': 1, 'equipmentRetained': True, 'requiresTechnicalVisit': False, 'debtApplies': False, 'debtAmount': 0, 'date': '2026-10-29'}
+SaleListView POST data: {'clientCode': 'D002', 'clientName': 'DASH2', 'serviceType': 'internet', 'requestType': 'retiro', 'planId': 1, 'motivoId': 16, 'date': '2026-10-29'}
+..Unauthorized: /api/plans/active
+..Forbidden: /api/plans
+..Unauthorized: /api/reports/dashboard/pdf
+...Forbidden: /api/reports/pdf
+Forbidden: /api/reports/xlsx
+Forbidden: /api/reports/png
+Forbidden: /api/reports/pdf-link
+Forbidden: /api/reports/xlsx-link
+..SaleListView POST data: {'clientCode': 'R001', 'clientName': 'RPDF', 'serviceType': 'internet', 'requestType': 'retiro', 'planId': 1, 'motivoId': 16, 'date': '2026-10-29'}
+..Unauthorized: /api/reports/pdf
+..SaleListView POST data: {'clientCode': 'K001', 'clientName': 'CLIENTE TEST', 'serviceType': 'internet', 'requestType': 'nuevo_contrato', 'planId': 1, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'K004', 'date': '2026-10-29'}
+Bad Request: /api/sales
+.SaleListView POST data: {'clientCode': 'K002', 'clientName': 'CLIENTE 2', 'serviceType': 'internet', 'requestType': 'nuevo_contrato', 'planId': 1, 'date': '2026-10-29'}
+.Unauthorized: /api/sales
+.SaleListView POST data: {'clientCode': 'K040', 'clientName': 'EDIT ME', 'serviceType': 'internet', 'requestType': 'nuevo_contrato', 'planId': 1, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'K050', 'clientName': 'NO EDIT', 'serviceType': 'internet', 'requestType': 'nuevo_contrato', 'planId': 1, 'date': '2026-10-29'}
+Forbidden: /api/sales/1
+.SaleListView POST data: {'clientCode': 'K010', 'clientName': 'L1', 'serviceType': 'internet', 'requestType': 'nuevo_contrato', 'planId': 1, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'K020', 'clientName': 'F1', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 2, 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'K030', 'clientName': 'RET', 'serviceType': 'internet', 'requestType': 'retiro', 'planId': 1, 'motivoId': 17, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'K060', 'clientName': 'TZ TEST', 'serviceType': 'internet', 'requestType': 'nuevo_contrato', 'planId': 1, 'date': '2026-10-29'}
+..Forbidden: /api/users
+.Not Found: /api/users/99999
+...Forbidden: /api/users
+...SaleListView POST data: {'clientCode': 'MC001', 'clientName': 'CAMBIO', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 2, 'motivoId': 17, 'date': '2026-10-29'}
+Bad Request: /api/sales
+.SaleListView POST data: {'clientCode': 'MC001', 'clientName': 'CAMBIO', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 2, 'motivoId': 18, 'date': '2026-10-29'}
+Bad Request: /api/sales
+.SaleListView POST data: {'clientCode': 'MC001', 'clientName': 'CAMBIO', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 2, 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'MC001', 'clientName': 'CAMBIO', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 2, 'motivoId': None, 'date': '2026-10-29'}
+Bad Request: /api/sales
+.SaleListView POST data: {'clientCode': 'MC001', 'clientName': 'CAMBIO', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 2, 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'MC001', 'clientName': 'CAMBIO', 'serviceType': 'internet', 'requestType': 'cambio_plan', 'planId': 1, 'planFromId': 2, 'motivoId': 16, 'date': '2026-10-29'}
+Bad Request: /api/motivos/16
+.SaleListView POST data: {'clientCode': 'MN001', 'clientName': 'ALTA', 'serviceType': 'internet', 'requestType': 'nuevo_contrato', 'planId': 1, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'MR001', 'clientName': 'RETIRO', 'serviceType': 'internet', 'requestType': 'retiro', 'planId': 1, 'motivoId': 16, 'date': '2026-10-29'}
+Bad Request: /api/sales
+..Forbidden: /api/motivos
+Forbidden: /api/motivos
+.SaleListView POST data: {'clientCode': 'RR001', 'clientName': 'REPORT', 'serviceType': 'internet', 'requestType': 'retiro', 'planId': 1, 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'RR001', 'clientName': 'REPORT', 'serviceType': 'internet', 'requestType': 'retiro', 'planId': 1, 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'RR001', 'clientName': 'REPORT', 'serviceType': 'internet', 'requestType': 'retiro', 'planId': 1, 'motivoId': 16, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'REH-1', 'clientName': 'CLIENTE RECONTRATACION', 'serviceType': 'internet', 'requestType': 'recontratacion', 'planId': 1, 'equipmentRetained': True, 'requiresTechnicalVisit': False, 'debtApplies': True, 'debtAmount': '25.00', 'date': '2026-10-29'}
+SaleListView POST data: {'clientCode': 'REH-2', 'clientName': 'CLIENTE RECONTRATACION', 'serviceType': 'internet', 'requestType': 'recontratacion', 'planId': 1, 'equipmentRetained': True, 'requiresTechnicalVisit': False, 'debtApplies': True, 'debtAmount': '25.00', 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'REH-1', 'clientName': 'CLIENTE RECONTRATACION', 'serviceType': 'internet', 'requestType': 'recontratacion', 'planId': 1, 'equipmentRetained': True, 'requiresTechnicalVisit': False, 'debtApplies': False, 'debtAmount': 0, 'date': '2026-10-29'}
+SaleListView POST data: {'clientCode': 'REH-2', 'clientName': 'CLIENTE RECONTRATACION', 'serviceType': 'internet', 'requestType': 'recontratacion', 'planId': 1, 'equipmentRetained': False, 'requiresTechnicalVisit': True, 'debtApplies': False, 'debtAmount': 0, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'REH-1', 'clientName': 'CLIENTE RECONTRATACION', 'serviceType': 'internet', 'requestType': 'recontratacion', 'planId': 1, 'equipmentRetained': True, 'requiresTechnicalVisit': False, 'debtApplies': False, 'debtAmount': '10.00', 'date': '2026-10-29'}
+Bad Request: /api/sales
+.SaleListView POST data: {'clientCode': 'REH-1', 'clientName': 'CLIENTE RECONTRATACION', 'serviceType': 'internet', 'requestType': 'recontratacion', 'planId': 1, 'equipmentRetained': True, 'requiresTechnicalVisit': False, 'debtApplies': True, 'debtAmount': '-1.00', 'date': '2026-10-29'}
+Bad Request: /api/sales
+.SaleListView POST data: {'clientCode': 'NEW-1', 'clientName': 'CLIENTE NUEVO', 'serviceType': 'internet', 'requestType': 'nuevo_contrato', 'planId': 1, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'REH-1', 'clientName': 'CLIENTE RECONTRATACION', 'serviceType': 'internet', 'requestType': 'recontratacion', 'planId': 1, 'equipmentRetained': True, 'requiresTechnicalVisit': False, 'debtApplies': False, 'debtAmount': 0, 'date': '2026-10-29'}
+Forbidden: /api/sales/1
+.SaleListView POST data: {'clientCode': 'REH-1', 'clientName': 'CLIENTE RECONTRATACION', 'serviceType': 'internet', 'requestType': 'recontratacion', 'planId': 1, 'equipmentRetained': None, 'requiresTechnicalVisit': None, 'debtApplies': False, 'debtAmount': 0, 'date': '2026-10-29'}
+Bad Request: /api/sales
+.SaleListView POST data: {'clientCode': 'REH-1', 'clientName': 'CLIENTE RECONTRATACION', 'serviceType': 'internet', 'requestType': 'recontratacion', 'planId': 1, 'equipmentRetained': True, 'requiresTechnicalVisit': False, 'debtApplies': True, 'debtAmount': '80.50', 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': 'REH-1', 'clientName': 'CLIENTE RECONTRATACION', 'serviceType': 'internet', 'requestType': 'recontratacion', 'planId': 1, 'equipmentRetained': True, 'requiresTechnicalVisit': False, 'debtApplies': False, 'debtAmount': 0, 'date': '2026-10-29'}
+..Forbidden: /api/transfer-tariffs/2
+.Forbidden: /api/transfer-tariffs
+.SaleListView POST data: {'clientCode': '1-1', 'clientName': 'JUAN PEREZ', 'serviceType': 'internet', 'requestType': 'traslado_externo', 'planId': 1, 'transferTariffId': 2, 'transferCurrentAddress': 'BARRIO VICTORIA', 'transferNewAddress': 'LAS PALMAS #20', 'transferZone': 'LAS PALMAS', 'transferReferences': 'CERCA DE LA PLAZA', 'transferHasSketch': True, 'date': '2026-10-29'}
+.SaleListView POST data: {'clientCode': '2-1', 'clientName': 'JUAN PEREZ', 'serviceType': 'internet', 'requestType': 'traslado_externo', 'planId': 1, 'transferTariffId': 2, 'transferNewAddress': 'NUEVO DOMICILIO', 'transferHasSketch': False, 'date': '2026-10-29'}
+.Conflict: /api/backups
+...s.Conflict: /api/backups
+..s.
+----------------------------------------------------------------------
+Ran 157 tests in 366.552s
+
+OK (skipped=2)
+Destroying test database for alias 'default'...
+Found 157 test(s).
+System check identified no issues (0 silenced).
+test_exit=0
