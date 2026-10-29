@@ -8,10 +8,15 @@ Backend de la planilla de ventas diarias (SaleStracker).
 import os
 import dj_database_url
 from pathlib import Path
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-DEBUG = os.environ.get('DJANGO_DEBUG', 'true').lower() in ('1', 'true', 'yes')
+_environment = os.environ.get('DJANGO_ENV', 'development').lower()
+_debug_value = os.environ.get('DJANGO_DEBUG')
+if _environment in ('prod', 'production') and _debug_value is None:
+    raise ImproperlyConfigured('DJANGO_DEBUG debe definirse explícitamente en producción.')
+DEBUG = (_debug_value or 'true').lower() in ('1', 'true', 'yes')
 
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 if not SECRET_KEY:
@@ -21,10 +26,20 @@ if not SECRET_KEY:
     SECRET_KEY = 'local-development-only-key-not-for-production'
 
 _env_hosts = [h.strip() for h in os.environ.get('DJANGO_ALLOWED_HOSTS', '').split(',') if h.strip()]
-ALLOWED_HOSTS = list(set(_env_hosts + ['localhost', '127.0.0.1', '.onrender.com', '.wasmer.app']))
+if DEBUG:
+    ALLOWED_HOSTS = list(set(_env_hosts + ['localhost', '127.0.0.1']))
+elif not _env_hosts:
+    raise ImproperlyConfigured('DJANGO_ALLOWED_HOSTS es obligatoria en producción.')
+else:
+    ALLOWED_HOSTS = _env_hosts
 
 _env_origins = [o.strip() for o in os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',') if o.strip()]
-CSRF_TRUSTED_ORIGINS = list(set(_env_origins + ['https://*.onrender.com', 'https://*.wasmer.app']))
+if DEBUG:
+    CSRF_TRUSTED_ORIGINS = _env_origins
+elif not _env_origins:
+    raise ImproperlyConfigured('DJANGO_CSRF_TRUSTED_ORIGINS es obligatoria en producción.')
+else:
+    CSRF_TRUSTED_ORIGINS = _env_origins
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -70,6 +85,10 @@ WSGI_APPLICATION = 'salestracker.wsgi.application'
 # La credencial de la base de datos SOLO se lee de variables de entorno.
 # Nunca se escribe una credencial real en el repositorio.
 DATABASE_URL = os.environ.get('DATABASE_URL')
+if not DEBUG and not DATABASE_URL:
+    raise ImproperlyConfigured('DATABASE_URL es obligatoria en producción.')
+if not DEBUG and DATABASE_URL and DATABASE_URL.startswith('sqlite'):
+    raise ImproperlyConfigured('SQLite no está permitido en producción.')
 if DATABASE_URL:
     # El SSL es obligatorio por defecto (Supabase lo exige). Solo se relaja
     # si se define DB_SSL_DISABLE=1, usado exclusivamente para levantar un
@@ -140,10 +159,25 @@ REST_FRAMEWORK = {
 
 SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
-    'ACCESS_TOKEN_LIFETIME': __import__('datetime').timedelta(minutes=5),
-    'REFRESH_TOKEN_LIFETIME': __import__('datetime').timedelta(hours=1),
-    'ROTATE_REFRESH_TOKENS': False,
+    'ACCESS_TOKEN_LIFETIME': __import__('datetime').timedelta(minutes=30),
+    'REFRESH_TOKEN_LIFETIME': __import__('datetime').timedelta(hours=8),
+    'ROTATE_REFRESH_TOKENS': True,
+    # token_blacklist requiere AUTH_USER_MODEL de Django; este proyecto usa
+    # core.User y la integración se planifica para una fase de autenticación.
+    'BLACKLIST_AFTER_ROTATION': False,
 }
+
+SECURE_SSL_REDIRECT = not DEBUG
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = False
+SECURE_HSTS_SECONDS = 3600 if not DEBUG else 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
+SECURE_HSTS_PRELOAD = not DEBUG
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = 'same-origin'
+X_FRAME_OPTIONS = 'DENY'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

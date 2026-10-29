@@ -7,6 +7,7 @@ from pathlib import Path
 from django.core import management
 from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
+from django.test import Client
 
 
 class SeedSecurityTests(TestCase):
@@ -32,6 +33,17 @@ class SeedSecurityTests(TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('DJANGO_SECRET_KEY es obligatoria', result.stderr)
+
+    def test_health_is_minimal_and_does_not_query_database(self):
+        with self.assertNumQueries(0):
+            response = Client().get('/api/health')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'status': 'ok'})
+
+    def test_ready_checks_database_without_exposing_details(self):
+        response = Client().get('/api/ready')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'status': 'ok'})
 
     @override_settings(DEBUG=False)
     def test_seed_rejects_weak_production_credentials(self):

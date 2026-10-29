@@ -5,6 +5,8 @@ from decimal import Decimal, InvalidOperation
 from datetime import date, timedelta
 
 from django.db import transaction
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
 from django.db.models import Count, Q, Sum
 from django.http import FileResponse
 from django.utils import timezone
@@ -100,26 +102,22 @@ class HealthView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        from django.db import connection
+        return Response({'status': 'ok'})
+
+
+class ReadyView(APIView):
+    """Comprueba base y migraciones sin revelar detalles de infraestructura."""
+    permission_classes = [AllowAny]
+
+    def get(self, request):
         try:
-            with connection.cursor() as cursor:
-                if connection.vendor == 'postgresql':
-                    cursor.execute("SELECT tablename FROM pg_tables WHERE schemaname='public'")
-                else:
-                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-                tables = [r[0] for r in cursor.fetchall()]
-            user_count = User.objects.count()
-            plan_count = Plan.objects.count()
-            return Response({
-                'status': 'ok',
-                'tables': tables,
-                'users': user_count,
-                'plans': plan_count,
-                'db': str(connection.settings_dict['NAME']),
-                'version': 'v3-render',
-            })
-        except Exception as e:
-            return Response({'status': 'error', 'detail': str(e)}, status=500)
+            connection.ensure_connection()
+            executor = MigrationExecutor(connection)
+            if executor.migration_plan(executor.loader.graph.leaf_nodes()):
+                return Response({'status': 'unavailable'}, status=503)
+            return Response({'status': 'ok'})
+        except Exception:
+            return Response({'status': 'unavailable'}, status=503)
 
 
 class LoginView(APIView):

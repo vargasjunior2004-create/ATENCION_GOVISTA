@@ -4,6 +4,7 @@ from . import report_views
 
 urlpatterns = [
     path('health', views.HealthView.as_view()),
+    path('ready', views.ReadyView.as_view()),
     path('auth/login', views.LoginView.as_view()),
     path('auth/me', views.MeView.as_view()),
     path('auth/change-password', views.ChangePasswordView.as_view()),
