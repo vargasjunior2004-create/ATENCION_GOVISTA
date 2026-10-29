@@ -6,16 +6,13 @@ Uso:
 """
 
 from datetime import timedelta
+import os
 
-from django.core.management.base import BaseCommand
+from django.conf import settings
+from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from core.models import User, Plan, Sale
-
-USERS = [
-    ('Administrador', 'admin123', 'admin'),
-    ('JUNIOR', 'admin123', 'admin'),
-]
 
 PLANS = [
     ('GO-BASIC', 'Internet Básico', 'internet', 50, 220, 180),
@@ -74,10 +71,11 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         force = options['force']
         users_only = options['users_only']
+        users_config = self._users_from_environment()
 
         if users_only:
             created = 0
-            for name, password, role in USERS:
+            for name, password, role in users_config:
                 if not User.objects.filter(name__iexact=name).exists():
                     u = User(name=name, role=role)
                     u.set_password(password)
@@ -97,7 +95,7 @@ class Command(BaseCommand):
                 model.objects.all().delete()
 
         users = {}
-        for name, password, role in USERS:
+        for name, password, role in users_config:
             u = User(name=name, role=role)
             u.set_password(password)
             u.save()
@@ -124,3 +122,30 @@ class Command(BaseCommand):
             )
         self.stdout.write(f'Creadas {Sale.objects.count()} ventas')
         self.stdout.write(self.style.SUCCESS('Seed completado.'))
+
+    def _users_from_environment(self):
+        """Obtiene credenciales de un gestor de secretos, nunca del código."""
+        admin_name = os.environ.get('DJANGO_SEED_ADMIN_NAME', 'Administrador').strip()
+        admin_password = os.environ.get('DJANGO_SEED_ADMIN_PASSWORD', '')
+        sales_name = os.environ.get('DJANGO_SEED_SALES_NAME', 'Ventas').strip()
+        sales_password = os.environ.get('DJANGO_SEED_SALES_PASSWORD', '')
+
+        if not admin_password or not sales_password:
+            raise CommandError(
+                'Define DJANGO_SEED_ADMIN_PASSWORD y DJANGO_SEED_SALES_PASSWORD '
+                'en el gestor de secretos antes de ejecutar seed.')
+
+        users = [
+            (admin_name, admin_password, 'admin'),
+            (sales_name, sales_password, 'ventas'),
+        ]
+        if not all(name for name, _, _ in users):
+            raise CommandError('Los nombres de usuario del seed no pueden estar vacíos.')
+
+        if not settings.DEBUG:
+            weak = {'password', 'contraseña', 'qwerty', 'admin', 'ventas'}
+            for name, password, _ in users:
+                if len(password) < 12 or password.lower() in weak:
+                    raise CommandError(
+                        f'La contraseña de seed para {name} no cumple la política de producción.')
+        return users

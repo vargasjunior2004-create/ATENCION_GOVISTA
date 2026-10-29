@@ -1,0 +1,21 @@
+fecha_utc=2026-10-29T20:16:05Z
+rama=fase-0/linea-base
+commit=02adeaa0649fe3bf7472bf9bb997e4d63af31261
+python=Python 3.13.5
+django=6.1.2
+repo_du=1,1G
+git_dir_du=104M
+staticfiles_du=95M
+frontend_build_du=4,3M
+tracked_files=621
+tracked_staticfiles=503
+tracked_frontend_build=7
+static_bundles=149
+static_source_maps=41
+fixture_planes=33
+test_methods=157
+migration_latest=0027_trasladoexterno.py
+22 objects imported automatically (use -v 2 for details).
+
+db_plans=34
+db_sales=4

@@ -2,11 +2,22 @@ node_modules/
 frontend/build/
 data/
 .env
+.env.*
+!.env.example
 *.log
 .DS_Store
 __pycache__/
 *.pyc
 *.sqlite3*
+backups/
+*.dump
+*.sql
+*.pem
+*.key
+staticfiles/
+frontend_build/
+export_data.json
+MANUAL_USUARIO_GO_VISTA.pdf
 export_for_pg.json
 
 # Datos de clientes (PII) — no subir a repos públicos

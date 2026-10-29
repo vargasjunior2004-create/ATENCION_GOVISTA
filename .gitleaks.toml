@@ -1,0 +1,9 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Archivos de dependencias de frontend y documentación de terceros"
+paths = [
+  '''^frontend/node_modules/''',
+  '''^frontend/package-lock\.json$''',
+]
