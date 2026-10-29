@@ -159,6 +159,53 @@ class Promotion(models.Model):
         return self.active and self.start_date <= today <= self.end_date
 
 
+class TarifaTraslado(models.Model):
+    """Catalogo de tarifas comerciales para traslados externos."""
+    SERVICE_CHOICES = [
+        ('combo', 'Combo'),
+        ('internet', 'Internet individual'),
+        ('tv', 'TV cable individual'),
+    ]
+
+    service_type = models.CharField(max_length=20, choices=SERVICE_CHOICES,
+                                    unique=True)
+    name = models.CharField(max_length=120)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='transfer_tariffs_created')
+    updated_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='transfer_tariffs_updated')
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return f'{self.name} - {self.amount:.2f} Bs'
+
+
+class TarifaTrasladoHistorial(models.Model):
+    """Historial append-only de cambios del catalogo de tarifas."""
+    tarifa = models.ForeignKey(
+        TarifaTraslado, on_delete=models.PROTECT, related_name='history')
+    previous_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    new_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    previous_active = models.BooleanField()
+    new_active = models.BooleanField()
+    action = models.CharField(max_length=30)
+    changed_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='transfer_tariff_changes')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+
+
 class Customer(models.Model):
     """Cliente maestro (KARDEX). Clave natural: code."""
     code = models.CharField(max_length=40, unique=True)

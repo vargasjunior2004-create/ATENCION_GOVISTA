@@ -11,6 +11,7 @@ import ComercialLayout from '../modules/comercial/ComercialLayout';
 import Dashboard from '../modules/comercial/pages/Dashboard';
 import SaleForm from '../modules/comercial/pages/SaleForm';
 import SalesList from '../modules/comercial/pages/SalesList';
+import TransferTariffs from '../modules/comercial/pages/TransferTariffs';
 import { AdminRoute, ProtectedRoute, PublicRoute } from './guards';
 import LegacyRedirect from './LegacyRedirect';
 
@@ -36,6 +37,7 @@ export default function AppRoutes() {
             <Route path="promociones" element={<PromotionsModule />} />
             <Route path="usuarios" element={<UsersModule />} />
             <Route path="backups" element={<BackupModule />} />
+            <Route path="tarifas-traslados" element={<TransferTariffs />} />
           </Route>
         </Route>
 

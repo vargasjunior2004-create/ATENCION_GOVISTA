@@ -7,6 +7,7 @@ import {
   Package,
   Percent,
   Tag,
+  SlidersHorizontal,
   Users,
 } from 'lucide-react';
 
@@ -62,5 +63,10 @@ export const commercialAdminNavigation = [
     to: '/comercial/backups',
     label: 'Copias de Seguridad',
     icon: Database,
+  },
+  {
+    to: '/comercial/tarifas-traslados',
+    label: 'Tarifas de traslados',
+    icon: SlidersHorizontal,
   },
 ];

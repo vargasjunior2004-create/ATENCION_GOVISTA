@@ -21,6 +21,10 @@ urlpatterns = [
     path('promotions', views.PromotionListView.as_view()),
     path('promotions/active', views.ActivePromotionsView.as_view()),
     path('promotions/<int:pk>', views.PromotionDetailView.as_view()),
+    path('transfer-tariffs/active', views.ActiveTransferTariffsView.as_view()),
+    path('transfer-tariffs', views.TransferTariffListView.as_view()),
+    path('transfer-tariffs/<int:pk>', views.TransferTariffDetailView.as_view()),
+    path('transfer-tariffs/<int:pk>/history', views.TransferTariffHistoryView.as_view()),
 
     path('sales', views.SaleListView.as_view()),
     path('sales/<int:pk>', views.SaleDetailView.as_view()),

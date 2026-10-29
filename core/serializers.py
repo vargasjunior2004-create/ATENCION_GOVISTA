@@ -3,6 +3,7 @@ from decimal import Decimal
 from rest_framework import serializers
 from .models import (
     User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
+    TarifaTraslado, TarifaTrasladoHistorial,
 )
 from .domain import (
     SERVICE_TYPE_LABELS, SERVICE_TYPE_FAMILY, SERVICE_TYPE_TO_PLAN_TYPE,
@@ -270,6 +271,39 @@ class PromotionWriteSerializer(serializers.Serializer):
                 'La fecha de fin debe ser mayor o igual a la fecha de inicio')
 
         return attrs
+
+
+class TarifaTrasladoSerializer(serializers.ModelSerializer):
+    serviceType = serializers.CharField(source='service_type', read_only=True)
+    createdBy = serializers.SerializerMethodField()
+    updatedBy = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TarifaTraslado
+        fields = ['id', 'service_type', 'serviceType', 'name', 'amount',
+                  'active', 'created_at', 'updated_at', 'created_by',
+                  'updated_by', 'createdBy', 'updatedBy']
+        read_only_fields = ['created_at', 'updated_at', 'created_by',
+                            'updated_by', 'createdBy', 'updatedBy']
+
+    def get_createdBy(self, obj):
+        return {'id': obj.created_by_id, 'name': obj.created_by.name} if obj.created_by else None
+
+    def get_updatedBy(self, obj):
+        return {'id': obj.updated_by_id, 'name': obj.updated_by.name} if obj.updated_by else None
+
+
+class TarifaTrasladoHistorialSerializer(serializers.ModelSerializer):
+    changedBy = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TarifaTrasladoHistorial
+        fields = ['id', 'previous_amount', 'new_amount', 'previous_active',
+                  'new_active', 'action', 'changed_by', 'changedBy',
+                  'created_at']
+
+    def get_changedBy(self, obj):
+        return {'id': obj.changed_by_id, 'name': obj.changed_by.name} if obj.changed_by else None
 
 
 class SaleSerializer(serializers.ModelSerializer):
