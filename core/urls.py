@@ -21,6 +21,10 @@ urlpatterns = [
     path('promotions', views.PromotionListView.as_view()),
     path('promotions/active', views.ActivePromotionsView.as_view()),
     path('promotions/<int:pk>', views.PromotionDetailView.as_view()),
+    path('transfer-tariffs/active', views.ActiveTransferTariffsView.as_view()),
+    path('transfer-tariffs', views.TransferTariffListView.as_view()),
+    path('transfer-tariffs/<int:pk>', views.TransferTariffDetailView.as_view()),
+    path('transfer-tariffs/<int:pk>/history', views.TransferTariffHistoryView.as_view()),
 
     path('sales', views.SaleListView.as_view()),
     path('sales/<int:pk>', views.SaleDetailView.as_view()),
@@ -31,6 +35,9 @@ urlpatterns = [
 
     path('customers', views.CustomerListView.as_view()),
 
+    path('reports/dashboard/pdf', report_views.DashboardPdfView.as_view()),
+    path('reports/dashboard/xlsx', report_views.DashboardXlsxView.as_view()),
+    path('reports/dashboard/png', report_views.DashboardPngView.as_view()),
     path('reports/pdf', report_views.SalesPdfView.as_view()),
     path('reports/xlsx', report_views.SalesXlsxView.as_view()),
     path('reports/png', report_views.SalesPngView.as_view()),

@@ -128,7 +128,7 @@ def request_type_resolver():
     if default is None:
         raise CommandError(
             'No hay tipos de solicitud en el catalogo. La migracion 0019 '
-            'debe correr antes de importar movimientos.')
+            'debe correr antes de importar solicitudes.')
 
     sin_match = set()
 
@@ -281,7 +281,7 @@ class Command(BaseCommand):
                 customer=customer, serviceType=stype, requestType=rtype,
                 changeReason=normalize(motivo), planFrom=plan_from,
                 totalFrom=total_from, notes=(comentarios or ''),
-                plan=plan, total=total, createdBy=user,
+                plan=plan, planName=plan.label, total=total, createdBy=user,
             )
             stats['ok'] += 1
 

@@ -32,6 +32,19 @@ SERVICE_FAMILY_LABELS = {
     'combo': 'COMBO',
 }
 
+# Etiquetas cortas para distinguir la variante dentro de una misma familia.
+# La columna PLAN ya muestra el nombre del plan; estas etiquetas son solo
+# para la columna SERVICIO cuando cambia analogico <-> digital.
+SERVICE_VARIANT_LABELS = {
+    'internet': 'INTERNET',
+    'tv': 'TV ANALÓGICA',
+    'tv_digital': 'TV DIGITAL',
+    'combo_analog': 'COMBO ANALÓGICO',
+    'combo_digital': 'COMBO DIGITAL',
+}
+
+PLAN_EMPTY = '—'
+
 # Servicio -> tipo de plan que ese servicio puede contratar.
 SERVICE_TYPE_TO_PLAN_TYPE = {
     'internet': 'internet',
@@ -156,6 +169,38 @@ def previous_service_family(sale):
     return None
 
 
+def _plan_label(plan, snapshot=''):
+    """Nombre historico del plan, con el snapshot como fuente principal."""
+    label = (snapshot or '').strip()
+    if label:
+        return label
+    return (plan.label if plan is not None else '') or ''
+
+
+def sale_plan_labels(sale, catalog=None):
+    """Devuelve (plan anterior, plan actual) para el reporte.
+
+    - Cambio de plan: el anterior sale del snapshot `planFrom` y el actual
+      del snapshot `planName`, con el catalogo como respaldo.
+    - Retiro: el unico plan del movimiento es el que tenia el cliente antes
+      de retirarse, por eso va en la columna anterior y la actual queda vacia.
+    - Altas, adiciones y demas: no tienen plan anterior.
+    """
+    mode = request_type_mode(sale.requestType, catalog)
+    current = _plan_label(getattr(sale, 'plan', None),
+                         getattr(sale, 'planName', ''))
+
+    if mode == MODO_RETIRO:
+        return current or PLAN_EMPTY, PLAN_EMPTY
+
+    if mode == MODO_CAMBIO_PLAN:
+        previous = _plan_label(getattr(sale, 'planFromId', None),
+                              getattr(sale, 'planFrom', ''))
+        return previous or PLAN_EMPTY, current or PLAN_EMPTY
+
+    return PLAN_EMPTY, current or PLAN_EMPTY
+
+
 def is_service_change(sale, catalog=None):
     """True si el movimiento cambia de familia de servicio (Combo -> Internet)."""
     if request_type_mode(sale.requestType, catalog) != MODO_CAMBIO_PLAN:
@@ -168,13 +213,30 @@ def is_service_change(sale, catalog=None):
 def sale_service_label(sale, catalog=None):
     """Texto de la columna SERVICIO.
 
-    En un cambio de plan se muestra laconversion como 'COMBO -> INTERNET'.
-    En el resto de movimientos no se toca nada, para no alterar la
-    apariencia de los reportes que ya usa la operacion.
+    En un cambio de plan se muestra la conversion. Si cambia la familia se
+    usan las etiquetas de familia (COMBO -> INTERNET); si solo cambia la
+    variante dentro de la misma familia se usan etiquetas cortas
+    (COMBO ANALOGICO -> COMBO DIGITAL). En el resto de movimientos se deja
+    el nombre del servicio tal como estaba.
     """
-    if request_type_mode(sale.requestType, catalog) == MODO_CAMBIO_PLAN:
-        previous = previous_service_family(sale)
-        current = SERVICE_TYPE_FAMILY.get(sale.serviceType)
-        if previous and current:
-            return f'{service_family_label(previous)} → {service_family_label(current)}'
-    return SERVICE_TYPE_LABELS.get(sale.serviceType, sale.serviceType or '')
+    current_label = SERVICE_TYPE_LABELS.get(
+        sale.serviceType, sale.serviceType or '')
+    if request_type_mode(sale.requestType, catalog) != MODO_CAMBIO_PLAN:
+        return current_label
+
+    previous_type = sale.serviceTypeFrom or None
+    current_type = sale.serviceType or None
+    previous_family = (SERVICE_TYPE_FAMILY.get(previous_type)
+                       if previous_type else previous_service_family(sale))
+    current_family = SERVICE_TYPE_FAMILY.get(current_type)
+
+    if previous_family and current_family and previous_family != current_family:
+        return (f'{service_family_label(previous_family)} → '
+                f'{service_family_label(current_family)}')
+
+    if (previous_type and current_type
+            and previous_type != current_type):
+        return (f'{SERVICE_VARIANT_LABELS.get(previous_type, previous_type)} → '
+                f'{SERVICE_VARIANT_LABELS.get(current_type, current_type)}')
+
+    return current_label

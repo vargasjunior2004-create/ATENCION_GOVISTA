@@ -1,117 +1,187 @@
 import React, { useState } from 'react';
+import { AlertCircle, ArrowRight, Eye, EyeOff, Loader2, RadioTower } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Button, Input, Alert } from './ui';
 
 export default function Login() {
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     setError('');
     setLoading(true);
+
     try {
       await login(name, password);
       navigate('/', { replace: true });
     } catch (err) {
-      setError(err.error || 'Error al iniciar sesion');
+      setError(err.error || 'No se pudo iniciar sesión. Revisa tus datos e inténtalo nuevamente.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex gradient-sidebar">
-      {/* Left panel - brand */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden items-center justify-center">
-        <div className="absolute inset-0 bg-gradient-to-br from-brand-900 via-vista-dark to-vista-sidebar" />
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-vista-accent/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-vista-accent/5 rounded-full blur-3xl" />
-        <div className="relative z-10 text-center px-12">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-vista-accent/10 mb-8">
-            <svg className="w-10 h-10 text-vista-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.148 2.148A12.061 12.061 0 0116.5 7.605" />
-            </svg>
+    <div className="min-h-screen bg-slate-50 lg:grid lg:grid-cols-[minmax(0,1.08fr)_minmax(420px,0.92fr)]">
+      <section className="relative hidden min-h-screen overflow-hidden bg-[#0b1f33] text-white lg:flex">
+        <div className="absolute inset-y-0 right-0 w-px bg-blue-300/20" aria-hidden="true" />
+        <div className="absolute right-16 top-1/2 -translate-y-1/2 opacity-40" aria-hidden="true">
+          <div className="flex items-end gap-2">
+            <span className="h-12 w-1 rounded-full bg-blue-300/30" />
+            <span className="h-20 w-1 rounded-full bg-blue-300/50" />
+            <span className="h-32 w-1 rounded-full bg-blue-300/80" />
+            <span className="h-24 w-1 rounded-full bg-blue-300/60" />
+            <span className="h-16 w-1 rounded-full bg-blue-300/40" />
           </div>
-          <h1 className="text-5xl font-black text-white tracking-tight mb-4">
-            GO<span className="text-vista-accent">VISTA</span>
-          </h1>
-          <p className="text-green-300/70 text-lg font-medium">
-            Planilla de Movimientos
-          </p>
-          <p className="text-green-400/40 text-sm mt-2">
-            Cobija-Bolivia
-          </p>
+          <div className="mt-3 h-px w-40 bg-blue-200/40" />
         </div>
-      </div>
 
-      {/* Right panel - form */}
-      <div className="flex-1 flex items-center justify-center px-6 py-12">
-        <div className="w-full max-w-md">
-          {/* Mobile brand */}
-          <div className="lg:hidden text-center mb-10">
-            <h1 className="text-4xl font-black text-white tracking-tight mb-2">
-              GO<span className="text-vista-accent">VISTA</span>
-            </h1>
-            <p className="text-green-300/60 text-sm">Planilla de Movimientos</p>
+        <div className="relative z-10 flex w-full flex-col justify-between p-10 xl:p-14">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-300/25 bg-blue-300/10">
+              <RadioTower className="h-5 w-5 text-blue-300" aria-hidden="true" />
+            </div>
+            <div>
+              <p className="text-lg font-black tracking-tight">GO VISTA</p>
+              <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.22em] text-blue-200/60">
+                Portal de Gestión
+              </p>
+            </div>
           </div>
 
-          <div className="bg-white/5 backdrop-blur-xl rounded-3xl p-8 border border-white/10 shadow-2xl">
+          <div className="max-w-xl py-16">
+            <p className="mb-5 text-xs font-bold uppercase tracking-[0.24em] text-blue-300">
+              Nos encanta verte conectado
+            </p>
+            <h1 className="max-w-lg text-4xl font-semibold leading-tight tracking-[-0.03em] text-white xl:text-5xl">
+              Gestiona cada solicitud desde un solo lugar.
+            </h1>
+            <p className="mt-6 max-w-md text-base leading-7 text-blue-100/65">
+              Gestión comercial y atención al cliente en un solo lugar, con la información que tu equipo necesita para avanzar.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3 text-xs font-medium text-blue-100/45">
+            <span className="h-2 w-2 rounded-full bg-blue-400" aria-hidden="true" />
+            <span>GO VISTA / COBIJA, BOLIVIA</span>
+          </div>
+        </div>
+      </section>
+
+      <main className="flex min-h-screen items-center justify-center px-5 py-10 sm:px-8 lg:px-12">
+        <div className="w-full max-w-md">
+          <div className="mb-10 flex items-center gap-3 lg:hidden">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
+              <RadioTower className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <div>
+              <p className="text-lg font-black tracking-tight text-slate-950">GO VISTA</p>
+              <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                Portal de Gestión
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-7 shadow-[0_18px_45px_rgba(15,23,42,0.07)] sm:p-9">
             <div className="mb-8">
-              <h2 className="text-2xl font-bold text-white mb-2">Bienvenido</h2>
-              <p className="text-green-300/50 text-sm">Ingresa a tu cuenta para continuar</p>
+              <p className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-blue-700">
+                Acceso al portal
+              </p>
+              <h2 className="text-3xl font-semibold tracking-[-0.03em] text-slate-950">
+                Iniciar sesión
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-slate-500">
+                Ingresa a tu cuenta para continuar.
+              </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
-              {error && (
-                <div className="bg-red-500/10 border border-red-500/20 text-red-300 px-4 py-3 rounded-xl text-sm font-medium">
-                  {error}
-                </div>
-              )}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-green-300/60 uppercase tracking-wider">Usuario</label>
+            {error && (
+              <div
+                className="mb-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-5 text-red-700"
+                role="alert"
+              >
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-5" aria-busy={loading}>
+              <div>
+                <label htmlFor="login-name" className="mb-2 block text-sm font-semibold text-slate-700">
+                  Nombre de usuario
+                </label>
                 <input
+                  id="login-name"
+                  name="name"
                   type="text"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(event) => setName(event.target.value.toUpperCase())}
+                  autoComplete="username"
                   required
-                  autoFocus
-                  placeholder="Tu nombre de usuario"
-                  className="w-full px-4 py-3.5 text-sm bg-white/5 border-0 rounded-xl text-white placeholder-green-300/30 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-vista-accent/30 focus:bg-white/10"
+                   className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm uppercase text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                  placeholder="Escribe tu usuario"
                 />
               </div>
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-green-300/60 uppercase tracking-wider">Contrasena</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  placeholder="Ingresa tu contrasena"
-                  className="w-full px-4 py-3.5 text-sm bg-white/5 border-0 rounded-xl text-white placeholder-green-300/30 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-vista-accent/30 focus:bg-white/10"
-                />
+
+              <div>
+                <label htmlFor="login-password" className="mb-2 block text-sm font-semibold text-slate-700">
+                  Contraseña
+                </label>
+                <div className="relative">
+                  <input
+                    id="login-password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                    autoComplete="current-password"
+                    required
+                     className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3.5 pr-12 text-sm uppercase text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                    placeholder="Escribe tu contraseña"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((visible) => !visible)}
+                    className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-xl text-slate-400 transition hover:text-slate-700 focus:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/15"
+                    aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    aria-pressed={showPassword}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
+                  </button>
+                </div>
               </div>
+
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3.5 bg-gradient-to-r from-vista-accent to-emerald-500 hover:from-vista-accent/90 hover:to-emerald-600 text-vista-dark font-bold text-sm rounded-xl transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-vista-accent/20"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus-visible:ring-4 focus-visible:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                     Ingresando...
-                  </span>
-                ) : 'Ingresar'}
+                  </>
+                ) : (
+                  <>
+                    Ingresar
+                    <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                  </>
+                )}
               </button>
             </form>
+
+            <p className="mt-8 border-t border-slate-100 pt-5 text-center text-xs leading-5 text-slate-400">
+              Acceso protegido para usuarios autorizados de GO VISTA.
+            </p>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

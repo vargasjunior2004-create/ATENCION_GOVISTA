@@ -1,7 +1,11 @@
+import logging
 import os
 import threading
+from decimal import Decimal, InvalidOperation
+from datetime import date, timedelta
 
-from django.db.models import Sum, Q
+from django.db import transaction
+from django.db.models import Count, Q, Sum
 from django.http import FileResponse
 from django.utils import timezone
 from rest_framework import status
@@ -11,17 +15,22 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
-from .models import User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo
+from .models import (
+    User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
+    TarifaTraslado, TarifaTrasladoHistorial,
+)
 from .serializers import (
     UserSerializer, UserWriteSerializer, PlanSerializer,
     PlanPublicSerializer, CustomerSerializer, SaleSerializer,
     SaleCreateSerializer, BackupSerializer,
     PromotionSerializer, PromotionWriteSerializer,
     TipoSolicitudPublicSerializer, MotivoSerializer, MotivoPublicSerializer,
+    TarifaTrasladoSerializer, TarifaTrasladoHistorialSerializer,
 )
 from .domain import (
-    request_type_mode, request_type_catalog, codes_with_modes,
-    MODOS_INSTALACION, MODO_RETIRO, MODO_CAMBIO_PLAN, MODO_ADICION,
+    request_type_mode, request_type_catalog,
+    MODO_RETIRO, MODO_CAMBIO_PLAN, MODO_ADICION,
+    MODO_SIMPLE,
 )
 from .reports import build_sales_pdf, build_sales_xlsx
 
@@ -30,6 +39,7 @@ from .reports import build_sales_pdf, build_sales_xlsx
 # administrador y evita agotar la CPU del plan gratuito.
 _backup_lock = threading.Lock()
 _backup_in_progress = False
+logger = logging.getLogger(__name__)
 
 
 class _BackupFileResponse(FileResponse):
@@ -302,7 +312,7 @@ class MotivoDetailView(IsAdminMixin, APIView):
         # trazabilidad. Se desactiva en su lugar.
         if Sale.objects.filter(motivo=motivo).exists():
             return Response(
-                {'error': 'No se puede eliminar: tiene movimientos asociados. '
+                {'error': 'No se puede eliminar: tiene solicitudes asociadas. '
                           'Desactivelo en su lugar para que deje de ofrecerse.'},
                 status=status.HTTP_400_BAD_REQUEST)
         motivo.delete()
@@ -467,6 +477,109 @@ class ActivePromotionsView(APIView):
         return Response(PromotionSerializer(promos, many=True).data)
 
 
+class ActiveTransferTariffsView(APIView):
+    """Tarifas vigentes para operadores y formularios comerciales."""
+    def get(self, request):
+        tariffs = TarifaTraslado.objects.filter(active=True)
+        return Response(TarifaTrasladoSerializer(tariffs, many=True).data)
+
+
+class TransferTariffListView(IsAdminMixin, APIView):
+    def get(self, request):
+        error = self.check_admin(request)
+        if error:
+            return error
+        return Response(TarifaTrasladoSerializer(
+            TarifaTraslado.objects.all(), many=True).data)
+
+    def post(self, request):
+        error = self.check_admin(request)
+        if error:
+            return error
+        data = request.data
+        try:
+            amount = Decimal(str(data.get('amount')))
+        except (InvalidOperation, TypeError, ValueError):
+            return Response({'error': 'Importe no valido'}, status=400)
+        if amount < 0:
+            return Response({'error': 'El importe no puede ser negativo'}, status=400)
+        if TarifaTraslado.objects.filter(service_type=data.get('service_type')).exists():
+            return Response({'error': 'Ya existe una tarifa para este servicio'}, status=400)
+        tariff = TarifaTraslado.objects.create(
+            service_type=data.get('service_type'),
+            name=data.get('name', ''),
+            amount=amount,
+            active=data.get('active', True),
+            created_by=request.user,
+            updated_by=request.user,
+        )
+        TarifaTrasladoHistorial.objects.create(
+            tarifa=tariff, previous_amount=amount, new_amount=amount,
+            previous_active=tariff.active, new_active=tariff.active,
+            action='created', changed_by=request.user)
+        return Response(TarifaTrasladoSerializer(tariff).data, status=201)
+
+
+class TransferTariffDetailView(IsAdminMixin, APIView):
+    def _get(self, pk):
+        try:
+            return TarifaTraslado.objects.get(pk=pk)
+        except TarifaTraslado.DoesNotExist:
+            return None
+
+    def put(self, request, pk):
+        error = self.check_admin(request)
+        if error:
+            return error
+        tariff = self._get(pk)
+        if tariff is None:
+            return Response({'error': 'Tarifa no encontrada'}, status=404)
+        data = request.data
+        if 'name' in data and data.get('name') != tariff.name:
+            return Response(
+                {'error': 'El nombre de la tarifa no se puede modificar'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            amount = Decimal(str(data.get('amount', tariff.amount)))
+        except (InvalidOperation, TypeError, ValueError):
+            return Response({'error': 'Importe no valido'}, status=400)
+        if amount < 0:
+            return Response({'error': 'El importe no puede ser negativo'}, status=400)
+        old_amount, old_active = tariff.amount, tariff.active
+        tariff.name = data.get('name', tariff.name)
+        tariff.amount = amount
+        tariff.active = data.get('active', tariff.active)
+        tariff.updated_by = request.user
+        tariff.save()
+        if old_amount != tariff.amount or old_active != tariff.active:
+            TarifaTrasladoHistorial.objects.create(
+                tarifa=tariff, previous_amount=old_amount,
+                new_amount=tariff.amount, previous_active=old_active,
+                new_active=tariff.active, action='updated',
+                changed_by=request.user)
+        return Response(TarifaTrasladoSerializer(tariff).data)
+
+    def get(self, request, pk):
+        error = self.check_admin(request)
+        if error:
+            return error
+        tariff = self._get(pk)
+        if tariff is None:
+            return Response({'error': 'Tarifa no encontrada'}, status=404)
+        return Response(TarifaTrasladoSerializer(tariff).data)
+
+
+class TransferTariffHistoryView(IsAdminMixin, APIView):
+    def get(self, request, pk):
+        error = self.check_admin(request)
+        if error:
+            return error
+        if not TarifaTraslado.objects.filter(pk=pk).exists():
+            return Response({'error': 'Tarifa no encontrada'}, status=404)
+        history = TarifaTrasladoHistorial.objects.filter(tarifa_id=pk)
+        return Response(TarifaTrasladoHistorialSerializer(history, many=True).data)
+
+
 class CustomerListView(APIView):
     """Busqueda de clientes por kardex o nombre (para autocompletar)."""
     def get(self, request):
@@ -535,7 +648,8 @@ class SaleListView(APIView):
             serializer = SaleCreateSerializer(data=data, context={'user': request.user})
             if not serializer.is_valid():
                 return Response({'error': _first_error(serializer)}, status=status.HTTP_400_BAD_REQUEST)
-            sale = serializer.save()
+            with transaction.atomic():
+                sale = serializer.save()
             return Response(SaleSerializer(sale).data, status=status.HTTP_201_CREATED)
         except Exception as e:
             logger.error('SaleListView POST error: %s\n%s', e, traceback.format_exc())
@@ -563,12 +677,17 @@ class SaleDetailView(IsAdminMixin, APIView):
         except Sale.DoesNotExist:
             return Response({'error': 'Venta no encontrada'}, status=status.HTTP_404_NOT_FOUND)
 
-        from .domain import SERVICE_TYPE_LABELS, SERVICE_TYPE_TO_PLAN_TYPE
+        from .domain import (
+            SERVICE_TYPE_LABELS, SERVICE_TYPE_TO_PLAN_TYPE,
+            motivo_categoria_de_modo)
         from .serializers import (
             SaleSerializer, resolve_sale_prices, validate_cambio_plan,
             resolve_motivo)
 
         data = request.data
+        old_plan_id = sale.plan_id
+        old_plan_from_id = sale.planFromId_id
+
         plan = sale.plan
         if data.get('planId'):
             plan = Plan.objects.filter(id=data['planId'], active=True).first()
@@ -587,6 +706,43 @@ class SaleDetailView(IsAdminMixin, APIView):
             return Response({'error': 'El tipo de solicitud esta inactivo'},
                             status=status.HTTP_400_BAD_REQUEST)
         mode = tipo.modo
+        mode_changed = mode != request_type_mode(sale.requestType, catalog)
+
+        is_rehire = request_type == 'recontratacion'
+        if is_rehire:
+            equipment_retained = data.get(
+                'equipmentRetained', sale.equipment_retained)
+            requires_technical_visit = data.get(
+                'requiresTechnicalVisit', sale.requires_technical_visit)
+            debt_applies = data.get('debtApplies', sale.debt_applies)
+            debt_raw = data.get('debtAmount', sale.debt_amount)
+            if equipment_retained is None:
+                return Response(
+                    {'error': 'Indique si conserva el router/ONU'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if requires_technical_visit is None:
+                return Response(
+                    {'error': 'Indique si requiere visita tecnica'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            try:
+                debt_amount = Decimal(str(debt_raw or 0))
+            except (InvalidOperation, TypeError, ValueError):
+                return Response(
+                    {'error': 'El adeudo no es valido'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if debt_applies and debt_amount <= 0:
+                return Response(
+                    {'error': 'Ingrese un adeudo mayor que cero'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if not debt_applies and debt_amount != 0:
+                return Response(
+                    {'error': 'El adeudo debe ser cero si no aplica'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        else:
+            equipment_retained = None
+            requires_technical_visit = None
+            debt_applies = False
+            debt_amount = Decimal('0')
 
         if service_type not in SERVICE_TYPE_LABELS:
             return Response({'error': 'Tipo de servicio no valido'},
@@ -594,6 +750,14 @@ class SaleDetailView(IsAdminMixin, APIView):
         if plan.type != SERVICE_TYPE_TO_PLAN_TYPE.get(service_type):
             return Response(
                 {'error': 'El plan no pertenece al tipo de servicio seleccionado'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        # Un cambio de plan no puede apuntar a un plan legacy. Se permite
+        # editar un movimiento historico que ya tenia ese plan como destino.
+        if (mode == MODO_CAMBIO_PLAN and plan.legacy
+                and (plan.id != old_plan_id or mode_changed)):
+            return Response(
+                {'error': 'No se puede cambiar a un plan anterior (legacy)'},
                 status=status.HTTP_400_BAD_REQUEST)
 
         plan_from = sale.planFromId
@@ -607,20 +771,51 @@ class SaleDetailView(IsAdminMixin, APIView):
 
         service_type_from = data.get('serviceTypeFrom', sale.serviceTypeFrom) or None
 
-        # Motivo: solo se toca si el payload trae uno distinto al actual.
-        # Editar un movimiento historico sin re-seleccionar motivo conserva
-        # su motivo y su texto, aunque el motivo ya este inactivo.
+        # Motivo: se conserva el historico (aunque este inactivo) cuando el
+        # modo no cambio. Si cambia el tipo de movimiento, el motivo tiene
+        # que corresponder a la nueva categoria o se exige uno nuevo.
         motivo = sale.motivo
         motivo_id = data.get('motivoId')
-        if motivo_id and str(motivo_id) != str(sale.motivo_id):
+        expected_motive = motivo_categoria_de_modo(mode)
+
+        if motivo_id and str(motivo_id) == str(sale.motivo_id):
+            if (expected_motive and motivo is not None
+                    and motivo.categoria != expected_motive):
+                return Response(
+                    {'error': 'El motivo no corresponde a este tipo de solicitud'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if expected_motive:
+                change_reason = data.get('changeReason', sale.changeReason)
+            else:
+                motivo = None
+                change_reason = ''
+        elif motivo_id:
             motivo_errors = {}
             motivo, _ = resolve_motivo(motivo_id, mode, motivo_errors)
             if motivo_errors:
                 return Response({'error': next(iter(motivo_errors.values()))},
                                 status=status.HTTP_400_BAD_REQUEST)
-            change_reason = motivo.nombre
+            change_reason = motivo.nombre if motivo else ''
+        elif mode_changed:
+            motivo = None
+            change_reason = data.get('changeReason', '') or ''
         else:
             change_reason = data.get('changeReason', sale.changeReason)
+
+        if expected_motive:
+            if motivo is None and mode_changed:
+                etiqueta = ('del cambio' if expected_motive == 'cambio'
+                            else 'del retiro')
+                return Response(
+                    {'error': f'Debe seleccionar el motivo {etiqueta}'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if motivo is not None and motivo.categoria != expected_motive:
+                return Response(
+                    {'error': 'El motivo no corresponde a este tipo de solicitud'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        elif mode_changed:
+            motivo = None
+            change_reason = ''
 
         if mode == MODO_CAMBIO_PLAN:
             errors = validate_cambio_plan(
@@ -632,6 +827,7 @@ class SaleDetailView(IsAdminMixin, APIView):
                                 status=status.HTTP_400_BAD_REQUEST)
         else:
             service_type_from = None
+            plan_from = None
             if mode != MODO_ADICION:
                 data = {**data, 'additionType': ''}
 
@@ -645,15 +841,60 @@ class SaleDetailView(IsAdminMixin, APIView):
         sale.motivo = motivo
         sale.notes = data.get('notes', sale.notes)
         sale.plan = plan
+        if plan.id != old_plan_id or not sale.planName:
+            sale.planName = plan.label
         sale.planFromId = plan_from
+        if plan_from is None:
+            sale.planFrom = ''
+        elif plan_from.id != old_plan_from_id or not sale.planFrom:
+            sale.planFrom = plan_from.label
         sale.serviceTypeFrom = service_type_from
-        sale.planFrom = plan_from.label if plan_from else ''
         sale.totalFrom = plan_from.total if plan_from else None
+        sale.equipment_retained = equipment_retained
+        sale.requires_technical_visit = requires_technical_visit
+        sale.debt_applies = debt_applies
+        sale.debt_amount = debt_amount
 
-        # Mismos precios que en el alta: la edicion no puede inventarse
-        # una regla de cobro distinta a la del registro original.
-        installation, monthly, total = resolve_sale_prices(
-            plan, sale.promotion, request_type)
+        # Si el plan cambio, una promocion del plan anterior ya no aplica.
+        # Se limpia para que el total se calcule con las condiciones nuevas.
+        if (sale.promotion is not None
+                and sale.promotion.plan_id != plan.id):
+            sale.promotion = None
+            sale.promotion_name = ''
+        if plan.id != old_plan_id:
+            if sale.promotion:
+                sale.promotion_name = sale.promotion.name
+            else:
+                sale.promotion = None
+                sale.promotion_name = ''
+
+        # Solo admin puede llegar a esta vista. Permitir importes manuales
+        # para este registro; si no vienen, se conserva el calculo vigente
+        # derivado del plan y la promocion.
+        manual_installation = data.get('appliedInstallation')
+        manual_monthly = data.get('appliedMonthly')
+        if (manual_installation is None) != (manual_monthly is None):
+            return Response(
+                {'error': 'Debe indicar instalación y mensualidad juntas'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if manual_installation is not None:
+            try:
+                installation = Decimal(str(manual_installation))
+                monthly = Decimal(str(manual_monthly))
+            except (InvalidOperation, TypeError, ValueError):
+                return Response(
+                    {'error': 'Los importes no son validos'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if installation < 0 or monthly < 0:
+                return Response(
+                    {'error': 'Los importes no pueden ser negativos'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            total = installation + monthly
+        else:
+            installation, monthly, total = resolve_sale_prices(
+                plan, sale.promotion, request_type)
+        if is_rehire:
+            total += debt_amount
         sale.applied_installation = installation
         sale.applied_monthly = monthly
         sale.total = total
@@ -716,37 +957,229 @@ class UserDetailView(IsAdminMixin, APIView):
 
 
 class DashboardStatsView(APIView):
+    MOVEMENT_TYPES = {
+        'all', 'nuevo_contrato', 'recontrataciones', 'instalaciones',
+        'retiros', 'cambios_plan',
+        'adiciones', 'otros',
+    }
+
+    @staticmethod
+    def _parse_range(params, today):
+        from_value = params.get('from')
+        to_value = params.get('to')
+        if bool(from_value) != bool(to_value):
+            raise ValueError('Los parametros from y to deben enviarse juntos')
+
+        if not from_value:
+            return today, today
+
+        try:
+            from_date = date.fromisoformat(from_value)
+            to_date = date.fromisoformat(to_value)
+        except (TypeError, ValueError):
+            raise ValueError('Las fechas deben usar el formato YYYY-MM-DD')
+
+        if from_date > to_date:
+            raise ValueError('La fecha inicial no puede superar la fecha final')
+        return from_date, to_date
+
+    @staticmethod
+    def _category_codes(catalog):
+        # Estos dos tipos comparten el modo "nuevo", pero son categorías
+        # comerciales distintas y deben medirse por separado.
+        categories = {
+            'nuevo_contrato': [
+                code for code in catalog if code == 'nuevo_contrato'],
+            'recontrataciones': [
+                code for code in catalog if code == 'recontratacion'],
+        }
+        classified = set(categories['nuevo_contrato']) | set(
+            categories['recontrataciones'])
+        for name, mode in (
+            ('retiros', MODO_RETIRO),
+            ('cambios_plan', MODO_CAMBIO_PLAN),
+            ('adiciones', MODO_ADICION),
+        ):
+            categories[name] = [
+                code for code, tipo in catalog.items()
+                if code not in classified and tipo.modo == mode]
+            classified.update(categories[name])
+        # Compatibilidad para consumidores antiguos del endpoint. No se
+        # expone como categoría nueva ni se incluye en el desglose.
+        categories['instalaciones'] = (
+            categories['nuevo_contrato'] + categories['recontrataciones'])
+        categories['otros'] = [
+            code for code, tipo in catalog.items()
+            if code not in classified and tipo.modo == MODO_SIMPLE
+        ]
+        return categories
+
+    @staticmethod
+    def _amount(value):
+        return float(value or 0)
+
+    @classmethod
+    def _summary(cls, queryset):
+        data = queryset.aggregate(count=Count('id'), total=Sum('total'))
+        return {
+            'count': data['count'] or 0,
+            'total': cls._amount(data['total']),
+        }
+
+    @classmethod
+    def _analytics(cls, queryset, categories, from_date, to_date,
+                   movement_type):
+        category_querysets = {
+            name: queryset.filter(requestType__in=codes)
+            for name, codes in categories.items()
+            if name != 'instalaciones'
+        }
+        summaries = {
+            name: cls._summary(category_qs)
+            for name, category_qs in category_querysets.items()
+        }
+
+        daily_rows = queryset.values('date').annotate(
+            count=Count('id'),
+            nuevo_contrato=Count(
+                'id', filter=Q(requestType__in=categories['nuevo_contrato'])),
+            recontrataciones=Count(
+                'id', filter=Q(requestType__in=categories['recontrataciones'])),
+            retiros=Count(
+                'id', filter=Q(requestType__in=categories['retiros'])),
+            cambios_plan=Count(
+                'id', filter=Q(requestType__in=categories['cambios_plan'])),
+            adiciones=Count(
+                'id', filter=Q(requestType__in=categories['adiciones'])),
+            otros=Count(
+                'id', filter=Q(requestType__in=categories['otros'])),
+        )
+        daily_by_date = {row['date']: row for row in daily_rows}
+
+        series = []
+        current = from_date
+        while current <= to_date:
+            row = daily_by_date.get(current, {})
+            series.append({
+                'date': current.isoformat(),
+                'movimientos': row.get('count', 0),
+                'nuevo_contrato': row.get('nuevo_contrato', 0),
+                'recontrataciones': row.get('recontrataciones', 0),
+                'retiros': row.get('retiros', 0),
+                'cambios_plan': row.get('cambios_plan', 0),
+                'adiciones': row.get('adiciones', 0),
+                'otros': row.get('otros', 0),
+            })
+            current += timedelta(days=1)
+
+        service_rows = queryset.values('serviceType').annotate(
+            count=Count('id'), total=Sum('total')).order_by('serviceType')
+        service_labels = {
+            'internet': 'Internet',
+            'tv': 'TV analógica',
+            'tv_digital': 'TV digital',
+            'combo_analog': 'Internet + TV analógica',
+            'combo_digital': 'Internet + TV digital',
+        }
+        services = [
+            {
+                'serviceType': row['serviceType'],
+                'label': service_labels.get(row['serviceType'], row['serviceType']),
+                'count': row['count'],
+                'total': cls._amount(row['total']),
+            }
+            for row in service_rows
+        ]
+
+        movement_breakdown = [
+            {
+                'type': name,
+                'label': {
+                    'nuevo_contrato': 'Nuevo contrato',
+                    'recontrataciones': 'Recontrataciones',
+                    'retiros': 'Retiros',
+                    'cambios_plan': 'Cambios de plan',
+                    'adiciones': 'Adiciones',
+                    'otros': 'Otros',
+                }[name],
+                **summaries[name],
+            }
+            for name in ('nuevo_contrato', 'recontrataciones', 'retiros', 'cambios_plan',
+                         'adiciones', 'otros')
+        ]
+
+        return {
+            'period': {
+                'from': from_date.isoformat(),
+                'to': to_date.isoformat(),
+                'movement_type': movement_type,
+                'granularity': 'day',
+            },
+            'nuevo_contrato': summaries['nuevo_contrato'],
+            'recontrataciones': summaries['recontrataciones'],
+            'retiros': summaries['retiros'],
+            'cambios_plan': summaries['cambios_plan'],
+            'balance_neto': (
+                summaries['nuevo_contrato']['count']
+                + summaries['recontrataciones']['count']
+                - summaries['retiros']['count']
+            ),
+            'series': series,
+            'comparativa': series,
+            'servicios': services,
+            'categorias': movement_breakdown,
+        }
+
     def get(self, request):
         try:
             today = timezone.localdate()
-            week_start = today - __import__('datetime').timedelta(days=today.weekday())
+            week_start = today - timedelta(days=today.weekday())
             month_start = today.replace(day=1)
 
-            all_sales = Sale.objects.all()
-            # Instalaciones y retiros se derivan del MODO de cada tipo,
-            # no de una lista de codigos. Un tipo nuevo entra en la
-            # categoria que su modo declare, sin tocar esta vista.
-            catalog = request_type_catalog()
-            installations = all_sales.filter(
-                requestType__in=codes_with_modes(MODOS_INSTALACION, catalog))
-            retiro_codes = codes_with_modes((MODO_RETIRO,), catalog)
+            movement_type = request.query_params.get('movement_type', 'all')
+            if movement_type not in self.MOVEMENT_TYPES:
+                return Response({
+                    'error': 'movement_type no valido',
+                    'allowed': sorted(self.MOVEMENT_TYPES),
+                }, status=status.HTTP_400_BAD_REQUEST)
 
             is_admin = getattr(request.user, 'role', '') == 'admin'
+            if is_admin:
+                try:
+                    from_date, to_date = self._parse_range(
+                        request.query_params, today)
+                except ValueError as exc:
+                    return Response({'error': str(exc)},
+                                    status=status.HTTP_400_BAD_REQUEST)
+            else:
+                from_date = to_date = today
 
-            def stats(qs, from_date, to_date):
-                filtered = qs.filter(date__gte=from_date, date__lte=to_date)
-                total = filtered.aggregate(s=Sum('total'))['s'] or 0
-                return {'count': filtered.count(), 'total': float(total)}
+            all_sales = Sale.objects.all()
+            # Retiros y cambios se derivan del MODO del catálogo. Los dos
+            # tipos de alta comerciales se separan por su código histórico.
+            catalog = request_type_catalog()
+            categories = self._category_codes(catalog)
+            installations = all_sales.filter(
+                requestType__in=categories['instalaciones'])
+            new_contracts = all_sales.filter(
+                requestType__in=categories['nuevo_contrato'])
+            rehires = all_sales.filter(
+                requestType__in=categories['recontrataciones'])
+            retiro_codes = categories['retiros']
 
-            def retiros_stats(from_date, to_date):
+            def stats(qs, start_date, end_date):
+                filtered = qs.filter(date__gte=start_date, date__lte=end_date)
+                return self._summary(filtered)
+
+            def retiros_stats(start_date, end_date):
                 sale_retiros = all_sales.filter(requestType__in=retiro_codes,
-                                               date__gte=from_date, date__lte=to_date)
-                total = sale_retiros.aggregate(s=Sum('total'))['s'] or 0
-                return {'count': sale_retiros.count(), 'total': float(total)}
+                                               date__gte=start_date,
+                                               date__lte=end_date)
+                return self._summary(sale_retiros)
 
             empty = {'count': 0, 'total': 0}
 
-            return Response({
+            legacy = {
                 'movimientos': {
                     'today': stats(all_sales, today, today),
                     'week': stats(all_sales, week_start, today) if is_admin else empty,
@@ -757,35 +1190,43 @@ class DashboardStatsView(APIView):
                     'week': stats(installations, week_start, today) if is_admin else empty,
                     'month': stats(installations, month_start, today) if is_admin else empty,
                 },
+                'nuevo_contrato': {
+                    'today': stats(new_contracts, today, today),
+                    'week': stats(new_contracts, week_start, today) if is_admin else empty,
+                    'month': stats(new_contracts, month_start, today) if is_admin else empty,
+                },
+                'recontrataciones': {
+                    'today': stats(rehires, today, today),
+                    'week': stats(rehires, week_start, today) if is_admin else empty,
+                    'month': stats(rehires, month_start, today) if is_admin else empty,
+                },
                 'retiros': {
                     'today': retiros_stats(today, today),
                     'week': retiros_stats(week_start, today) if is_admin else empty,
                     'month': retiros_stats(month_start, today) if is_admin else empty,
                 },
                 'role': request.user.role,
+            }
+
+            selected_sales = all_sales.filter(
+                date__gte=from_date, date__lte=to_date)
+            if movement_type != 'all':
+                selected_sales = selected_sales.filter(
+                    requestType__in=categories[movement_type])
+
+            return Response({
+                **legacy,
+                'analytics': self._analytics(
+                    selected_sales, categories, from_date, to_date,
+                    movement_type),
             })
         except Exception:
-            # Antes era un `except Exception as e` mudo: un error de codigo
-            # devolvia el dashboard en ceros, indistinguible de un dia sin
-            # movimientos. Se loguea para que no vuelva a pasar inadvertido.
+            # No devolver ceros ante un fallo: el frontend debe distinguir un
+            # error de consulta de un período sin movimientos.
             logger.exception('Error calculando estadisticas del dashboard')
-            return Response({
-                'movimientos': {
-                    'today': {'count': 0, 'total': 0},
-                    'week': {'count': 0, 'total': 0},
-                    'month': {'count': 0, 'total': 0},
-                },
-                'instalaciones': {
-                    'today': {'count': 0, 'total': 0},
-                    'week': {'count': 0, 'total': 0},
-                    'month': {'count': 0, 'total': 0},
-                },
-                'retiros': {
-                    'today': {'count': 0, 'total': 0},
-                    'week': {'count': 0, 'total': 0},
-                    'month': {'count': 0, 'total': 0},
-                },
-            })
+            return Response(
+                {'error': 'No se pudieron calcular las estadísticas'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 def _first_error(serializer):

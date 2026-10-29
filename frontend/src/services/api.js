@@ -43,7 +43,16 @@ const api = {
     }),
 
   // Dashboard
-  getDashboardStats: () => request('/api/dashboard/stats'),
+  getDashboardStats: (from = '', to = '', movementType = 'all') => {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    if (movementType && movementType !== 'all') {
+      params.set('movement_type', movementType);
+    }
+    const query = params.toString();
+    return request(`/api/dashboard/stats${query ? `?${query}` : ''}`);
+  },
 
   // Planes
   getPlans: () => request('/api/plans'),
@@ -83,6 +92,11 @@ const api = {
     if (planId) params.set('plan_id', planId);
     return request(`/api/promotions/active?${params.toString()}`);
   },
+  getTransferTariffs: () => request('/api/transfer-tariffs'),
+  getActiveTransferTariffs: () => request('/api/transfer-tariffs/active'),
+  createTransferTariff: (data) => request('/api/transfer-tariffs', { method: 'POST', body: JSON.stringify(data) }),
+  updateTransferTariff: (id, data) => request(`/api/transfer-tariffs/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  getTransferTariffHistory: (id) => request(`/api/transfer-tariffs/${id}/history`),
   createPromotion: (data) => request('/api/promotions', { method: 'POST', body: JSON.stringify(data) }),
   updatePromotion: (id, data) => request(`/api/promotions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deletePromotion: (id) => request(`/api/promotions/${id}`, { method: 'DELETE' }),
@@ -141,6 +155,9 @@ const api = {
     if (showMotivos) params.set('showMotivos', 'si');
     return request(`/api/reports/png?${params.toString()}`);
   },
+  getDashboardPDF: () => request('/api/reports/dashboard/pdf'),
+  getDashboardXLSX: () => request('/api/reports/dashboard/xlsx'),
+  getDashboardPNG: () => request('/api/reports/dashboard/png'),
 
   // Backups
   getBackups: () => request('/api/backups'),

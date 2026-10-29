@@ -3,6 +3,7 @@ from decimal import Decimal
 from rest_framework import serializers
 from .models import (
     User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
+    TarifaTraslado, TarifaTrasladoHistorial, TrasladoExterno,
 )
 from .domain import (
     SERVICE_TYPE_LABELS, SERVICE_TYPE_FAMILY, SERVICE_TYPE_TO_PLAN_TYPE,
@@ -90,7 +91,7 @@ def validate_cambio_plan(plan, plan_from, service_type, service_type_from,
         if same_service:
             errors['planFromId'] = (
                 'El plan anterior y el nuevo son el mismo: '
-                'registre el movimiento con otro tipo de solicitud')
+                'registre la solicitud con otro tipo')
 
     validate_service_from(plan_from, service_type_from, errors)
     return errors
@@ -117,7 +118,7 @@ def resolve_motivo(motivo_id, mode, errors):
     if not motivo.activo:
         errors['motivoId'] = 'El motivo esta inactivo'
     elif motivo.categoria != categoria:
-        errors['motivoId'] = 'El motivo no corresponde a este tipo de movimiento'
+        errors['motivoId'] = 'El motivo no corresponde a este tipo de solicitud'
     return motivo, categoria
 
 
@@ -272,6 +273,39 @@ class PromotionWriteSerializer(serializers.Serializer):
         return attrs
 
 
+class TarifaTrasladoSerializer(serializers.ModelSerializer):
+    serviceType = serializers.CharField(source='service_type', read_only=True)
+    createdBy = serializers.SerializerMethodField()
+    updatedBy = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TarifaTraslado
+        fields = ['id', 'service_type', 'serviceType', 'name', 'amount',
+                  'active', 'created_at', 'updated_at', 'created_by',
+                  'updated_by', 'createdBy', 'updatedBy']
+        read_only_fields = ['created_at', 'updated_at', 'created_by',
+                            'updated_by', 'createdBy', 'updatedBy']
+
+    def get_createdBy(self, obj):
+        return {'id': obj.created_by_id, 'name': obj.created_by.name} if obj.created_by else None
+
+    def get_updatedBy(self, obj):
+        return {'id': obj.updated_by_id, 'name': obj.updated_by.name} if obj.updated_by else None
+
+
+class TarifaTrasladoHistorialSerializer(serializers.ModelSerializer):
+    changedBy = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TarifaTrasladoHistorial
+        fields = ['id', 'previous_amount', 'new_amount', 'previous_active',
+                  'new_active', 'action', 'changed_by', 'changedBy',
+                  'created_at']
+
+    def get_changedBy(self, obj):
+        return {'id': obj.changed_by_id, 'name': obj.changed_by.name} if obj.changed_by else None
+
+
 class SaleSerializer(serializers.ModelSerializer):
     """Respuesta de venta con las claves exactas que consume el frontend:
     sale.Plan.label y sale.creator.name."""
@@ -282,6 +316,15 @@ class SaleSerializer(serializers.ModelSerializer):
     previousService = serializers.SerializerMethodField()
     isServiceChange = serializers.SerializerMethodField()
     motivoNombre = serializers.SerializerMethodField()
+    equipmentRetained = serializers.BooleanField(
+        source='equipment_retained', read_only=True)
+    requiresTechnicalVisit = serializers.BooleanField(
+        source='requires_technical_visit', read_only=True)
+    debtApplies = serializers.BooleanField(source='debt_applies', read_only=True)
+    debtAmount = serializers.DecimalField(
+        source='debt_amount', max_digits=12, decimal_places=2, read_only=True)
+    totalToCollect = serializers.SerializerMethodField()
+    traslado = serializers.SerializerMethodField()
 
     class Meta:
         model = Sale
@@ -289,22 +332,29 @@ class SaleSerializer(serializers.ModelSerializer):
                   'requestType', 'additionType', 'changeReason', 'motivo',
                   'motivoNombre', 'planFrom',
                   'serviceTypeFrom', 'previousService', 'isServiceChange',
-                  'totalFrom', 'notes', 'planId', 'total', 'Plan', 'creator',
-                  'promotion', 'promotion_name',
-                  'applied_installation', 'applied_monthly', 'previousPlan']
+                   'totalFrom', 'notes', 'planId', 'total', 'Plan', 'creator',
+                   'promotion', 'promotion_name',
+                   'applied_installation', 'applied_monthly', 'previousPlan']
+        fields = fields + [
+            'equipmentRetained', 'requiresTechnicalVisit', 'debtApplies',
+            'debtAmount', 'totalToCollect']
+        fields = fields + ['traslado']
 
     def get_motivoNombre(self, obj):
         """Nombre del motivo: el snapshot si existe, o el texto historico."""
         return obj.changeReason or ''
 
     def get_Plan(self, obj):
-        return {'id': obj.plan.id, 'label': obj.plan.label, 'code': obj.plan.code}
+        return {'id': obj.plan.id,
+                'label': obj.planName or obj.plan.label,
+                'code': obj.plan.code}
 
     def get_previousPlan(self, obj):
         pf = getattr(obj, 'planFromId', None) or getattr(obj, 'planfromid', None)
         if pf:
-            return {'id': pf.id, 'label': pf.label, 'code': pf.code,
-                    'type': pf.type}
+            return {'id': pf.id,
+                    'label': obj.planFrom or pf.label,
+                    'code': pf.code, 'type': pf.type}
         return None
 
     def get_previousService(self, obj):
@@ -325,6 +375,24 @@ class SaleSerializer(serializers.ModelSerializer):
 
     def get_creator(self, obj):
         return {'id': obj.createdBy.id, 'name': obj.createdBy.name}
+
+    def get_totalToCollect(self, obj):
+        return obj.total or Decimal('0')
+
+    def get_traslado(self, obj):
+        traslado = getattr(obj, 'traslado_externo', None)
+        if not traslado:
+            return None
+        return {
+            'id': traslado.id,
+            'tariffAmount': traslado.tariff_amount,
+            'currentAddress': traslado.current_address,
+            'newAddress': traslado.new_address,
+            'zone': traslado.zone,
+            'references': traslado.references,
+            'hasPhysicalSketch': traslado.has_physical_sketch,
+            'status': traslado.status,
+        }
 
 
 class SaleCreateSerializer(serializers.Serializer):
@@ -350,6 +418,21 @@ class SaleCreateSerializer(serializers.Serializer):
         required=False, allow_blank=True, default='')
     planFromId = serializers.IntegerField(required=False, allow_null=True)
     motivoId = serializers.IntegerField(required=False, allow_null=True)
+    equipmentRetained = serializers.BooleanField(
+        source='equipment_retained', required=False, allow_null=True)
+    requiresTechnicalVisit = serializers.BooleanField(
+        source='requires_technical_visit', required=False, allow_null=True)
+    debtApplies = serializers.BooleanField(
+        source='debt_applies', required=False, default=False)
+    debtAmount = serializers.DecimalField(
+        source='debt_amount', max_digits=12, decimal_places=2,
+        required=False, allow_null=True, default=Decimal('0'))
+    transferTariffId = serializers.IntegerField(required=False, allow_null=True)
+    transferNewAddress = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    transferCurrentAddress = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    transferZone = serializers.CharField(required=False, allow_blank=True, max_length=120)
+    transferReferences = serializers.CharField(required=False, allow_blank=True, max_length=500)
+    transferHasSketch = serializers.BooleanField(required=False, allow_null=True)
 
     def validate(self, attrs):
         catalog = request_type_catalog()
@@ -363,6 +446,64 @@ class SaleCreateSerializer(serializers.Serializer):
                 {'requestType': 'El tipo de solicitud esta inactivo'})
         mode = tipo.modo
 
+        is_rehire = request_type == 'recontratacion'
+        is_transfer = request_type == 'traslado_externo'
+        equipment_retained = attrs.get('equipment_retained')
+        requires_technical_visit = attrs.get('requires_technical_visit')
+        debt_applies = attrs.get('debt_applies', False)
+        debt_amount = attrs.get('debt_amount')
+
+        if is_rehire:
+            if equipment_retained is None:
+                raise serializers.ValidationError(
+                    {'equipmentRetained': 'Indique si conserva el router/ONU'})
+            if requires_technical_visit is None:
+                raise serializers.ValidationError(
+                    {'requiresTechnicalVisit': 'Indique si requiere visita tecnica'})
+            if debt_applies:
+                if debt_amount is None or debt_amount <= 0:
+                    raise serializers.ValidationError(
+                        {'debtAmount': 'Ingrese un adeudo mayor que cero'})
+            elif debt_amount not in (None, Decimal('0')):
+                raise serializers.ValidationError(
+                    {'debtAmount': 'El adeudo debe ser cero si no aplica'})
+            attrs['debt_amount'] = debt_amount or Decimal('0')
+        else:
+            if debt_applies or (debt_amount not in (None, Decimal('0'))):
+                raise serializers.ValidationError(
+                    {'debtAmount': 'El adeudo solo aplica a recontrataciones'})
+            attrs['equipment_retained'] = None
+            attrs['requires_technical_visit'] = None
+            attrs['debt_applies'] = False
+            attrs['debt_amount'] = Decimal('0')
+
+        if is_transfer:
+            tariff_id = attrs.get('transferTariffId')
+            tariff = TarifaTraslado.objects.filter(
+                id=tariff_id, active=True).first()
+            if tariff is None:
+                raise serializers.ValidationError(
+                    {'transferTariffId': 'Tarifa de traslado no encontrada o inactiva'})
+            service_family = SERVICE_TYPE_FAMILY.get(attrs['serviceType'])
+            if tariff.service_type != service_family:
+                raise serializers.ValidationError(
+                    {'transferTariffId': 'La tarifa no corresponde al servicio seleccionado'})
+            if not (attrs.get('transferNewAddress') or '').strip():
+                raise serializers.ValidationError(
+                    {'transferNewAddress': 'El nuevo domicilio es obligatorio'})
+            if attrs.get('transferHasSketch') is None:
+                raise serializers.ValidationError(
+                    {'transferHasSketch': 'Indique si el cliente trajo croquis físico'})
+            attrs['transferTariff'] = tariff
+        else:
+            for key in ('transferTariffId', 'transferNewAddress',
+                        'transferZone', 'transferReferences',
+                        'transferCurrentAddress',
+                        'transferHasSketch'):
+                if attrs.get(key) not in (None, '', False):
+                    raise serializers.ValidationError(
+                        {'transferTariffId': 'Los datos de traslado solo aplican a traslados externos'})
+
         try:
             plan = Plan.objects.get(id=attrs['planId'], active=True)
         except Plan.DoesNotExist:
@@ -374,6 +515,12 @@ class SaleCreateSerializer(serializers.Serializer):
         if plan.type != expected_type:
             raise serializers.ValidationError(
                 {'serviceType': 'El plan no pertenece al tipo de servicio seleccionado'})
+
+        # Un cambio de plan no puede tener como destino un plan del catalogo
+        # anterior. Los retiros si usan esos planes: son el plan que se retira.
+        if mode == MODO_CAMBIO_PLAN and plan.legacy:
+            raise serializers.ValidationError(
+                {'planId': 'No se puede cambiar a un plan anterior (legacy)'})
 
         # additionType requerido cuando el tipo es ADICION
         if mode == MODO_ADICION:
@@ -447,6 +594,7 @@ class SaleCreateSerializer(serializers.Serializer):
         user = self.context['user']
         plan = validated_data.pop('plan')
         promotion = validated_data.pop('promotion', None)
+        transfer_tariff = validated_data.pop('transferTariff', None)
         plan_from = validated_data.pop('planFromPlan', None)
         service_type_from = validated_data.pop('serviceTypeFromValue', None)
         motivo = validated_data.pop('motivoValue', None)
@@ -460,8 +608,14 @@ class SaleCreateSerializer(serializers.Serializer):
 
         installation, monthly, sale_total = resolve_sale_prices(
             plan, promotion, request_type)
+        if request_type == 'recontratacion':
+            sale_total += validated_data.get('debt_amount', Decimal('0'))
+        if request_type == 'traslado_externo':
+            installation = Decimal('0')
+            monthly = Decimal('0')
+            sale_total = transfer_tariff.amount
 
-        return Sale.objects.create(
+        sale = Sale.objects.create(
             date=validated_data['date'],
             clientCode=validated_data['clientCode'],
             clientName=validated_data['clientName'],
@@ -478,13 +632,34 @@ class SaleCreateSerializer(serializers.Serializer):
             notes=validated_data.get('notes', ''),
             customer=customer,
             plan=plan,
+            planName=plan.label,
             total=sale_total,
             promotion=promotion,
             promotion_name=promotion.name if promotion else '',
             applied_installation=installation,
             applied_monthly=monthly,
+            equipment_retained=validated_data.get('equipment_retained'),
+            requires_technical_visit=validated_data.get('requires_technical_visit'),
+            debt_applies=validated_data.get('debt_applies', False),
+            debt_amount=validated_data.get('debt_amount', Decimal('0')),
             createdBy=user,
         )
+        if transfer_tariff is not None:
+            TrasladoExterno.objects.create(
+                sale=sale,
+                customer=customer,
+                tariff=transfer_tariff,
+                tariff_amount=transfer_tariff.amount,
+                current_address=validated_data.get('transferCurrentAddress', '').strip(),
+                new_address=validated_data.get('transferNewAddress', '').strip(),
+                zone=validated_data.get('transferZone', '').strip(),
+                references=validated_data.get('transferReferences', '').strip(),
+                has_physical_sketch=validated_data.get('transferHasSketch'),
+                status=('recibido' if validated_data.get('transferHasSketch')
+                        else 'pendiente_ubicacion'),
+                created_by=user,
+            )
+        return sale
 
 
 class BackupSerializer(serializers.ModelSerializer):

@@ -1,5 +1,8 @@
 from django.contrib import admin
-from .models import User, Plan, Motivo, Promotion, Sale, Backup
+from .models import (
+    User, Plan, Motivo, Promotion, Sale, Backup,
+    TarifaTraslado, TarifaTrasladoHistorial,
+)
 
 
 @admin.register(User)
@@ -31,6 +34,23 @@ class PromotionAdmin(admin.ModelAdmin):
 class SaleAdmin(admin.ModelAdmin):
     list_display = ('id', 'date', 'clientCode', 'clientName', 'plan',
                     'total', 'createdBy')
+
+
+@admin.register(TarifaTraslado)
+class TarifaTrasladoAdmin(admin.ModelAdmin):
+    list_display = ('id', 'service_type', 'name', 'amount', 'active',
+                    'updated_by', 'updated_at')
+    list_filter = ('service_type', 'active')
+
+
+@admin.register(TarifaTrasladoHistorial)
+class TarifaTrasladoHistorialAdmin(admin.ModelAdmin):
+    list_display = ('tarifa', 'previous_amount', 'new_amount', 'action',
+                    'changed_by', 'created_at')
+    readonly_fields = [
+        'tarifa', 'previous_amount', 'new_amount', 'previous_active',
+        'new_active', 'action', 'changed_by', 'created_at',
+    ]
 
 
 @admin.register(Backup)

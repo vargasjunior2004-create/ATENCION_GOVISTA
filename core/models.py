@@ -159,6 +159,53 @@ class Promotion(models.Model):
         return self.active and self.start_date <= today <= self.end_date
 
 
+class TarifaTraslado(models.Model):
+    """Catalogo de tarifas comerciales para traslados externos."""
+    SERVICE_CHOICES = [
+        ('combo', 'Combo'),
+        ('internet', 'Internet individual'),
+        ('tv', 'TV cable individual'),
+    ]
+
+    service_type = models.CharField(max_length=20, choices=SERVICE_CHOICES,
+                                    unique=True)
+    name = models.CharField(max_length=120)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='transfer_tariffs_created')
+    updated_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='transfer_tariffs_updated')
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return f'{self.name} - {self.amount:.2f} Bs'
+
+
+class TarifaTrasladoHistorial(models.Model):
+    """Historial append-only de cambios del catalogo de tarifas."""
+    tarifa = models.ForeignKey(
+        TarifaTraslado, on_delete=models.PROTECT, related_name='history')
+    previous_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    new_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    previous_active = models.BooleanField()
+    new_active = models.BooleanField()
+    action = models.CharField(max_length=30)
+    changed_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='transfer_tariff_changes')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+
+
 class Customer(models.Model):
     """Cliente maestro (KARDEX). Clave natural: code."""
     code = models.CharField(max_length=40, unique=True)
@@ -199,6 +246,9 @@ class Sale(models.Model):
         max_length=20, choices=ADDITION_TYPE_CHOICES, blank=True, default='',
         help_text='Sub-tipo de adicion: internet o tv')
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='sales')
+    planName = models.CharField(
+        max_length=120, blank=True, default='',
+        help_text='Snapshot del nombre del plan al momento del registro')
     changeReason = models.CharField(
         max_length=120, blank=True, default='',
         help_text='Snapshot del nombre del motivo al momento del registro')
@@ -231,6 +281,18 @@ class Sale(models.Model):
     applied_monthly = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True,
         help_text='Mensualidad aplicada')
+    equipment_retained = models.BooleanField(
+        null=True, blank=True,
+        help_text='Si la recontratacion conserva el router/ONU')
+    requires_technical_visit = models.BooleanField(
+        null=True, blank=True,
+        help_text='Si la recontratacion requiere una visita tecnica')
+    debt_applies = models.BooleanField(
+        default=False,
+        help_text='Si la recontratacion incluye un adeudo pendiente')
+    debt_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        help_text='Adeudo registrado al momento de la recontratacion')
     createdBy = models.ForeignKey(
         User, on_delete=models.PROTECT, related_name='sales_created')
     lastEditedBy = models.ForeignKey(
@@ -244,6 +306,40 @@ class Sale(models.Model):
 
     def __str__(self):
         return f'{self.date} {self.clientName}'
+
+
+class TrasladoExterno(models.Model):
+    """Detalle comercial de un traslado, separado del flujo operativo."""
+    STATUS_CHOICES = [
+        ('recibido', 'Recibido'),
+        ('pendiente_ubicacion', 'Pendiente de ubicación'),
+        ('pendiente_operativa', 'Pendiente de Operaciones'),
+    ]
+
+    sale = models.OneToOneField(
+        Sale, on_delete=models.PROTECT, related_name='traslado_externo')
+    customer = models.ForeignKey(
+        Customer, on_delete=models.PROTECT, related_name='external_transfers')
+    tariff = models.ForeignKey(
+        TarifaTraslado, on_delete=models.PROTECT, related_name='transfers')
+    tariff_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    current_address = models.CharField(max_length=255, blank=True, default='')
+    new_address = models.CharField(max_length=255)
+    zone = models.CharField(max_length=120, blank=True, default='')
+    references = models.CharField(max_length=500, blank=True, default='')
+    has_physical_sketch = models.BooleanField()
+    status = models.CharField(
+        max_length=24, choices=STATUS_CHOICES, default='recibido')
+    created_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='external_transfers_created')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+
+    def __str__(self):
+        return f'Traslado {self.sale_id} - {self.customer.code}'
 
 
 class Backup(models.Model):
