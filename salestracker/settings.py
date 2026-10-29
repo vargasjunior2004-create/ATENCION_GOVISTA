@@ -11,11 +11,14 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get(
-    'DJANGO_SECRET_KEY',
-    'REMOVED_SECRET')
-
 DEBUG = os.environ.get('DJANGO_DEBUG', 'true').lower() in ('1', 'true', 'yes')
+
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
+if not SECRET_KEY:
+    if not DEBUG:
+        raise RuntimeError(
+            'DJANGO_SECRET_KEY es obligatoria cuando DJANGO_DEBUG=false.')
+    SECRET_KEY = 'local-development-only-key-not-for-production'
 
 _env_hosts = [h.strip() for h in os.environ.get('DJANGO_ALLOWED_HOSTS', '').split(',') if h.strip()]
 ALLOWED_HOSTS = list(set(_env_hosts + ['localhost', '127.0.0.1', '.onrender.com', '.wasmer.app']))

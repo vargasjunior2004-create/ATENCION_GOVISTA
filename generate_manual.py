@@ -121,7 +121,7 @@ def build_manual():
     for i, st in enumerate(["Ingrese su nombre de usuario en el campo correspondiente", "Ingrese su contrasena", "Haga clic en el boton de login", "Si los datos son correctos, sera redirigido al Dashboard"], 1):
         story.append(Paragraph(f"<b>{i}.</b> {st}", S["Bul"]))
     story.append(Paragraph("Credenciales por defecto:", S["SecTitle"]))
-    story.append(tbl(["Usuario","Contrasena","Rol"], [["Administrador","admin123","admin"],["JUNIOR","admin123","admin"]], cw=[5*cm,4*cm,3*cm]))
+    story.append(tbl(["Usuario","Contrasena","Rol"], [["Administrador","Gestionada fuera del repositorio","admin"],["JUNIOR","Gestionada fuera del repositorio","admin"]], cw=[5*cm,7*cm,3*cm]))
     story.append(warning_box("Las contrasenas por defecto deben cambiarse despues del primer ingreso. Nunca comparta sus credenciales.", S))
     story.append(PageBreak())
 
