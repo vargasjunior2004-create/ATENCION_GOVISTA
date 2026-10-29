@@ -3,7 +3,7 @@ from decimal import Decimal
 from rest_framework import serializers
 from .models import (
     User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
-    TarifaTraslado, TarifaTrasladoHistorial,
+    TarifaTraslado, TarifaTrasladoHistorial, TrasladoExterno,
 )
 from .domain import (
     SERVICE_TYPE_LABELS, SERVICE_TYPE_FAMILY, SERVICE_TYPE_TO_PLAN_TYPE,
@@ -324,6 +324,7 @@ class SaleSerializer(serializers.ModelSerializer):
     debtAmount = serializers.DecimalField(
         source='debt_amount', max_digits=12, decimal_places=2, read_only=True)
     totalToCollect = serializers.SerializerMethodField()
+    traslado = serializers.SerializerMethodField()
 
     class Meta:
         model = Sale
@@ -337,6 +338,7 @@ class SaleSerializer(serializers.ModelSerializer):
         fields = fields + [
             'equipmentRetained', 'requiresTechnicalVisit', 'debtApplies',
             'debtAmount', 'totalToCollect']
+        fields = fields + ['traslado']
 
     def get_motivoNombre(self, obj):
         """Nombre del motivo: el snapshot si existe, o el texto historico."""
@@ -377,6 +379,21 @@ class SaleSerializer(serializers.ModelSerializer):
     def get_totalToCollect(self, obj):
         return obj.total or Decimal('0')
 
+    def get_traslado(self, obj):
+        traslado = getattr(obj, 'traslado_externo', None)
+        if not traslado:
+            return None
+        return {
+            'id': traslado.id,
+            'tariffAmount': traslado.tariff_amount,
+            'currentAddress': traslado.current_address,
+            'newAddress': traslado.new_address,
+            'zone': traslado.zone,
+            'references': traslado.references,
+            'hasPhysicalSketch': traslado.has_physical_sketch,
+            'status': traslado.status,
+        }
+
 
 class SaleCreateSerializer(serializers.Serializer):
     """Crea una venta. El total se calcula en el servidor a partir del plan."""
@@ -410,6 +427,12 @@ class SaleCreateSerializer(serializers.Serializer):
     debtAmount = serializers.DecimalField(
         source='debt_amount', max_digits=12, decimal_places=2,
         required=False, allow_null=True, default=Decimal('0'))
+    transferTariffId = serializers.IntegerField(required=False, allow_null=True)
+    transferNewAddress = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    transferCurrentAddress = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    transferZone = serializers.CharField(required=False, allow_blank=True, max_length=120)
+    transferReferences = serializers.CharField(required=False, allow_blank=True, max_length=500)
+    transferHasSketch = serializers.BooleanField(required=False, allow_null=True)
 
     def validate(self, attrs):
         catalog = request_type_catalog()
@@ -424,6 +447,7 @@ class SaleCreateSerializer(serializers.Serializer):
         mode = tipo.modo
 
         is_rehire = request_type == 'recontratacion'
+        is_transfer = request_type == 'traslado_externo'
         equipment_retained = attrs.get('equipment_retained')
         requires_technical_visit = attrs.get('requires_technical_visit')
         debt_applies = attrs.get('debt_applies', False)
@@ -452,6 +476,33 @@ class SaleCreateSerializer(serializers.Serializer):
             attrs['requires_technical_visit'] = None
             attrs['debt_applies'] = False
             attrs['debt_amount'] = Decimal('0')
+
+        if is_transfer:
+            tariff_id = attrs.get('transferTariffId')
+            tariff = TarifaTraslado.objects.filter(
+                id=tariff_id, active=True).first()
+            if tariff is None:
+                raise serializers.ValidationError(
+                    {'transferTariffId': 'Tarifa de traslado no encontrada o inactiva'})
+            service_family = SERVICE_TYPE_FAMILY.get(attrs['serviceType'])
+            if tariff.service_type != service_family:
+                raise serializers.ValidationError(
+                    {'transferTariffId': 'La tarifa no corresponde al servicio seleccionado'})
+            if not (attrs.get('transferNewAddress') or '').strip():
+                raise serializers.ValidationError(
+                    {'transferNewAddress': 'El nuevo domicilio es obligatorio'})
+            if attrs.get('transferHasSketch') is None:
+                raise serializers.ValidationError(
+                    {'transferHasSketch': 'Indique si el cliente trajo croquis físico'})
+            attrs['transferTariff'] = tariff
+        else:
+            for key in ('transferTariffId', 'transferNewAddress',
+                        'transferZone', 'transferReferences',
+                        'transferCurrentAddress',
+                        'transferHasSketch'):
+                if attrs.get(key) not in (None, '', False):
+                    raise serializers.ValidationError(
+                        {'transferTariffId': 'Los datos de traslado solo aplican a traslados externos'})
 
         try:
             plan = Plan.objects.get(id=attrs['planId'], active=True)
@@ -543,6 +594,7 @@ class SaleCreateSerializer(serializers.Serializer):
         user = self.context['user']
         plan = validated_data.pop('plan')
         promotion = validated_data.pop('promotion', None)
+        transfer_tariff = validated_data.pop('transferTariff', None)
         plan_from = validated_data.pop('planFromPlan', None)
         service_type_from = validated_data.pop('serviceTypeFromValue', None)
         motivo = validated_data.pop('motivoValue', None)
@@ -558,8 +610,12 @@ class SaleCreateSerializer(serializers.Serializer):
             plan, promotion, request_type)
         if request_type == 'recontratacion':
             sale_total += validated_data.get('debt_amount', Decimal('0'))
+        if request_type == 'traslado_externo':
+            installation = Decimal('0')
+            monthly = Decimal('0')
+            sale_total = transfer_tariff.amount
 
-        return Sale.objects.create(
+        sale = Sale.objects.create(
             date=validated_data['date'],
             clientCode=validated_data['clientCode'],
             clientName=validated_data['clientName'],
@@ -588,6 +644,22 @@ class SaleCreateSerializer(serializers.Serializer):
             debt_amount=validated_data.get('debt_amount', Decimal('0')),
             createdBy=user,
         )
+        if transfer_tariff is not None:
+            TrasladoExterno.objects.create(
+                sale=sale,
+                customer=customer,
+                tariff=transfer_tariff,
+                tariff_amount=transfer_tariff.amount,
+                current_address=validated_data.get('transferCurrentAddress', '').strip(),
+                new_address=validated_data.get('transferNewAddress', '').strip(),
+                zone=validated_data.get('transferZone', '').strip(),
+                references=validated_data.get('transferReferences', '').strip(),
+                has_physical_sketch=validated_data.get('transferHasSketch'),
+                status=('recibido' if validated_data.get('transferHasSketch')
+                        else 'pendiente_ubicacion'),
+                created_by=user,
+            )
+        return sale
 
 
 class BackupSerializer(serializers.ModelSerializer):
