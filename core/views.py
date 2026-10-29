@@ -4,6 +4,7 @@ import threading
 from decimal import Decimal, InvalidOperation
 from datetime import date, timedelta
 
+from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.http import FileResponse
 from django.utils import timezone
@@ -643,7 +644,8 @@ class SaleListView(APIView):
             serializer = SaleCreateSerializer(data=data, context={'user': request.user})
             if not serializer.is_valid():
                 return Response({'error': _first_error(serializer)}, status=status.HTTP_400_BAD_REQUEST)
-            sale = serializer.save()
+            with transaction.atomic():
+                sale = serializer.save()
             return Response(SaleSerializer(sale).data, status=status.HTTP_201_CREATED)
         except Exception as e:
             logger.error('SaleListView POST error: %s\n%s', e, traceback.format_exc())

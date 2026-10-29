@@ -42,6 +42,12 @@ const ADDITION_TYPES = [
   { value: 'adicion_tv', label: 'ADICION TV' },
 ];
 
+const TRANSFER_SERVICE_OPTIONS = [
+  { value: 'internet', label: 'INTERNET' },
+  { value: 'tv', label: 'TV ANALÓGICA' },
+  { value: 'combo_analog', label: 'COMBO' },
+];
+
 export default function SaleForm() {
   const getToday = () => {
     const now = new Date();
@@ -60,6 +66,8 @@ export default function SaleForm() {
     planId: '',
     equipmentRetained: null, requiresTechnicalVisit: null,
     debtApplies: false, debtAmount: '',
+    transferCurrentAddress: '', transferNewAddress: '', transferZone: '',
+    transferReferences: '', transferHasSketch: null,
   });
   const { tipos: requestTypes, modoOf, nombreOf } = useRequestTypes();
   const { porCategoria, nombreOf: motivoNombreOf } = useMotivos();
@@ -80,9 +88,11 @@ export default function SaleForm() {
   const [promotions, setPromotions] = useState([]);
   const [selectedPromotion, setSelectedPromotion] = useState(null);
   const [priceMode, setPriceMode] = useState('normal');
+  const [transferTariffs, setTransferTariffs] = useState([]);
 
   useEffect(() => {
     api.getActivePlans().then(setPlans).catch(() => {});
+    api.getActiveTransferTariffs().then(setTransferTariffs).catch(() => {});
   }, []);
 
   // El tipo por defecto viene sembrado, pero si un administrador lo
@@ -123,6 +133,7 @@ export default function SaleForm() {
   const isCambio = modo === 'cambio_plan';
   const isAdicion = modo === 'adicion';
   const isRecontratacion = form.requestType === 'recontratacion';
+  const isTransfer = form.requestType === 'traslado_externo';
 
   // Motivos del catalogo segun el formulario que corresponde.
   const motivosCambio = porCategoria('cambio');
@@ -185,6 +196,11 @@ export default function SaleForm() {
   };
 
   const getEffectivePrices = () => {
+    if (isTransfer) {
+      const family = SERVICE_TYPE_TO_PLAN_TYPE[form.serviceType];
+      const tariff = transferTariffs.find((item) => item.service_type === family);
+      return { installation: 0, monthly: 0, total: Number(tariff?.amount || 0) };
+    }
     if (!selectedPlan) return { installation: 0, monthly: 0, total: 0 };
     const installation = parseFloat(selectedPlan.installation) || 0;
     const monthly = parseFloat(selectedPlan.monthly) || 0;
@@ -241,6 +257,13 @@ export default function SaleForm() {
           next.debtApplies = false;
           next.debtAmount = '';
         }
+        if (value !== 'traslado_externo') {
+          next.transferCurrentAddress = '';
+          next.transferNewAddress = '';
+          next.transferZone = '';
+          next.transferReferences = '';
+          next.transferHasSketch = null;
+        }
       }
       return next;
     });
@@ -284,12 +307,22 @@ export default function SaleForm() {
         payload.debtApplies = form.debtApplies;
         payload.debtAmount = form.debtApplies ? Number(form.debtAmount) : 0;
       }
+      if (isTransfer) {
+        const family = SERVICE_TYPE_TO_PLAN_TYPE[form.serviceType];
+        const tariff = transferTariffs.find((item) => item.service_type === family);
+        payload.transferTariffId = tariff?.id;
+        payload.transferCurrentAddress = form.transferCurrentAddress;
+        payload.transferNewAddress = form.transferNewAddress;
+        payload.transferZone = form.transferZone;
+        payload.transferReferences = form.transferReferences;
+        payload.transferHasSketch = form.transferHasSketch;
+      }
       if (selectedPromotion) {
         payload.promotionId = selectedPromotion.id;
       }
       await api.createSale(payload);
       setSuccess('Registro guardado correctamente');
-       setForm({ date: today, clientCode: '', clientName: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', equipmentRetained: null, requiresTechnicalVisit: null, debtApplies: false, debtAmount: '' });
+       setForm({ date: today, clientCode: '', clientName: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', equipmentRetained: null, requiresTechnicalVisit: null, debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferZone: '', transferReferences: '', transferHasSketch: null });
       setSelectedPlan(null); setSelectedCustomer(null); setQuery(''); setCustomers([]);
       setPromotions([]); setSelectedPromotion(null); setPriceMode('normal');
       setShowPreview(false);
@@ -340,6 +373,11 @@ export default function SaleForm() {
       : null,
     equipmentRetained: isRecontratacion ? form.equipmentRetained : null,
     requiresTechnicalVisit: isRecontratacion ? form.requiresTechnicalVisit : null,
+    transferCurrentAddress: isTransfer ? form.transferCurrentAddress : null,
+    transferNewAddress: isTransfer ? form.transferNewAddress : null,
+    transferZone: isTransfer ? form.transferZone : null,
+    transferReferences: isTransfer ? form.transferReferences : null,
+    transferHasSketch: isTransfer ? form.transferHasSketch : null,
     motivo: getMotivoLabel(),
     notes: form.notes,
   };
@@ -399,16 +437,22 @@ export default function SaleForm() {
                 <option key={t.code} value={t.code}>{t.nombre}</option>
               ))}
             </Select>
-            <Select
-              label={isCambio ? 'Tipo de Servicio Nuevo *' : 'Tipo de Servicio *'}
-              name="serviceType"
-              value={form.serviceType}
-              onChange={handleChange}
-            >
-              {SERVICE_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>{t.label}</option>
-              ))}
-            </Select>
+             {isTransfer ? (
+               <Select label="Tipo de Servicio *" name="serviceType" value={form.serviceType} onChange={handleChange} required>
+                 {TRANSFER_SERVICE_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+               </Select>
+             ) : (
+               <Select
+                 label={isCambio ? 'Tipo de Servicio Nuevo *' : 'Tipo de Servicio *'}
+                 name="serviceType"
+                 value={form.serviceType}
+                 onChange={handleChange}
+               >
+                 {SERVICE_TYPES.map((t) => (
+                   <option key={t.value} value={t.value}>{t.label}</option>
+                 ))}
+               </Select>
+             )}
           </div>
 
           {isAdicion && (
@@ -418,6 +462,24 @@ export default function SaleForm() {
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </Select>
+          )}
+
+          {isTransfer && (
+            <div className="rounded-2xl border-2 border-dashed border-sky-200 bg-sky-50/40 p-4 space-y-4">
+              <p className="text-xs font-bold uppercase tracking-wider text-sky-700">Datos del traslado externo</p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Input label="Domicilio actual" name="transferCurrentAddress" value={form.transferCurrentAddress} onChange={handleChange} placeholder="Si está disponible" />
+                <Input label="Nuevo domicilio *" name="transferNewAddress" value={form.transferNewAddress} onChange={handleChange} required placeholder="Calle y número" />
+                <Input label="Barrio / zona" name="transferZone" value={form.transferZone} onChange={handleChange} placeholder="Zona del nuevo domicilio" />
+                <Input label="Referencias" name="transferReferences" value={form.transferReferences} onChange={handleChange} placeholder="Puntos de referencia" />
+              </div>
+              <Select label="¿El cliente trajo croquis físico? *" name="transferHasSketch" value={form.transferHasSketch === null ? '' : String(form.transferHasSketch)} onChange={(event) => setForm((prev) => ({ ...prev, transferHasSketch: event.target.value === '' ? null : event.target.value === 'true' }))} required>
+                <option value="">--Seleccione--</option>
+                <option value="true">Sí, trajo croquis físico</option>
+                <option value="false">No, queda pendiente de ubicación</option>
+              </Select>
+              <p className="text-xs text-slate-500">La validación de cobertura, la ubicación por QR y la asignación de técnicos corresponden a Operaciones.</p>
+            </div>
           )}
 
           {isCambio && (
@@ -562,7 +624,7 @@ export default function SaleForm() {
           <Input label="Comentarios (opcional)" name="notes" value={form.notes} onChange={handleChange} placeholder="Notas internas" />
 
           {/* Price mode selection */}
-          {selectedPlan && promotions.length > 0 && (
+          {selectedPlan && promotions.length > 0 && !isTransfer && (
             <div className="bg-slate-50 rounded-2xl p-5 space-y-3 border border-slate-100">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Modalidad de precio</h3>
               <div className="space-y-2">
@@ -692,7 +754,7 @@ export default function SaleForm() {
             </div>
           )}
 
-           <Button type="submit" size="lg" className="w-full" disabled={!form.planId || samePlanSelected || ((isCambio || isRetiro) && !form.motivoId) || (isRecontratacion && (form.equipmentRetained === null || form.requiresTechnicalVisit === null || (form.debtApplies && (!form.debtAmount || Number(form.debtAmount) <= 0))))}>
+           <Button type="submit" size="lg" className="w-full" disabled={!form.planId || samePlanSelected || ((isCambio || isRetiro) && !form.motivoId) || (isRecontratacion && (form.equipmentRetained === null || form.requiresTechnicalVisit === null || (form.debtApplies && (!form.debtAmount || Number(form.debtAmount) <= 0)))) || (isTransfer && (!form.transferNewAddress.trim() || form.transferHasSketch === null || !transferTariffs.some((item) => item.service_type === SERVICE_TYPE_TO_PLAN_TYPE[form.serviceType])))}>
             Revisar Registro
           </Button>
         </form>

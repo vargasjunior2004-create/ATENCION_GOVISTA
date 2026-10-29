@@ -18,6 +18,7 @@ function amountLabel(value) {
 export function SalePreviewDetails({ sale }) {
   const isChange = Boolean(sale.previousPlanLabel);
   const isRehire = sale.requestType === 'recontratacion';
+  const isTransfer = sale.requestType === 'traslado_externo';
 
   return (
     <div className="bg-slate-50 rounded-2xl p-4 space-y-2 text-sm">
@@ -35,6 +36,15 @@ export function SalePreviewDetails({ sale }) {
         <PreviewRow label="Servicio" value={sale.serviceLabel} />
       )}
       <PreviewRow label="Plan" value={sale.planLabel} />
+      {isTransfer && (
+        <>
+          <PreviewRow label="Domicilio actual" value={sale.transferCurrentAddress} />
+          <PreviewRow label="Nuevo domicilio" value={sale.transferNewAddress} />
+          <PreviewRow label="Zona" value={sale.transferZone} />
+          <PreviewRow label="Referencias" value={sale.transferReferences} />
+          <PreviewRow label="Croquis físico" value={sale.transferHasSketch ? 'Sí' : 'No'} />
+        </>
+      )}
       {sale.promotionName && <PreviewRow label="Promoción" value={sale.promotionName} />}
       <PreviewRow label="Instalación" value={amountLabel(sale.installation)} />
       <PreviewRow label="Mensualidad" value={amountLabel(sale.monthly)} />

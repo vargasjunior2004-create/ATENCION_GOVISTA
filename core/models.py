@@ -308,6 +308,40 @@ class Sale(models.Model):
         return f'{self.date} {self.clientName}'
 
 
+class TrasladoExterno(models.Model):
+    """Detalle comercial de un traslado, separado del flujo operativo."""
+    STATUS_CHOICES = [
+        ('recibido', 'Recibido'),
+        ('pendiente_ubicacion', 'Pendiente de ubicación'),
+        ('pendiente_operativa', 'Pendiente de Operaciones'),
+    ]
+
+    sale = models.OneToOneField(
+        Sale, on_delete=models.PROTECT, related_name='traslado_externo')
+    customer = models.ForeignKey(
+        Customer, on_delete=models.PROTECT, related_name='external_transfers')
+    tariff = models.ForeignKey(
+        TarifaTraslado, on_delete=models.PROTECT, related_name='transfers')
+    tariff_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    current_address = models.CharField(max_length=255, blank=True, default='')
+    new_address = models.CharField(max_length=255)
+    zone = models.CharField(max_length=120, blank=True, default='')
+    references = models.CharField(max_length=500, blank=True, default='')
+    has_physical_sketch = models.BooleanField()
+    status = models.CharField(
+        max_length=24, choices=STATUS_CHOICES, default='recibido')
+    created_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='external_transfers_created')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+
+    def __str__(self):
+        return f'Traslado {self.sale_id} - {self.customer.code}'
+
+
 class Backup(models.Model):
     """Metadatos de una copia de seguridad. NUNCA almacena el archivo:
     el dump se genera en un temporal, se transmite al navegador y se
