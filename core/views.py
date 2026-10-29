@@ -535,6 +535,10 @@ class TransferTariffDetailView(IsAdminMixin, APIView):
         if tariff is None:
             return Response({'error': 'Tarifa no encontrada'}, status=404)
         data = request.data
+        if 'name' in data and data.get('name') != tariff.name:
+            return Response(
+                {'error': 'El nombre de la tarifa no se puede modificar'},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
             amount = Decimal(str(data.get('amount', tariff.amount)))
         except (InvalidOperation, TypeError, ValueError):
