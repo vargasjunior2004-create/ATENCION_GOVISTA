@@ -1,0 +1,6 @@
+python=Python 3.13.5
+django=6.1.2
+djangorestframework=3.18.3
+djangorestframework-simplejwt=5.5.1
+reportlab=5.1.0
+openpyxl=3.1.5
