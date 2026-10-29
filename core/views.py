@@ -14,13 +14,17 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
-from .models import User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo
+from .models import (
+    User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
+    TarifaTraslado, TarifaTrasladoHistorial,
+)
 from .serializers import (
     UserSerializer, UserWriteSerializer, PlanSerializer,
     PlanPublicSerializer, CustomerSerializer, SaleSerializer,
     SaleCreateSerializer, BackupSerializer,
     PromotionSerializer, PromotionWriteSerializer,
     TipoSolicitudPublicSerializer, MotivoSerializer, MotivoPublicSerializer,
+    TarifaTrasladoSerializer, TarifaTrasladoHistorialSerializer,
 )
 from .domain import (
     request_type_mode, request_type_catalog,
@@ -470,6 +474,105 @@ class ActivePromotionsView(APIView):
             start_date__lte=today, end_date__gte=today,
         ).order_by('-start_date')
         return Response(PromotionSerializer(promos, many=True).data)
+
+
+class ActiveTransferTariffsView(APIView):
+    """Tarifas vigentes para operadores y formularios comerciales."""
+    def get(self, request):
+        tariffs = TarifaTraslado.objects.filter(active=True)
+        return Response(TarifaTrasladoSerializer(tariffs, many=True).data)
+
+
+class TransferTariffListView(IsAdminMixin, APIView):
+    def get(self, request):
+        error = self.check_admin(request)
+        if error:
+            return error
+        return Response(TarifaTrasladoSerializer(
+            TarifaTraslado.objects.all(), many=True).data)
+
+    def post(self, request):
+        error = self.check_admin(request)
+        if error:
+            return error
+        data = request.data
+        try:
+            amount = Decimal(str(data.get('amount')))
+        except (InvalidOperation, TypeError, ValueError):
+            return Response({'error': 'Importe no valido'}, status=400)
+        if amount < 0:
+            return Response({'error': 'El importe no puede ser negativo'}, status=400)
+        if TarifaTraslado.objects.filter(service_type=data.get('service_type')).exists():
+            return Response({'error': 'Ya existe una tarifa para este servicio'}, status=400)
+        tariff = TarifaTraslado.objects.create(
+            service_type=data.get('service_type'),
+            name=data.get('name', ''),
+            amount=amount,
+            active=data.get('active', True),
+            created_by=request.user,
+            updated_by=request.user,
+        )
+        TarifaTrasladoHistorial.objects.create(
+            tarifa=tariff, previous_amount=amount, new_amount=amount,
+            previous_active=tariff.active, new_active=tariff.active,
+            action='created', changed_by=request.user)
+        return Response(TarifaTrasladoSerializer(tariff).data, status=201)
+
+
+class TransferTariffDetailView(IsAdminMixin, APIView):
+    def _get(self, pk):
+        try:
+            return TarifaTraslado.objects.get(pk=pk)
+        except TarifaTraslado.DoesNotExist:
+            return None
+
+    def put(self, request, pk):
+        error = self.check_admin(request)
+        if error:
+            return error
+        tariff = self._get(pk)
+        if tariff is None:
+            return Response({'error': 'Tarifa no encontrada'}, status=404)
+        data = request.data
+        try:
+            amount = Decimal(str(data.get('amount', tariff.amount)))
+        except (InvalidOperation, TypeError, ValueError):
+            return Response({'error': 'Importe no valido'}, status=400)
+        if amount < 0:
+            return Response({'error': 'El importe no puede ser negativo'}, status=400)
+        old_amount, old_active = tariff.amount, tariff.active
+        tariff.name = data.get('name', tariff.name)
+        tariff.amount = amount
+        tariff.active = data.get('active', tariff.active)
+        tariff.updated_by = request.user
+        tariff.save()
+        if old_amount != tariff.amount or old_active != tariff.active:
+            TarifaTrasladoHistorial.objects.create(
+                tarifa=tariff, previous_amount=old_amount,
+                new_amount=tariff.amount, previous_active=old_active,
+                new_active=tariff.active, action='updated',
+                changed_by=request.user)
+        return Response(TarifaTrasladoSerializer(tariff).data)
+
+    def get(self, request, pk):
+        error = self.check_admin(request)
+        if error:
+            return error
+        tariff = self._get(pk)
+        if tariff is None:
+            return Response({'error': 'Tarifa no encontrada'}, status=404)
+        return Response(TarifaTrasladoSerializer(tariff).data)
+
+
+class TransferTariffHistoryView(IsAdminMixin, APIView):
+    def get(self, request, pk):
+        error = self.check_admin(request)
+        if error:
+            return error
+        if not TarifaTraslado.objects.filter(pk=pk).exists():
+            return Response({'error': 'Tarifa no encontrada'}, status=404)
+        history = TarifaTrasladoHistorial.objects.filter(tarifa_id=pk)
+        return Response(TarifaTrasladoHistorialSerializer(history, many=True).data)
 
 
 class CustomerListView(APIView):

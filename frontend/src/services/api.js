@@ -92,6 +92,11 @@ const api = {
     if (planId) params.set('plan_id', planId);
     return request(`/api/promotions/active?${params.toString()}`);
   },
+  getTransferTariffs: () => request('/api/transfer-tariffs'),
+  getActiveTransferTariffs: () => request('/api/transfer-tariffs/active'),
+  createTransferTariff: (data) => request('/api/transfer-tariffs', { method: 'POST', body: JSON.stringify(data) }),
+  updateTransferTariff: (id, data) => request(`/api/transfer-tariffs/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  getTransferTariffHistory: (id) => request(`/api/transfer-tariffs/${id}/history`),
   createPromotion: (data) => request('/api/promotions', { method: 'POST', body: JSON.stringify(data) }),
   updatePromotion: (id, data) => request(`/api/promotions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deletePromotion: (id) => request(`/api/promotions/${id}`, { method: 'DELETE' }),
