@@ -21,8 +21,8 @@ Login por **nombre de usuario** (no email):
 
 | Usuario | Rol | Contrasena |
 |---------|-----|------------|
-| Administrador | ADMINISTRADOR | `admin123` |
-| JUNIOR | ADMINISTRADOR | `admin123` |
+| Administrador | ADMINISTRADOR | Crear mediante el procedimiento seguro de administración |
+| JUNIOR | ADMINISTRADOR | Crear mediante el procedimiento seguro de administración |
 
 ## Funcionalidades
 

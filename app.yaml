@@ -5,7 +5,6 @@ name: salestracker
 package: vargasjunior2004-create/salestracker
 debug: false
 env:
-  DJANGO_SECRET_KEY: "REMOVED_SECRET"
   DJANGO_DEBUG: "false"
   SQLITE_PATH: "/data/db.sqlite3"
   WASMER: "true"
