@@ -294,15 +294,15 @@ class CambioPlanEntreServiciosTest(TestCase):
         sale.refresh_from_db()
         self.assertEqual(sale.plan_id, self.plans[('internet', 1)].id)
 
-    def test_plan_anterior_no_se_puede_borrar(self):
-        """Borrar el plan anterior dejaria el historico sin origen."""
+    def test_plan_anterior_se_desactiva_y_conserva_el_historico(self):
         self._post_cambio('combo', 'internet')
         anterior = self.plans[('combo', 2)]
         token = self._token(self.admin, 'pass1')
         r = self.client_.delete(f'/api/plans/{anterior.id}',
                                 HTTP_AUTHORIZATION=f'Bearer {token}')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 204)
         self.assertTrue(Plan.objects.filter(id=anterior.id).exists())
+        self.assertFalse(Plan.objects.get(id=anterior.id).active)
         sale = Sale.objects.get(clientCode='CP001')
         self.assertIsNotNone(sale.planFromId_id)
 

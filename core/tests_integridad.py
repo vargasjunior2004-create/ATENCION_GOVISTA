@@ -63,7 +63,7 @@ class ProtectedDeleteTests(TestCase):
         self.assertEqual(first.json()['id'], second.json()['id'])
         self.assertEqual(Sale.objects.filter(clientCode='IDEMP-1').count(), 1)
 
-    def test_delete_user_with_sales_returns_409(self):
+    def test_delete_user_with_sales_deactivates_without_losing_history(self):
         operator = User(name='integridad-operator', role='ventas')
         operator.set_password('pass-operator')
         operator.save()
@@ -74,9 +74,26 @@ class ProtectedDeleteTests(TestCase):
         response = self.client.delete(
             f'/api/users/{operator.id}',
             HTTP_AUTHORIZATION=f'Bearer {self.token()}')
-        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.status_code, 204)
         self.assertTrue(User.objects.filter(id=operator.id).exists())
+        self.assertFalse(User.objects.get(id=operator.id).active)
         self.assertTrue(Sale.objects.filter(id=sale.id).exists())
+
+    def test_delete_sale_without_dependencies_is_logical(self):
+        sale = Sale.objects.create(
+            date=date.today(), clientCode='SOFT-1', clientName='PRUEBA SOFT DELETE',
+            serviceType='internet', plan=self.plan, total=150,
+            createdBy=self.admin)
+        response = self.client.delete(
+            f'/api/sales/{sale.id}',
+            HTTP_AUTHORIZATION=f'Bearer {self.token()}')
+        self.assertEqual(response.status_code, 204)
+        sale.refresh_from_db()
+        self.assertIsNotNone(sale.deleted_at)
+        listed = self.client.get(
+            '/api/sales', HTTP_AUTHORIZATION=f'Bearer {self.token()}')
+        self.assertEqual(listed.status_code, 200)
+        self.assertNotIn(sale.id, [row['id'] for row in listed.json()['items']])
 
     def test_edit_with_stale_version_returns_409(self):
         sale = Sale.objects.create(

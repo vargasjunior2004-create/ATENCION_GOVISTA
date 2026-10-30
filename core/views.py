@@ -229,15 +229,11 @@ class PlanDetailView(IsAdminMixin, APIView):
         plan = self._get_plan(pk)
         if not plan:
             return Response({'error': 'Plan no encontrado'}, status=status.HTTP_404_NOT_FOUND)
-        if Sale.objects.filter(plan=plan).exists():
-            return Response({'error': 'No se puede eliminar: tiene ventas asociadas'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        # Tambien como plan anterior: borrarlo dejaria movimientos historicos
-        # sin origen, que es justo lo que el cambio de plan debe conservar.
-        if Sale.objects.filter(planFromId=plan).exists():
-            return Response({'error': 'No se puede eliminar: es el plan anterior de un cambio de plan'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        plan.delete()
+        plan.active = False
+        plan.save(update_fields=['active'])
+        from .audit import record_audit
+        record_audit(request, 'deactivated', 'plan', pk,
+                     after={'active': False})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def put(self, request, pk):
@@ -338,14 +334,11 @@ class MotivoDetailView(IsAdminMixin, APIView):
         if not motivo:
             return Response({'error': 'Motivo no encontrado'},
                             status=status.HTTP_404_NOT_FOUND)
-        # La FK es PROTECT: borrar un motivo usado dejaria el historial sin
-        # trazabilidad. Se desactiva en su lugar.
-        if Sale.objects.filter(motivo=motivo).exists():
-            return Response(
-                {'error': 'No se puede eliminar: tiene solicitudes asociadas. '
-                          'Desactivelo en su lugar para que deje de ofrecerse.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        motivo.delete()
+        motivo.activo = False
+        motivo.save(update_fields=['activo'])
+        from .audit import record_audit
+        record_audit(request, 'deactivated', 'motivo', pk,
+                     after={'activo': False})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def put(self, request, pk):
@@ -494,7 +487,11 @@ class PromotionDetailView(IsAdminMixin, APIView):
         if not promo:
             return Response({'error': 'Promocion no encontrada'},
                             status=status.HTTP_404_NOT_FOUND)
-        promo.delete()
+        promo.active = False
+        promo.save(update_fields=['active'])
+        from .audit import record_audit
+        record_audit(request, 'deactivated', 'promotion', pk,
+                     after={'active': False})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -713,7 +710,8 @@ class SaleListView(APIView):
             return Response(
                 {'error': {'serviceTypeFrom': 'Tipo de servicio desconocido'}},
                 status=status.HTTP_400_BAD_REQUEST)
-        qs = Sale.objects.select_related('plan', 'planFromId', 'createdBy').all().order_by('-date', '-id')
+        qs = Sale.objects.select_related('plan', 'planFromId', 'createdBy').filter(
+            deleted_at__isnull=True).order_by('-date', '-id')
         if from_date:
             qs = qs.filter(date__gte=from_date)
         if to_date:
@@ -840,7 +838,7 @@ class SaleDetailView(IsAdminMixin, APIView):
         if error:
             return error
         try:
-            sale = Sale.objects.get(id=pk)
+            sale = Sale.objects.get(id=pk, deleted_at__isnull=True)
         except Sale.DoesNotExist:
             return Response({'error': 'Venta no encontrada'}, status=status.HTTP_404_NOT_FOUND)
         before_audit = {
@@ -849,15 +847,17 @@ class SaleDetailView(IsAdminMixin, APIView):
             'total': str(sale.total),
             'version': sale.version,
         }
-        try:
-            sale.delete()
-        except ProtectedError:
+        if (hasattr(sale, 'traslado_externo')
+                or sale.idempotency_keys.exists()):
             return Response(
                 {'error': 'No se puede eliminar la solicitud porque tiene '
                           'dependencias o forma parte del historial.'},
                 status=status.HTTP_409_CONFLICT)
+        sale.deleted_at = timezone.now()
+        sale.save(update_fields=['deleted_at'])
         from .audit import record_audit
-        record_audit(request, 'deleted', 'sale', pk, before=before_audit)
+        record_audit(request, 'deactivated', 'sale', pk, before=before_audit,
+                     after={'deleted_at': sale.deleted_at.isoformat()})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def put(self, request, pk):
@@ -865,7 +865,7 @@ class SaleDetailView(IsAdminMixin, APIView):
         if error:
             return error
         try:
-            sale = Sale.objects.get(id=pk)
+            sale = Sale.objects.get(id=pk, deleted_at__isnull=True)
         except Sale.DoesNotExist:
             return Response({'error': 'Venta no encontrada'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -1189,14 +1189,16 @@ class UserDetailView(IsAdminMixin, APIView):
             return Response({'error': 'No puedes eliminarte a ti mismo'},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            user.delete()
+            user.active = False
+            user.save(update_fields=['active'])
         except ProtectedError:
             return Response(
                 {'error': 'No se puede eliminar el usuario porque tiene '
                           'registros asociados.'},
                 status=status.HTTP_409_CONFLICT)
         from .audit import record_audit
-        record_audit(request, 'deleted', 'user', pk)
+        record_audit(request, 'deactivated', 'user', pk,
+                     after={'active': False})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def put(self, request, pk):
@@ -1413,7 +1415,7 @@ class DashboardStatsView(APIView):
             else:
                 from_date = to_date = today
 
-            all_sales = Sale.objects.all()
+            all_sales = Sale.objects.filter(deleted_at__isnull=True)
             # Retiros y cambios se derivan del MODO del catálogo. Los dos
             # tipos de alta comerciales se separan por su código histórico.
             catalog = request_type_catalog()

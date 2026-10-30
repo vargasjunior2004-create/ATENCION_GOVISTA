@@ -98,6 +98,7 @@ def _sales_queryset(from_date, to_date, request_type=None, service_type=None,
     from django.db.models import Q
 
     qs = Sale.objects.select_related('plan', 'planFromId', 'createdBy').filter(
+        deleted_at__isnull=True,
         date__gte=from_date, date__lte=to_date)
     if request_type:
         qs = qs.filter(requestType=request_type)
