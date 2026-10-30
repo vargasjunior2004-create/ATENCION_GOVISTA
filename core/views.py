@@ -558,6 +558,11 @@ class TransferTariffDetailView(IsAdminMixin, APIView):
                 new_amount=tariff.amount, previous_active=old_active,
                 new_active=tariff.active, action='updated',
                 changed_by=request.user)
+            from .audit import record_audit
+            record_audit(
+                request, 'updated', 'transfer_tariff', tariff.id,
+                before={'amount': str(old_amount), 'active': old_active},
+                after={'amount': str(tariff.amount), 'active': tariff.active})
         return Response(TarifaTrasladoSerializer(tariff).data)
 
     def get(self, request, pk):
@@ -699,6 +704,13 @@ class SaleListView(APIView):
                     idempotency.response_payload = payload
                     idempotency.save(update_fields=[
                         'status', 'sale', 'response_payload'])
+                from .audit import record_audit
+                record_audit(
+                    request, 'created', 'sale', sale.id,
+                    after={'requestType': sale.requestType,
+                           'serviceType': sale.serviceType,
+                           'total': str(sale.total),
+                           'version': sale.version})
             response = Response(payload, status=status.HTTP_201_CREATED)
             if idempotency:
                 response['Idempotent-Replayed'] = 'false'
@@ -719,6 +731,12 @@ class SaleDetailView(IsAdminMixin, APIView):
             sale = Sale.objects.get(id=pk)
         except Sale.DoesNotExist:
             return Response({'error': 'Venta no encontrada'}, status=status.HTTP_404_NOT_FOUND)
+        before_audit = {
+            'requestType': sale.requestType,
+            'serviceType': sale.serviceType,
+            'total': str(sale.total),
+            'version': sale.version,
+        }
         try:
             sale.delete()
         except ProtectedError:
@@ -726,6 +744,8 @@ class SaleDetailView(IsAdminMixin, APIView):
                 {'error': 'No se puede eliminar la solicitud porque tiene '
                           'dependencias o forma parte del historial.'},
                 status=status.HTTP_409_CONFLICT)
+        from .audit import record_audit
+        record_audit(request, 'deleted', 'sale', pk, before=before_audit)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def put(self, request, pk):
@@ -994,10 +1014,24 @@ class SaleDetailView(IsAdminMixin, APIView):
         sale.applied_monthly = monthly
         sale.total = total
 
+        before_audit = {
+            'requestType': sale.requestType,
+            'serviceType': sale.serviceType,
+            'total': str(sale.total),
+            'version': sale.version,
+        }
         sale.lastEditedBy = request.user
         sale.lastEditedAt = timezone.now()
         sale.version += 1
         sale.save()
+        from .audit import record_audit
+        record_audit(
+            request, 'updated', 'sale', sale.id,
+            before=before_audit,
+            after={'requestType': sale.requestType,
+                   'serviceType': sale.serviceType,
+                   'total': str(sale.total),
+                   'version': sale.version})
         return Response(SaleSerializer(sale).data)
 
 
@@ -1041,6 +1075,8 @@ class UserDetailView(IsAdminMixin, APIView):
                 {'error': 'No se puede eliminar el usuario porque tiene '
                           'registros asociados.'},
                 status=status.HTTP_409_CONFLICT)
+        from .audit import record_audit
+        record_audit(request, 'deleted', 'user', pk)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def put(self, request, pk):

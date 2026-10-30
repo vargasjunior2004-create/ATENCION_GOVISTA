@@ -336,6 +336,27 @@ class SaleIdempotencyKey(models.Model):
         indexes = [models.Index(fields=['expires_at'])]
 
 
+class AuditLog(models.Model):
+    """Registro append-only de acciones sensibles del sistema."""
+    actor = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='audit_events')
+    action = models.CharField(max_length=40)
+    entity = models.CharField(max_length=60)
+    entity_id = models.CharField(max_length=80)
+    before = models.JSONField(default=dict)
+    after = models.JSONField(default=dict)
+    ip = models.GenericIPAddressField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['entity', 'entity_id']),
+            models.Index(fields=['actor', 'created_at']),
+        ]
+
+
 class TrasladoExterno(models.Model):
     """Detalle comercial de un traslado, separado del flujo operativo."""
     STATUS_CHOICES = [
