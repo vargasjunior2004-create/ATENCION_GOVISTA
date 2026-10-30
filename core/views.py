@@ -596,6 +596,25 @@ class CustomerListView(APIView):
         return Response(CustomerSerializer(qs[:20], many=True).data)
 
 
+def _query_int(params, name, default, maximum=None):
+    raw = params.get(name)
+    if raw in (None, ''):
+        return default, None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None, Response(
+            {'error': {name: 'Debe ser un número entero'}},
+            status=status.HTTP_400_BAD_REQUEST)
+    if value < 1 or (maximum is not None and value > maximum):
+        message = 'Debe ser mayor que cero'
+        if maximum is not None:
+            message = f'Debe estar entre 1 y {maximum}'
+        return None, Response(
+            {'error': {name: message}}, status=status.HTTP_400_BAD_REQUEST)
+    return value, None
+
+
 class SaleListView(APIView):
     def get(self, request):
         from_date = request.query_params.get('from')
@@ -603,6 +622,44 @@ class SaleListView(APIView):
         rtype = request.query_params.get('requestType')
         stype = request.query_params.get('serviceType')
         stype_from = request.query_params.get('serviceTypeFrom')
+        page, error = _query_int(request.query_params, 'page', 1)
+        if error:
+            return error
+        page_size, error = _query_int(
+            request.query_params, 'page_size', 25, maximum=100)
+        if error:
+            return error
+
+        try:
+            parsed_from = date.fromisoformat(from_date) if from_date else None
+            parsed_to = date.fromisoformat(to_date) if to_date else None
+        except ValueError:
+            return Response(
+                {'error': {'date': 'Use el formato YYYY-MM-DD'}},
+                status=status.HTTP_400_BAD_REQUEST)
+        if parsed_from and parsed_to and parsed_from > parsed_to:
+            return Response(
+                {'error': {'date': 'La fecha inicial no puede ser posterior a la final'}},
+                status=status.HTTP_400_BAD_REQUEST)
+        if parsed_from and parsed_to and (parsed_to - parsed_from).days > 366:
+            return Response(
+                {'error': {'date': 'El rango máximo permitido es de 366 días'}},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        from .domain import SERVICE_TYPE_LABELS, SERVICE_TYPE_TO_PLAN_TYPE
+        catalog = request_type_catalog()
+        if rtype and rtype not in catalog:
+            return Response(
+                {'error': {'requestType': 'Tipo de solicitud desconocido'}},
+                status=status.HTTP_400_BAD_REQUEST)
+        if stype and stype not in SERVICE_TYPE_LABELS:
+            return Response(
+                {'error': {'serviceType': 'Tipo de servicio desconocido'}},
+                status=status.HTTP_400_BAD_REQUEST)
+        if stype_from and stype_from not in SERVICE_TYPE_TO_PLAN_TYPE:
+            return Response(
+                {'error': {'serviceTypeFrom': 'Tipo de servicio desconocido'}},
+                status=status.HTTP_400_BAD_REQUEST)
         qs = Sale.objects.select_related('plan', 'planFromId', 'createdBy').all().order_by('-date', '-id')
         if from_date:
             qs = qs.filter(date__gte=from_date)
@@ -625,8 +682,6 @@ class SaleListView(APIView):
                 qs = qs.filter(serviceTypeFrom=stype_from)
 
         total = qs.count()
-        page = max(1, int(request.query_params.get('page', 1)))
-        page_size = max(1, int(request.query_params.get('page_size', 25)))
         start = (page - 1) * page_size
         end = start + page_size
         items = qs[start:end]
