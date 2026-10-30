@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'drf_spectacular',
     'core',
 ]
 
@@ -154,11 +155,25 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 25,
     'DEFAULT_THROTTLE_RATES': {
         'report_link': '10/hour',
         'report_public': '30/hour',
+    },
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'SaleStracker API',
+    'DESCRIPTION': 'API de ventas, solicitudes, tarifas y reportes comerciales.',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'SERVE_PERMISSIONS': ['rest_framework.permissions.AllowAny'],
+    'ENUM_NAME_OVERRIDES': {
+        'PlanTypeEnum': 'core.models.Plan.TYPE_CHOICES',
+        'TransferServiceTypeEnum': 'core.models.TarifaTraslado.SERVICE_CHOICES',
+        'SaleServiceTypeEnum': 'core.models.Sale.TYPE_CHOICES',
     },
 }
 
