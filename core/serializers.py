@@ -337,7 +337,7 @@ class SaleSerializer(serializers.ModelSerializer):
                    'applied_installation', 'applied_monthly', 'previousPlan']
         fields = fields + [
             'equipmentRetained', 'requiresTechnicalVisit', 'debtApplies',
-            'debtAmount', 'totalToCollect']
+            'debtAmount', 'totalToCollect', 'version']
         fields = fields + ['traslado']
 
     def get_motivoNombre(self, obj):

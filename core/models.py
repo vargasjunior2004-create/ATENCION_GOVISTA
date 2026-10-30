@@ -269,6 +269,7 @@ class Sale(models.Model):
         max_digits=12, decimal_places=2, null=True, blank=True)
     notes = models.CharField(max_length=255, blank=True, default='')
     total = models.DecimalField(max_digits=12, decimal_places=2)
+    version = models.PositiveIntegerField(default=1)
     promotion = models.ForeignKey(
         Promotion, null=True, blank=True, on_delete=models.SET_NULL,
         related_name='sales', help_text='Promocion utilizada (snapshot)')
@@ -306,6 +307,54 @@ class Sale(models.Model):
 
     def __str__(self):
         return f'{self.date} {self.clientName}'
+
+
+class SaleIdempotencyKey(models.Model):
+    """Resultado de un POST de venta protegido contra reintentos."""
+    STATUS_CHOICES = [
+        ('processing', 'En proceso'),
+        ('completed', 'Completado'),
+    ]
+
+    user = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='sale_idempotency_keys')
+    key = models.CharField(max_length=128)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES)
+    response_payload = models.JSONField(default=dict)
+    response_status = models.PositiveSmallIntegerField(default=201)
+    sale = models.ForeignKey(
+        Sale, null=True, blank=True, on_delete=models.PROTECT,
+        related_name='idempotency_keys')
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'key'], name='unique_sale_idempotency_user_key')
+        ]
+        indexes = [models.Index(fields=['expires_at'])]
+
+
+class AuditLog(models.Model):
+    """Registro append-only de acciones sensibles del sistema."""
+    actor = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='audit_events')
+    action = models.CharField(max_length=40)
+    entity = models.CharField(max_length=60)
+    entity_id = models.CharField(max_length=80)
+    before = models.JSONField(default=dict)
+    after = models.JSONField(default=dict)
+    ip = models.GenericIPAddressField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['entity', 'entity_id']),
+            models.Index(fields=['actor', 'created_at']),
+        ]
 
 
 class TrasladoExterno(models.Model):

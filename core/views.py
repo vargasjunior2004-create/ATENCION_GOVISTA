@@ -1,10 +1,12 @@
+import json
 import logging
 import os
 import threading
 from decimal import Decimal, InvalidOperation
 from datetime import date, timedelta
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
+from django.db.models import ProtectedError
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.db.models import Count, Q, Sum
@@ -13,13 +15,14 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.renderers import JSONRenderer
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
 from .models import (
     User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
-    TarifaTraslado, TarifaTrasladoHistorial,
+    TarifaTraslado, TarifaTrasladoHistorial, SaleIdempotencyKey,
 )
 from .serializers import (
     UserSerializer, UserWriteSerializer, PlanSerializer,
@@ -555,6 +558,11 @@ class TransferTariffDetailView(IsAdminMixin, APIView):
                 new_amount=tariff.amount, previous_active=old_active,
                 new_active=tariff.active, action='updated',
                 changed_by=request.user)
+            from .audit import record_audit
+            record_audit(
+                request, 'updated', 'transfer_tariff', tariff.id,
+                before={'amount': str(old_amount), 'active': old_active},
+                after={'amount': str(tariff.amount), 'active': tariff.active})
         return Response(TarifaTrasladoSerializer(tariff).data)
 
     def get(self, request, pk):
@@ -641,17 +649,75 @@ class SaleListView(APIView):
         logger = logging.getLogger('core')
         data = request.data.copy()
         data['date'] = timezone.localdate().isoformat()
+        idempotency_key = request.headers.get('Idempotency-Key', '').strip()
+        if len(idempotency_key) > 128:
+            return Response(
+                {'error': 'Idempotency-Key no puede superar 128 caracteres'},
+                status=status.HTTP_400_BAD_REQUEST)
+        idempotency = None
+        if idempotency_key:
+            now = timezone.now()
+            existing = SaleIdempotencyKey.objects.filter(
+                user=request.user, key=idempotency_key).first()
+            if existing and existing.expires_at <= now:
+                existing.delete()
+                existing = None
+            if existing:
+                if existing.status == 'processing':
+                    return Response(
+                        {'error': 'La solicitud con esta clave todavía está en proceso'},
+                        status=status.HTTP_409_CONFLICT)
+                response = Response(
+                    existing.response_payload, status=existing.response_status)
+                response['Idempotent-Replayed'] = 'true'
+                return response
+            try:
+                idempotency = SaleIdempotencyKey.objects.create(
+                    user=request.user, key=idempotency_key, status='processing',
+                    expires_at=now + timedelta(hours=24))
+            except IntegrityError:
+                existing = SaleIdempotencyKey.objects.get(
+                    user=request.user, key=idempotency_key)
+                if existing.status == 'completed':
+                    response = Response(
+                        existing.response_payload, status=existing.response_status)
+                    response['Idempotent-Replayed'] = 'true'
+                    return response
+                return Response(
+                    {'error': 'La solicitud con esta clave está en proceso'},
+                    status=status.HTTP_409_CONFLICT)
         logger.info(
             'Sale creation requested user_id=%s request_type=%s',
             getattr(request.user, 'id', None), data.get('requestType', 'nuevo_contrato'))
         try:
             serializer = SaleCreateSerializer(data=data, context={'user': request.user})
             if not serializer.is_valid():
+                if idempotency:
+                    idempotency.delete()
                 return Response({'error': _first_error(serializer)}, status=status.HTTP_400_BAD_REQUEST)
             with transaction.atomic():
                 sale = serializer.save()
-            return Response(SaleSerializer(sale).data, status=status.HTTP_201_CREATED)
+                payload = json.loads(JSONRenderer().render(SaleSerializer(sale).data))
+                if idempotency:
+                    idempotency.status = 'completed'
+                    idempotency.sale = sale
+                    idempotency.response_payload = payload
+                    idempotency.save(update_fields=[
+                        'status', 'sale', 'response_payload'])
+                from .audit import record_audit
+                record_audit(
+                    request, 'created', 'sale', sale.id,
+                    after={'requestType': sale.requestType,
+                           'serviceType': sale.serviceType,
+                           'total': str(sale.total),
+                           'version': sale.version})
+            response = Response(payload, status=status.HTTP_201_CREATED)
+            if idempotency:
+                response['Idempotent-Replayed'] = 'false'
+            return response
         except Exception as e:
+            if idempotency:
+                idempotency.delete()
             logger.error('SaleListView POST error: %s\n%s', e, traceback.format_exc())
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -665,7 +731,21 @@ class SaleDetailView(IsAdminMixin, APIView):
             sale = Sale.objects.get(id=pk)
         except Sale.DoesNotExist:
             return Response({'error': 'Venta no encontrada'}, status=status.HTTP_404_NOT_FOUND)
-        sale.delete()
+        before_audit = {
+            'requestType': sale.requestType,
+            'serviceType': sale.serviceType,
+            'total': str(sale.total),
+            'version': sale.version,
+        }
+        try:
+            sale.delete()
+        except ProtectedError:
+            return Response(
+                {'error': 'No se puede eliminar la solicitud porque tiene '
+                          'dependencias o forma parte del historial.'},
+                status=status.HTTP_409_CONFLICT)
+        from .audit import record_audit
+        record_audit(request, 'deleted', 'sale', pk, before=before_audit)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def put(self, request, pk):
@@ -685,6 +765,18 @@ class SaleDetailView(IsAdminMixin, APIView):
             resolve_motivo)
 
         data = request.data
+        if 'version' in data:
+            try:
+                requested_version = int(data['version'])
+            except (TypeError, ValueError):
+                return Response(
+                    {'error': 'La version del registro no es valida'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if requested_version != sale.version:
+                return Response(
+                    {'error': 'El registro fue modificado por otro usuario',
+                     'currentVersion': sale.version},
+                    status=status.HTTP_409_CONFLICT)
         old_plan_id = sale.plan_id
         old_plan_from_id = sale.planFromId_id
 
@@ -709,6 +801,23 @@ class SaleDetailView(IsAdminMixin, APIView):
         mode_changed = mode != request_type_mode(sale.requestType, catalog)
 
         is_rehire = request_type == 'recontratacion'
+        is_transfer = request_type == 'traslado_externo'
+        transfer = getattr(sale, 'traslado_externo', None)
+        if sale.requestType == 'traslado_externo' and not is_transfer:
+            return Response(
+                {'error': 'Un traslado externo no puede cambiarse a otro tipo '
+                          'de solicitud.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if is_transfer:
+            if transfer is None:
+                return Response(
+                    {'error': 'El traslado externo no tiene detalle asociado.'},
+                    status=status.HTTP_409_CONFLICT)
+            expected_family = SERVICE_TYPE_TO_PLAN_TYPE.get(service_type)
+            if transfer.tariff.service_type != expected_family:
+                return Response(
+                    {'error': 'La tarifa del traslado no corresponde al servicio.'},
+                    status=status.HTTP_400_BAD_REQUEST)
         if is_rehire:
             equipment_retained = data.get(
                 'equipmentRetained', sale.equipment_retained)
@@ -893,15 +1002,36 @@ class SaleDetailView(IsAdminMixin, APIView):
         else:
             installation, monthly, total = resolve_sale_prices(
                 plan, sale.promotion, request_type)
-        if is_rehire:
+        if is_transfer:
+            # El traslado se cobra con el snapshot de su tarifa, nunca con
+            # los importes del plan asociado a Sale.
+            installation = Decimal('0')
+            monthly = Decimal('0')
+            total = transfer.tariff_amount
+        elif is_rehire:
             total += debt_amount
         sale.applied_installation = installation
         sale.applied_monthly = monthly
         sale.total = total
 
+        before_audit = {
+            'requestType': sale.requestType,
+            'serviceType': sale.serviceType,
+            'total': str(sale.total),
+            'version': sale.version,
+        }
         sale.lastEditedBy = request.user
         sale.lastEditedAt = timezone.now()
+        sale.version += 1
         sale.save()
+        from .audit import record_audit
+        record_audit(
+            request, 'updated', 'sale', sale.id,
+            before=before_audit,
+            after={'requestType': sale.requestType,
+                   'serviceType': sale.serviceType,
+                   'total': str(sale.total),
+                   'version': sale.version})
         return Response(SaleSerializer(sale).data)
 
 
@@ -938,7 +1068,15 @@ class UserDetailView(IsAdminMixin, APIView):
         if user == request.user:
             return Response({'error': 'No puedes eliminarte a ti mismo'},
                             status=status.HTTP_400_BAD_REQUEST)
-        user.delete()
+        try:
+            user.delete()
+        except ProtectedError:
+            return Response(
+                {'error': 'No se puede eliminar el usuario porque tiene '
+                          'registros asociados.'},
+                status=status.HTTP_409_CONFLICT)
+        from .audit import record_audit
+        record_audit(request, 'deleted', 'user', pk)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def put(self, request, pk):
