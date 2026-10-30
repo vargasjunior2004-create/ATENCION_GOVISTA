@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../../../services/api';
-import { Button, Input, Select, Card, Alert, TotalDisplay } from '../../../components/ui';
+import { Button, Input, Select, RadioChoiceGroup, Card, Alert, TotalDisplay } from '../../../components/ui';
+import { Check, MapPin, Route, Wrench, Package, ReceiptText } from 'lucide-react';
 import useRequestTypes from '../../../hooks/useRequestTypes';
 import useMotivos from '../../../hooks/useMotivos';
 import SalePreviewModal from '../../../components/SalePreview';
@@ -456,19 +457,30 @@ export default function SaleForm() {
           )}
 
           {isTransfer && (
-            <div className="rounded-2xl border-2 border-dashed border-sky-200 bg-sky-50/40 p-4 space-y-4">
-              <p className="text-xs font-bold uppercase tracking-wider text-sky-700">Datos del traslado externo</p>
+            <div className="rounded-2xl border border-sky-200 bg-sky-50/40 p-4 space-y-5">
+              <div className="flex items-center gap-3">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-100 text-sky-700"><Route size={18} /></span>
+                <div>
+                  <p className="text-sm font-bold text-sky-900">Ruta del traslado</p>
+                  <p className="text-xs text-sky-700">Registra el domicilio de destino y la información operativa.</p>
+                </div>
+              </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Input label="Domicilio actual" name="transferCurrentAddress" value={form.transferCurrentAddress} onChange={handleChange} placeholder="Si está disponible" />
-                <Input label="Nuevo domicilio *" name="transferNewAddress" value={form.transferNewAddress} onChange={handleChange} required placeholder="Calle y número" />
+                <Input label="Nuevo domicilio *" name="transferNewAddress" value={form.transferNewAddress} onChange={handleChange} placeholder="Calle y número" required />
                 <Input label="Barrio / zona" name="transferZone" value={form.transferZone} onChange={handleChange} placeholder="Zona del nuevo domicilio" />
                 <Input label="Referencias" name="transferReferences" value={form.transferReferences} onChange={handleChange} placeholder="Puntos de referencia" />
               </div>
-              <Select label="¿El cliente trajo croquis físico? *" name="transferHasSketch" value={form.transferHasSketch === null ? '' : String(form.transferHasSketch)} onChange={(event) => setForm((prev) => ({ ...prev, transferHasSketch: event.target.value === '' ? null : event.target.value === 'true' }))} required>
-                <option value="">--Seleccione--</option>
-                <option value="true">Sí, trajo croquis físico</option>
-                <option value="false">No, queda pendiente de ubicación</option>
-              </Select>
+              <RadioChoiceGroup
+                label="Croquis físico"
+                name="transferHasSketch"
+                value={form.transferHasSketch === null ? '' : String(form.transferHasSketch)}
+                onChange={(event) => setForm((prev) => ({ ...prev, transferHasSketch: event.target.value === 'true' }))}
+                options={[
+                  { value: 'true', label: 'Entregado', description: 'El cliente presentó el croquis.', icon: <Check size={15} /> },
+                  { value: 'false', label: 'Pendiente', description: 'Operaciones debe gestionar la ubicación.', icon: <MapPin size={15} /> },
+                ]}
+              />
               <p className="text-xs text-slate-500">La validación de cobertura, la ubicación por QR y la asignación de técnicos corresponden a Operaciones.</p>
             </div>
           )}
@@ -584,31 +596,47 @@ export default function SaleForm() {
           )}
 
           {isRecontratacion && (
-            <div className="rounded-2xl border-2 border-dashed border-violet-200 bg-violet-50/40 p-4 space-y-4">
-              <p className="text-xs font-bold text-violet-700 uppercase tracking-wider">
-                Datos de la recontratación
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Select label="¿Conserva el router/ONU? *" name="equipmentRetained" value={form.equipmentRetained === null ? '' : String(form.equipmentRetained)} onChange={(e) => setForm((prev) => ({ ...prev, equipmentRetained: e.target.value === '' ? null : e.target.value === 'true' }))} required>
-                  <option value="">--Seleccione--</option>
-                  <option value="true">Sí</option>
-                  <option value="false">No</option>
-                </Select>
-                <Select label="¿Requiere visita técnica? *" name="requiresTechnicalVisit" value={form.requiresTechnicalVisit === null ? '' : String(form.requiresTechnicalVisit)} onChange={(e) => setForm((prev) => ({ ...prev, requiresTechnicalVisit: e.target.value === '' ? null : e.target.value === 'true' }))} required>
-                  <option value="">--Seleccione--</option>
-                  <option value="true">Sí</option>
-                  <option value="false">No</option>
-                </Select>
+            <div className="rounded-2xl border border-violet-200 bg-violet-50/40 p-4 space-y-5">
+              <div className="flex items-center gap-3">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><Package size={18} /></span>
+                <div>
+                  <p className="text-sm font-bold text-violet-900">Condiciones de la recontratación</p>
+                  <p className="text-xs text-violet-700">Define el equipo, la visita y el estado de pago del cliente.</p>
+                </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Select label="¿Tiene adeudo pendiente? *" name="debtApplies" value={String(form.debtApplies)} onChange={(e) => setForm((prev) => ({ ...prev, debtApplies: e.target.value === 'true', debtAmount: e.target.value === 'true' ? prev.debtAmount : '' }))} required>
-                  <option value="false">No</option>
-                  <option value="true">Sí</option>
-                </Select>
-                {form.debtApplies && (
-                  <Input label="Adeudo pendiente (Bs) *" name="debtAmount" type="number" min="0.01" step="0.01" value={form.debtAmount} onChange={handleChange} required />
-                )}
-              </div>
+              <RadioChoiceGroup
+                label="Equipo del cliente"
+                name="equipmentRetained"
+                value={form.equipmentRetained === null ? '' : String(form.equipmentRetained)}
+                onChange={(e) => setForm((prev) => ({ ...prev, equipmentRetained: e.target.value === 'true' }))}
+                options={[
+                  { value: 'true', label: 'Conservar equipo', description: 'Se mantiene el router/ONU actual.', icon: <Package size={15} /> },
+                  { value: 'false', label: 'Reemplazar equipo', description: 'Se requiere un equipo nuevo.', icon: <Wrench size={15} /> },
+                ]}
+              />
+              <RadioChoiceGroup
+                label="Atención técnica"
+                name="requiresTechnicalVisit"
+                value={form.requiresTechnicalVisit === null ? '' : String(form.requiresTechnicalVisit)}
+                onChange={(e) => setForm((prev) => ({ ...prev, requiresTechnicalVisit: e.target.value === 'true' }))}
+                options={[
+                  { value: 'true', label: 'Requiere visita', description: 'Debe programarse una visita técnica.', icon: <Wrench size={15} /> },
+                  { value: 'false', label: 'Sin visita', description: 'No se necesita visita técnica.', icon: <Check size={15} /> },
+                ]}
+              />
+              <RadioChoiceGroup
+                label="Situación de pago"
+                name="debtApplies"
+                value={String(form.debtApplies)}
+                onChange={(e) => setForm((prev) => ({ ...prev, debtApplies: e.target.value === 'true', debtAmount: e.target.value === 'true' ? prev.debtAmount : '' }))}
+                options={[
+                  { value: 'false', label: 'Sin adeudo', description: 'No se suma ningún importe pendiente.', icon: <Check size={15} /> },
+                  { value: 'true', label: 'Tiene adeudo', description: 'Se agregará al total a cobrar.', icon: <ReceiptText size={15} /> },
+                ]}
+              />
+              {form.debtApplies && (
+                <Input label="Monto del adeudo (Bs) *" name="debtAmount" type="number" min="0.01" step="0.01" value={form.debtAmount} onChange={handleChange} required />
+              )}
             </div>
           )}
 
