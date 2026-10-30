@@ -301,6 +301,9 @@ class Sale(models.Model):
         related_name='sales_edited')
     lastEditedAt = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    deleted_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text='Fecha de baja logica; el movimiento se conserva para auditoria')
 
     class Meta:
         ordering = ['-date', '-id']
