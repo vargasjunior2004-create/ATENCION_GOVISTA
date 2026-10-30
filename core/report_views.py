@@ -143,7 +143,7 @@ class SalesPngView(APIView):
         show_motivos = _show_motivos(request.query_params)
         buf = build_sales_png(from_date, to_date, request_type, service_type,
                               service_type_from, show_motivos)
-        response = HttpResponse(buf.getvalue())
+        response = HttpResponse(buf.getvalue(), content_type='image/png')
         response['Content-Disposition'] = f'attachment; filename="foto-{from_date}-{to_date}.png"'
         return _download_headers(response)
 
@@ -185,7 +185,7 @@ class DashboardPngView(APIView):
     def get(self, request):
         today = timezone.localdate().isoformat()
         buf = build_sales_png(today, today)
-        response = HttpResponse(buf.getvalue())
+        response = HttpResponse(buf.getvalue(), content_type='image/png')
         response['Content-Disposition'] = f'attachment; filename="foto-{today}-{today}.png"'
         return _download_headers(response)
 
