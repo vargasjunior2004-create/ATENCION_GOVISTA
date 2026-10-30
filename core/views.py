@@ -641,7 +641,9 @@ class SaleListView(APIView):
         logger = logging.getLogger('core')
         data = request.data.copy()
         data['date'] = timezone.localdate().isoformat()
-        logger.warning('SaleListView POST data: %s', data)
+        logger.info(
+            'Sale creation requested user_id=%s request_type=%s',
+            getattr(request.user, 'id', None), data.get('requestType', 'nuevo_contrato'))
         try:
             serializer = SaleCreateSerializer(data=data, context={'user': request.user})
             if not serializer.is_valid():

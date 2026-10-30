@@ -1,7 +1,9 @@
 import os
 from datetime import date, timedelta, datetime, timezone as tz
+from io import BytesIO
 
 from django.test import TestCase, TransactionTestCase, override_settings
+from django.core.cache import cache
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -191,18 +193,67 @@ class ApiTestCase(TestCase):
     def test_public_link_requires_valid_token(self):
         self.auth_as(self.admin, 'admin123')
         d = date.today().isoformat()
-        res = self.client.get(f'/api/reports/pdf-link?from={d}&to={d}')
+        res = self.client.get(
+            f'/api/reports/pdf-link?from={d}&to={d}&requestType=retiro'
+            '&serviceType=tv&serviceTypeFrom=internet&showMotivos=si')
         self.assertEqual(res.status_code, 200)
         url = res.data['url']
         self.assertIn('/api/reports/pdf-public/', url)
 
         bad = self.client.get('/api/reports/pdf-public/', {'token': 'invalido'})
-        self.assertEqual(bad.status_code, 400)
+        self.assertEqual(bad.status_code, 403)
 
         token = url.split('token=')[1]
-        ok = self.client.get('/api/reports/pdf-public/', {'token': token})
+        from .reports import unsign_report_token
+        payload = unsign_report_token(token)
+        self.assertEqual(payload['requestType'], 'retiro')
+        self.assertEqual(payload['serviceType'], 'tv')
+        self.assertEqual(payload['serviceTypeFrom'], 'internet')
+        self.assertTrue(payload['showMotivos'])
+
+        # Los filtros enviados al enlace público no pueden alterar el token.
+        ok = self.client.get(
+            '/api/reports/pdf-public/',
+            {'token': token, 'requestType': 'nuevo_contrato'})
         self.assertEqual(ok.status_code, 200)
         self.assertIn(b'%PDF', ok.content)
+
+        xlsx_link = self.client.get(f'/api/reports/xlsx-link?from={d}&to={d}')
+        xlsx_token = xlsx_link.data['url'].split('token=')[1]
+        wrong_format = self.client.get(
+            '/api/reports/pdf-public/', {'token': xlsx_token})
+        self.assertEqual(wrong_format.status_code, 403)
+
+    def test_public_xlsx_masks_personal_data(self):
+        self.auth_as(self.admin, 'admin123')
+        Sale.objects.create(
+            date=date.today(), clientCode='PII-123', clientName='NOMBRE PRIVADO',
+            serviceType='internet', plan=self.plan, total=self.plan.total,
+            createdBy=self.admin)
+        d = date.today().isoformat()
+        link = self.client.get(f'/api/reports/xlsx-link?from={d}&to={d}')
+        token = link.data['url'].split('token=')[1]
+        response = self.client.get('/api/reports/xlsx-public/', {'token': token})
+        self.assertEqual(response.status_code, 200)
+
+        from openpyxl import load_workbook
+        workbook = load_workbook(BytesIO(response.content), read_only=True)
+        values = [value for row in workbook.active.iter_rows(values_only=True)
+                  for value in row if value is not None]
+        self.assertNotIn('PII-123', values)
+        self.assertNotIn('NOMBRE PRIVADO', values)
+        self.assertIn('***', values)
+
+    def test_report_link_throttle(self):
+        self.auth_as(self.admin, 'admin123')
+        cache.clear()
+        d = date.today().isoformat()
+        responses = [
+            self.client.get(f'/api/reports/pdf-link?from={d}&to={d}')
+            for _ in range(11)
+        ]
+        self.assertTrue(all(response.status_code == 200 for response in responses[:10]))
+        self.assertEqual(responses[-1].status_code, 429)
 
 
 class TimezoneBugAcceptanceTest(TestCase):
