@@ -68,6 +68,7 @@ MODO_NUEVO = 'nuevo'
 MODO_RETIRO = 'retiro'
 MODO_CAMBIO_PLAN = 'cambio_plan'
 MODO_ADICION = 'adicion'
+MODO_TRASLADO = 'traslado'
 MODO_SIMPLE = 'simple'
 
 
@@ -81,7 +82,7 @@ def plan_is_selectable(plan, mode=None, request_type=None):
     """
     if plan is None or not plan.active:
         return False
-    if request_type == 'traslado_externo':
+    if mode == MODO_TRASLADO or request_type == 'traslado_externo':
         return True
     return mode == MODO_RETIRO or not plan.legacy
 

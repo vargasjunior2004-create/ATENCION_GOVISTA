@@ -72,6 +72,7 @@ class TipoSolicitud(models.Model):
         RETIRO = 'retiro', 'Retiro'
         CAMBIO_PLAN = 'cambio_plan', 'Cambio de plan'
         ADICION = 'adicion', 'Adicion'
+        TRASLADO = 'traslado', 'Traslado externo'
         SIMPLE = 'simple', 'Sin reglas especiales'
 
     code = models.SlugField(max_length=20, unique=True)

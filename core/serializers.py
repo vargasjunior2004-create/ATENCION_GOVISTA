@@ -10,7 +10,8 @@ from .domain import (
     SERVICE_TYPE_LABELS, SERVICE_TYPE_FAMILY, SERVICE_TYPE_TO_PLAN_TYPE,
     service_family_label, previous_service_family, is_service_change,
     request_type_mode, request_type_catalog,
-    MODO_ADICION, MODO_CAMBIO_PLAN, MODO_RETIRO, MODOS_SOLO_MENSUAL,
+    MODO_ADICION, MODO_CAMBIO_PLAN, MODO_RETIRO, MODO_TRASLADO,
+    MODOS_SOLO_MENSUAL,
     plan_is_selectable,
     motivo_categoria_de_modo, MOTIVO_CAMBIO,
 )
@@ -464,7 +465,7 @@ class SaleCreateSerializer(serializers.Serializer):
         mode = tipo.modo
 
         is_rehire = request_type == 'recontratacion'
-        is_transfer = request_type == 'traslado_externo'
+        is_transfer = request_type_mode(request_type, catalog) == MODO_TRASLADO
         equipment_retained = attrs.get('equipment_retained')
         requires_technical_visit = attrs.get('requires_technical_visit')
         debt_applies = attrs.get('debt_applies', False)

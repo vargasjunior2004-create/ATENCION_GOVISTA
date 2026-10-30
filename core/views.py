@@ -36,7 +36,7 @@ from .serializers import (
 from .domain import (
     request_type_mode, request_type_catalog,
     MODO_RETIRO, MODO_CAMBIO_PLAN, MODO_ADICION,
-    MODO_SIMPLE,
+    MODO_SIMPLE, MODO_TRASLADO,
 )
 from .reports import build_sales_pdf, build_sales_xlsx
 
@@ -913,9 +913,10 @@ class SaleDetailView(IsAdminMixin, APIView):
         mode_changed = mode != request_type_mode(sale.requestType, catalog)
 
         is_rehire = request_type == 'recontratacion'
-        is_transfer = request_type == 'traslado_externo'
+        is_transfer = mode == MODO_TRASLADO
         transfer = getattr(sale, 'traslado_externo', None)
-        if sale.requestType == 'traslado_externo' and not is_transfer:
+        if (request_type_mode(sale.requestType, catalog) == MODO_TRASLADO
+                and not is_transfer):
             return Response(
                 {'error': 'Un traslado externo no puede cambiarse a otro tipo '
                           'de solicitud.'},
