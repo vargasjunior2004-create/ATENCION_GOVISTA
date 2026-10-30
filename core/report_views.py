@@ -7,6 +7,9 @@ from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
+from drf_spectacular.utils import (
+    extend_schema, extend_schema_view, OpenApiResponse, OpenApiTypes,
+)
 
 from .reports import (
     build_sales_pdf, build_sales_xlsx, build_sales_png,
@@ -92,6 +95,7 @@ def _filters_from_payload(payload):
     )
 
 
+@extend_schema(responses={200: OpenApiResponse(OpenApiTypes.BINARY)})
 class SalesPdfView(APIView):
     permission_classes = [IsAdminRole]
 
@@ -107,6 +111,7 @@ class SalesPdfView(APIView):
         return _pdf_response(buf, f'planilla{suffix}-{from_date}-{to_date}.pdf')
 
 
+@extend_schema(responses={200: OpenApiResponse(OpenApiTypes.BINARY)})
 class SalesXlsxView(APIView):
     permission_classes = [IsAdminRole]
 
@@ -126,6 +131,7 @@ class SalesXlsxView(APIView):
         return _download_headers(response)
 
 
+@extend_schema(responses={200: OpenApiResponse(OpenApiTypes.BINARY)})
 class SalesPngView(APIView):
     permission_classes = [IsAdminRole]
 
@@ -137,11 +143,12 @@ class SalesPngView(APIView):
         show_motivos = _show_motivos(request.query_params)
         buf = build_sales_png(from_date, to_date, request_type, service_type,
                               service_type_from, show_motivos)
-        response = HttpResponse(buf.getvalue(), content_type='image/png')
+        response = HttpResponse(buf.getvalue())
         response['Content-Disposition'] = f'attachment; filename="foto-{from_date}-{to_date}.png"'
         return _download_headers(response)
 
 
+@extend_schema(responses={200: OpenApiResponse(OpenApiTypes.BINARY)})
 class DashboardPdfView(APIView):
     """Planilla del dia del dashboard: disponible para admin y operador."""
 
@@ -153,6 +160,7 @@ class DashboardPdfView(APIView):
         return _pdf_response(buf, f'planilla-{today}-{today}.pdf')
 
 
+@extend_schema(responses={200: OpenApiResponse(OpenApiTypes.BINARY)})
 class DashboardXlsxView(APIView):
     """Excel del dia del dashboard: disponible para admin y operador."""
 
@@ -168,6 +176,7 @@ class DashboardXlsxView(APIView):
         return _download_headers(response)
 
 
+@extend_schema(responses={200: OpenApiResponse(OpenApiTypes.BINARY)})
 class DashboardPngView(APIView):
     """Foto del dia del dashboard: disponible para admin y operador."""
 
@@ -176,11 +185,12 @@ class DashboardPngView(APIView):
     def get(self, request):
         today = timezone.localdate().isoformat()
         buf = build_sales_png(today, today)
-        response = HttpResponse(buf.getvalue(), content_type='image/png')
+        response = HttpResponse(buf.getvalue())
         response['Content-Disposition'] = f'attachment; filename="foto-{today}-{today}.png"'
         return _download_headers(response)
 
 
+@extend_schema(responses={200: dict, 400: dict, 429: dict})
 class SalesPdfLinkView(APIView):
     permission_classes = [IsAdminRole]
     throttle_classes = [ScopedRateThrottle]
@@ -192,6 +202,7 @@ class SalesPdfLinkView(APIView):
         return Response({'url': url})
 
 
+@extend_schema(responses={200: dict, 400: dict, 429: dict})
 class SalesXlsxLinkView(APIView):
     permission_classes = [IsAdminRole]
     throttle_classes = [ScopedRateThrottle]
@@ -203,6 +214,7 @@ class SalesXlsxLinkView(APIView):
         return Response({'url': url})
 
 
+@extend_schema(responses={200: OpenApiResponse(OpenApiTypes.BINARY), 400: dict, 403: dict})
 class SalesPdfPublicView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
@@ -219,6 +231,7 @@ class SalesPdfPublicView(APIView):
                              f'planilla-{from_date}-{to_date}.pdf')
 
 
+@extend_schema(responses={200: OpenApiResponse(OpenApiTypes.BINARY), 400: dict, 403: dict})
 class SalesXlsxPublicView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
@@ -237,3 +250,13 @@ class SalesXlsxPublicView(APIView):
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = f'attachment; filename="planilla-{from_date}-{to_date}.xlsx"'
         return _download_headers(response)
+
+
+@extend_schema_view(get=extend_schema(exclude=True))
+class SalesPdfPublicSlashView(SalesPdfPublicView):
+    """Alias con slash final, excluido para evitar duplicar OpenAPI."""
+
+
+@extend_schema_view(get=extend_schema(exclude=True))
+class SalesXlsxPublicSlashView(SalesXlsxPublicView):
+    """Alias con slash final, excluido para evitar duplicar OpenAPI."""

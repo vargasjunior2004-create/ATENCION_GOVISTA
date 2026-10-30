@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 from .models import (
     User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
     TarifaTraslado, TarifaTrasladoHistorial, TrasladoExterno,
@@ -218,6 +219,7 @@ class PromotionSerializer(serializers.ModelSerializer):
                   'start_date', 'end_date', 'active',
                   'created_at', 'is_current']
 
+    @extend_schema_field(str)
     def get_planLabel(self, obj):
         return f'{obj.plan.code} - {obj.plan.label}'
 
@@ -286,9 +288,11 @@ class TarifaTrasladoSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at', 'created_by',
                             'updated_by', 'createdBy', 'updatedBy']
 
+    @extend_schema_field(dict)
     def get_createdBy(self, obj):
         return {'id': obj.created_by_id, 'name': obj.created_by.name} if obj.created_by else None
 
+    @extend_schema_field(dict)
     def get_updatedBy(self, obj):
         return {'id': obj.updated_by_id, 'name': obj.updated_by.name} if obj.updated_by else None
 
@@ -302,6 +306,7 @@ class TarifaTrasladoHistorialSerializer(serializers.ModelSerializer):
                   'new_active', 'action', 'changed_by', 'changedBy',
                   'created_at']
 
+    @extend_schema_field(dict)
     def get_changedBy(self, obj):
         return {'id': obj.changed_by_id, 'name': obj.changed_by.name} if obj.changed_by else None
 
@@ -340,15 +345,18 @@ class SaleSerializer(serializers.ModelSerializer):
             'debtAmount', 'totalToCollect', 'version']
         fields = fields + ['traslado']
 
+    @extend_schema_field(str)
     def get_motivoNombre(self, obj):
         """Nombre del motivo: el snapshot si existe, o el texto historico."""
         return obj.changeReason or ''
 
+    @extend_schema_field(dict)
     def get_Plan(self, obj):
         return {'id': obj.plan.id,
                 'label': obj.planName or obj.plan.label,
                 'code': obj.plan.code}
 
+    @extend_schema_field(dict)
     def get_previousPlan(self, obj):
         pf = getattr(obj, 'planFromId', None) or getattr(obj, 'planfromid', None)
         if pf:
@@ -357,6 +365,7 @@ class SaleSerializer(serializers.ModelSerializer):
                     'code': pf.code, 'type': pf.type}
         return None
 
+    @extend_schema_field(dict)
     def get_previousService(self, obj):
         """Servicio anterior del movimiento, deducido si no se registro."""
         if request_type_mode(obj.requestType, sale_catalog(self)) != MODO_CAMBIO_PLAN:
@@ -370,15 +379,19 @@ class SaleSerializer(serializers.ModelSerializer):
             'serviceType': obj.serviceTypeFrom or None,
         }
 
+    @extend_schema_field(bool)
     def get_isServiceChange(self, obj):
         return is_service_change(obj, sale_catalog(self))
 
+    @extend_schema_field(dict)
     def get_creator(self, obj):
         return {'id': obj.createdBy.id, 'name': obj.createdBy.name}
 
+    @extend_schema_field(str)
     def get_totalToCollect(self, obj):
         return obj.total or Decimal('0')
 
+    @extend_schema_field(dict)
     def get_traslado(self, obj):
         traslado = getattr(obj, 'traslado_externo', None)
         if not traslado:

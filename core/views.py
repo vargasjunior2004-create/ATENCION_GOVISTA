@@ -17,6 +17,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.renderers import JSONRenderer
 from rest_framework.views import APIView
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
@@ -101,6 +102,7 @@ class IsAdminMixin:
         return None
 
 
+@extend_schema(responses={200: dict})
 class HealthView(APIView):
     permission_classes = [AllowAny]
 
@@ -108,6 +110,7 @@ class HealthView(APIView):
         return Response({'status': 'ok'})
 
 
+@extend_schema(responses={200: dict, 503: dict})
 class ReadyView(APIView):
     """Comprueba base y migraciones sin revelar detalles de infraestructura."""
     permission_classes = [AllowAny]
@@ -123,6 +126,9 @@ class ReadyView(APIView):
             return Response({'status': 'unavailable'}, status=503)
 
 
+@extend_schema_view(
+    post=extend_schema(request=dict, responses={200: dict, 400: dict, 401: dict}),
+)
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -149,11 +155,15 @@ class LoginView(APIView):
         return Response({'token': str(token.access_token), 'user': _user_payload(user)})
 
 
+@extend_schema(responses={200: dict})
 class MeView(APIView):
     def get(self, request):
         return Response({'user': _user_payload(request.user)})
 
 
+@extend_schema_view(
+    post=extend_schema(request=dict, responses={200: dict, 400: dict}),
+)
 class ChangePasswordView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -179,6 +189,10 @@ class ChangePasswordView(APIView):
         return Response({'message': 'Contrasena actualizada correctamente'})
 
 
+@extend_schema_view(
+    get=extend_schema(responses={200: PlanSerializer(many=True)}),
+    post=extend_schema(request=PlanSerializer, responses={201: PlanSerializer, 400: dict}),
+)
 class PlanListView(IsAdminMixin, APIView):
     def get(self, request):
         error = self.check_admin(request)
@@ -197,6 +211,10 @@ class PlanListView(IsAdminMixin, APIView):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema_view(
+    put=extend_schema(request=PlanSerializer, responses={200: PlanSerializer, 400: dict, 404: dict}),
+    delete=extend_schema(responses={204: None, 400: dict, 404: dict}),
+)
 class PlanDetailView(IsAdminMixin, APIView):
     def _get_plan(self, pk):
         try:
@@ -236,12 +254,14 @@ class PlanDetailView(IsAdminMixin, APIView):
         return Response(serializer.data)
 
 
+@extend_schema(responses={200: PlanPublicSerializer(many=True)})
 class ActivePlansView(APIView):
     def get(self, request):
         plans = Plan.objects.filter(active=True).order_by('type', 'code')
         return Response(PlanPublicSerializer(plans, many=True).data)
 
 
+@extend_schema(responses={200: TipoSolicitudPublicSerializer(many=True)})
 class ActiveRequestTypesView(APIView):
     """Catalogo para el formulario de movimientos.
 
@@ -254,6 +274,10 @@ class ActiveRequestTypesView(APIView):
             TipoSolicitud.objects.filter(activo=True), many=True).data)
 
 
+@extend_schema_view(
+    get=extend_schema(responses={200: MotivoSerializer(many=True)}),
+    post=extend_schema(request=MotivoSerializer, responses={201: MotivoSerializer, 400: dict}),
+)
 class MotivoListView(IsAdminMixin, APIView):
     """Catalogo administrable de motivos (solo administradores)."""
 
@@ -279,6 +303,7 @@ class MotivoListView(IsAdminMixin, APIView):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema(responses={200: MotivoPublicSerializer(many=True)})
 class ActiveMotivosView(APIView):
     """Motivos activos para el formulario de movimientos.
 
@@ -294,6 +319,10 @@ class ActiveMotivosView(APIView):
         return Response(MotivoPublicSerializer(qs, many=True).data)
 
 
+@extend_schema_view(
+    put=extend_schema(request=MotivoSerializer, responses={200: MotivoSerializer, 400: dict, 404: dict}),
+    delete=extend_schema(responses={204: None, 400: dict, 404: dict}),
+)
 class MotivoDetailView(IsAdminMixin, APIView):
     def _get_motivo(self, pk):
         try:
@@ -335,6 +364,10 @@ class MotivoDetailView(IsAdminMixin, APIView):
         return Response(serializer.data)
 
 
+@extend_schema_view(
+    get=extend_schema(responses={200: PromotionSerializer(many=True)}),
+    post=extend_schema(request=PromotionWriteSerializer, responses={201: PromotionSerializer, 400: dict}),
+)
 class PromotionListView(IsAdminMixin, APIView):
     def get(self, request):
         error = self.check_admin(request)
@@ -380,6 +413,10 @@ class PromotionListView(IsAdminMixin, APIView):
         return Response(PromotionSerializer(promo).data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema_view(
+    put=extend_schema(request=PromotionWriteSerializer, responses={200: PromotionSerializer, 400: dict, 404: dict}),
+    delete=extend_schema(responses={204: None, 400: dict, 404: dict}),
+)
 class PromotionDetailView(IsAdminMixin, APIView):
     def _get_promo(self, pk):
         try:
@@ -461,6 +498,7 @@ class PromotionDetailView(IsAdminMixin, APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+@extend_schema(responses={200: PromotionSerializer(many=True), 400: dict})
 class ActivePromotionsView(APIView):
     """Promociones vigentes para un plan (cualquier usuario autenticado)."""
     def get(self, request):
@@ -478,6 +516,7 @@ class ActivePromotionsView(APIView):
         return Response(PromotionSerializer(promos, many=True).data)
 
 
+@extend_schema(responses={200: TarifaTrasladoSerializer(many=True)})
 class ActiveTransferTariffsView(APIView):
     """Tarifas vigentes para operadores y formularios comerciales."""
     def get(self, request):
@@ -485,6 +524,10 @@ class ActiveTransferTariffsView(APIView):
         return Response(TarifaTrasladoSerializer(tariffs, many=True).data)
 
 
+@extend_schema_view(
+    get=extend_schema(responses={200: TarifaTrasladoSerializer(many=True)}),
+    post=extend_schema(request=dict, responses={201: TarifaTrasladoSerializer, 400: dict}),
+)
 class TransferTariffListView(IsAdminMixin, APIView):
     def get(self, request):
         error = self.check_admin(request)
@@ -521,6 +564,10 @@ class TransferTariffListView(IsAdminMixin, APIView):
         return Response(TarifaTrasladoSerializer(tariff).data, status=201)
 
 
+@extend_schema_view(
+    get=extend_schema(responses={200: TarifaTrasladoSerializer, 400: dict, 404: dict}),
+    put=extend_schema(request=dict, responses={200: TarifaTrasladoSerializer, 400: dict, 404: dict}),
+)
 class TransferTariffDetailView(IsAdminMixin, APIView):
     def _get(self, pk):
         try:
@@ -575,6 +622,7 @@ class TransferTariffDetailView(IsAdminMixin, APIView):
         return Response(TarifaTrasladoSerializer(tariff).data)
 
 
+@extend_schema(responses={200: TarifaTrasladoHistorialSerializer(many=True), 404: dict})
 class TransferTariffHistoryView(IsAdminMixin, APIView):
     def get(self, request, pk):
         error = self.check_admin(request)
@@ -586,6 +634,7 @@ class TransferTariffHistoryView(IsAdminMixin, APIView):
         return Response(TarifaTrasladoHistorialSerializer(history, many=True).data)
 
 
+@extend_schema(responses={200: CustomerSerializer(many=True)})
 class CustomerListView(APIView):
     """Busqueda de clientes por kardex o nombre (para autocompletar)."""
     def get(self, request):
@@ -615,6 +664,10 @@ def _query_int(params, name, default, maximum=None):
     return value, None
 
 
+@extend_schema_view(
+    get=extend_schema(responses={200: SaleSerializer(many=True), 400: dict}),
+    post=extend_schema(request=SaleCreateSerializer, responses={201: dict, 400: dict}),
+)
 class SaleListView(APIView):
     def get(self, request):
         from_date = request.query_params.get('from')
@@ -777,6 +830,10 @@ class SaleListView(APIView):
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@extend_schema_view(
+    put=extend_schema(request=SaleCreateSerializer, responses={200: SaleSerializer, 400: dict, 404: dict, 409: dict}),
+    delete=extend_schema(responses={204: None, 404: dict, 409: dict}),
+)
 class SaleDetailView(IsAdminMixin, APIView):
     def delete(self, request, pk):
         error = self.check_admin(request)
@@ -1090,6 +1147,10 @@ class SaleDetailView(IsAdminMixin, APIView):
         return Response(SaleSerializer(sale).data)
 
 
+@extend_schema_view(
+    get=extend_schema(responses={200: UserSerializer(many=True)}),
+    post=extend_schema(request=UserWriteSerializer, responses={201: UserSerializer, 400: dict}),
+)
 class UserListView(IsAdminMixin, APIView):
     def get(self, request):
         error = self.check_admin(request)
@@ -1111,6 +1172,10 @@ class UserListView(IsAdminMixin, APIView):
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema_view(
+    put=extend_schema(request=UserWriteSerializer, responses={200: UserSerializer, 400: dict, 404: dict}),
+    delete=extend_schema(responses={204: None, 400: dict, 404: dict, 409: dict}),
+)
 class UserDetailView(IsAdminMixin, APIView):
     def delete(self, request, pk):
         error = self.check_admin(request)
@@ -1149,6 +1214,7 @@ class UserDetailView(IsAdminMixin, APIView):
         return Response(UserSerializer(user).data)
 
 
+@extend_schema(responses={200: dict, 400: dict, 500: dict})
 class DashboardStatsView(APIView):
     MOVEMENT_TYPES = {
         'all', 'nuevo_contrato', 'recontrataciones', 'instalaciones',
@@ -1432,6 +1498,7 @@ def _first_error(serializer):
     return 'Error de validación'
 
 
+@extend_schema(exclude=True)
 class BackupListView(IsAdminMixin, APIView):
     """Historial de respaldos. Solo metadatos: el archivo nunca se conserva."""
 
@@ -1505,6 +1572,7 @@ class BackupListView(IsAdminMixin, APIView):
                 _backup_in_progress = False
 
 
+@extend_schema(responses={204: None, 404: dict})
 class BackupDeleteView(IsAdminMixin, APIView):
     def delete(self, request, pk):
         error = self.check_admin(request)
