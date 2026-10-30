@@ -505,6 +505,19 @@ class CambioPlanEntreServiciosTest(TestCase):
         sale.refresh_from_db()
         self.assertEqual(sale.plan_id, self.plans[('internet', 1)].id)
 
+    def test_plan_legacy_no_se_puede_usar_en_un_contrato_nuevo(self):
+        legacy = Plan.objects.create(
+            code='LEG2', label='LEGACY 2', type='internet',
+            monthly=Decimal('10'), installation=Decimal('0'),
+            active=True, legacy=True)
+        r = self._post_sale({
+            'clientCode': 'CPLEG2', 'clientName': 'Legacy 2',
+            'serviceType': 'internet', 'requestType': 'nuevo_contrato',
+            'planId': legacy.id,
+        })
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('disponible', r.json()['error'])
+
     def test_pdf_soporta_nombres_de_plan_largos(self):
         from .reports import build_sales_pdf
         self._post_cambio('combo', 'internet')

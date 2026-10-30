@@ -183,7 +183,8 @@ class Command(BaseCommand):
             if price is not None:
                 plan.monthly = price
 
-        # Re-apuntar ventas de planes legacy y marcarlos para borrar
+        # Re-apuntar ventas de planes legacy y desactivarlos. Se conserva la
+        # fila para no perder referencias historicas ni reutilizar su codigo.
         to_delete = []
         for legacy, current_code in LEGACY_MAP.items():
             legacy_plan = plans.get(legacy)
@@ -213,7 +214,9 @@ class Command(BaseCommand):
             return
 
         for plan in to_delete:
-            plan.delete()
+            plan.active = False
+            plan.legacy = True
+            plan.save(update_fields=['active', 'legacy'])
 
         for code, plan in plans.items():
             if code in CURRENT:

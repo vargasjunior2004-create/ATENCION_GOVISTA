@@ -871,7 +871,7 @@ class SaleDetailView(IsAdminMixin, APIView):
 
         from .domain import (
             SERVICE_TYPE_LABELS, SERVICE_TYPE_TO_PLAN_TYPE,
-            motivo_categoria_de_modo)
+            motivo_categoria_de_modo, plan_is_selectable)
         from .serializers import (
             SaleSerializer, resolve_sale_prices, validate_cambio_plan,
             resolve_motivo)
@@ -894,7 +894,7 @@ class SaleDetailView(IsAdminMixin, APIView):
 
         plan = sale.plan
         if data.get('planId'):
-            plan = Plan.objects.filter(id=data['planId'], active=True).first()
+            plan = Plan.objects.filter(id=data['planId']).first()
             if not plan:
                 return Response({'error': 'Plan no encontrado o inactivo'},
                                 status=status.HTTP_400_BAD_REQUEST)
@@ -973,12 +973,12 @@ class SaleDetailView(IsAdminMixin, APIView):
                 {'error': 'El plan no pertenece al tipo de servicio seleccionado'},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        # Un cambio de plan no puede apuntar a un plan legacy. Se permite
-        # editar un movimiento historico que ya tenia ese plan como destino.
-        if (mode == MODO_CAMBIO_PLAN and plan.legacy
-                and (plan.id != old_plan_id or mode_changed)):
+        if (not plan_is_selectable(plan, mode, request_type)
+                and not (plan.id == old_plan_id and not mode_changed)):
             return Response(
-                {'error': 'No se puede cambiar a un plan anterior (legacy)'},
+                {'error': ('El plan legacy no esta disponible para este tipo '
+                           'de solicitud') if plan.legacy else
+                          'El plan no esta disponible para este tipo de solicitud'},
                 status=status.HTTP_400_BAD_REQUEST)
 
         plan_from = sale.planFromId

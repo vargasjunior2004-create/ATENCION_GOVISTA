@@ -10,7 +10,8 @@ from .domain import (
     SERVICE_TYPE_LABELS, SERVICE_TYPE_FAMILY, SERVICE_TYPE_TO_PLAN_TYPE,
     service_family_label, previous_service_family, is_service_change,
     request_type_mode, request_type_catalog,
-    MODO_ADICION, MODO_CAMBIO_PLAN, MODOS_SOLO_MENSUAL,
+    MODO_ADICION, MODO_CAMBIO_PLAN, MODO_RETIRO, MODOS_SOLO_MENSUAL,
+    plan_is_selectable,
     motivo_categoria_de_modo, MOTIVO_CAMBIO,
 )
 
@@ -240,8 +241,11 @@ class PromotionWriteSerializer(serializers.Serializer):
     def validate(self, attrs):
         plan_id = attrs.get('plan')
         try:
-            plan = Plan.objects.get(id=plan_id, active=True, legacy=False)
+            plan = Plan.objects.get(id=plan_id)
         except Plan.DoesNotExist:
+            raise serializers.ValidationError(
+                {'plan': 'Plan no encontrado, inactivo o anterior'})
+        if not plan_is_selectable(plan):
             raise serializers.ValidationError(
                 {'plan': 'Plan no encontrado, inactivo o anterior'})
         attrs['plan'] = plan
@@ -518,22 +522,22 @@ class SaleCreateSerializer(serializers.Serializer):
                         {'transferTariffId': 'Los datos de traslado solo aplican a traslados externos'})
 
         try:
-            plan = Plan.objects.get(id=attrs['planId'], active=True)
+            plan = Plan.objects.get(id=attrs['planId'])
         except Plan.DoesNotExist:
             raise serializers.ValidationError(
                 {'planId': 'Plan no encontrado o inactivo'})
+
+        if not plan_is_selectable(plan, mode, request_type):
+            raise serializers.ValidationError(
+                {'planId': ('El plan legacy no esta disponible para este tipo '
+                            'de solicitud') if plan.legacy else
+                           'El plan no esta disponible para este tipo de solicitud'})
 
         # El plan nuevo debe pertenecer al tipo de servicio nuevo.
         expected_type = SERVICE_TYPE_TO_PLAN_TYPE.get(attrs['serviceType'])
         if plan.type != expected_type:
             raise serializers.ValidationError(
                 {'serviceType': 'El plan no pertenece al tipo de servicio seleccionado'})
-
-        # Un cambio de plan no puede tener como destino un plan del catalogo
-        # anterior. Los retiros si usan esos planes: son el plan que se retira.
-        if mode == MODO_CAMBIO_PLAN and plan.legacy:
-            raise serializers.ValidationError(
-                {'planId': 'No se puede cambiar a un plan anterior (legacy)'})
 
         # additionType requerido cuando el tipo es ADICION
         if mode == MODO_ADICION:

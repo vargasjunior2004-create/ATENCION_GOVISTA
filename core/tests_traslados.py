@@ -49,6 +49,22 @@ class TrasladoExternoTests(TestCase):
         self.assertEqual(transfer.tariff_amount, Decimal('100.00'))
         self.assertEqual(transfer.status, 'recibido')
 
+    def test_transfer_can_use_active_legacy_plan(self):
+        legacy = Plan.objects.create(
+            code='TRAS-LEGACY', label='Plan anterior', type='internet',
+            monthly=200, installation=100, active=True, legacy=True)
+        tariff = TarifaTraslado.objects.get(service_type='internet')
+        response = self.client.post(
+            '/api/sales', {
+                'clientCode': '1-LEGACY', 'clientName': 'JUAN PEREZ',
+                'serviceType': 'internet', 'requestType': 'traslado_externo',
+                'planId': legacy.id, 'transferTariffId': tariff.id,
+                'transferNewAddress': 'NUEVO DOMICILIO',
+                'transferHasSketch': True,
+            }, content_type='application/json',
+            HTTP_AUTHORIZATION=f'Bearer {self.token()}')
+        self.assertEqual(response.status_code, 201, response.content)
+
     def test_transfer_without_sketch_waits_for_location(self):
         tariff = TarifaTraslado.objects.get(service_type='internet')
         response = self.client.post(
