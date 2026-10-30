@@ -150,7 +150,10 @@ export default function SaleForm() {
     : [];
 
   const currentPlans = newPlanOptions.filter((p) => !p.legacy);
-  const legacyPlans = isRetiro ? newPlanOptions.filter((p) => p.legacy) : [];
+  // Los planes anteriores siguen siendo seleccionables para retiros y
+  // traslados: ambos movimientos conservan el plan historico del cliente.
+  const legacyPlans = (isRetiro || isTransfer)
+    ? newPlanOptions.filter((p) => p.legacy) : [];
 
   const selectedPreviousPlan = plans.find(
     (p) => String(p.id) === String(form.planFromId)) || null;
@@ -535,7 +538,7 @@ export default function SaleForm() {
                   <option key={p.id} value={p.id}>{p.label} - {parseFloat(p.monthly).toFixed(0)} Bs</option>
                 ))}
               </optgroup>
-              {isRetiro && legacyPlans.length > 0 && (
+              {(isRetiro || isTransfer) && legacyPlans.length > 0 && (
                 <optgroup label="Planes anteriores">
                   {legacyPlans.map((p) => (
                     <option key={p.id} value={p.id}>{p.label} - {parseFloat(p.monthly).toFixed(0)} Bs</option>
