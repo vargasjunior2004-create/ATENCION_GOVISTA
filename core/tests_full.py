@@ -452,6 +452,7 @@ class ReportTests(TestCase):
         r = self.c.get('/api/reports/png?from=2026-01-01&to=2026-01-01',
                        HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r.status_code, 200)
+        self.assertEqual(r['Content-Type'], 'image/png')
 
     def test_report_no_auth(self):
         r = self.c.get('/api/reports/pdf?from=2026-01-01&to=2026-01-01')
@@ -478,6 +479,8 @@ class ReportTests(TestCase):
                 resp = self.c.get(
                     url, HTTP_AUTHORIZATION=f'Bearer {token}')
                 self.assertEqual(resp.status_code, 200)
+                if url.endswith('/png'):
+                    self.assertEqual(resp['Content-Type'], 'image/png')
 
         history_urls = (
             '/api/reports/pdf?from=2026-01-01&to=2026-01-01',
