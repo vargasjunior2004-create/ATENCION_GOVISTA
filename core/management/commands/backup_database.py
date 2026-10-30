@@ -245,7 +245,12 @@ def create_backup(backup_type='manual', user=None):
     Lanza BackupError con mensaje ya saneado si falla.
     """
     engine = settings.DATABASES['default']['ENGINE']
-    is_postgres = 'postgresql' in engine
+    # Si se proporciona BACKUP_DATABASE_URL, el origen del dump puede ser
+    # PostgreSQL aunque el entorno local de Django use SQLite.
+    is_postgres = (
+        'postgresql' in engine
+        or bool(os.environ.get('BACKUP_DATABASE_URL', '').strip())
+    )
 
     now = timezone.localtime()
     stamp = now.strftime('%Y-%m-%d_%H%M%S')

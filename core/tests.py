@@ -1,6 +1,7 @@
 import os
 from datetime import date, timedelta, datetime, timezone as tz
 from io import BytesIO
+from unittest.mock import patch
 
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.core.cache import cache
@@ -947,5 +948,27 @@ class BackupConexionTests(TestCase):
             serializado = str(BackupSerializer(backup).data)
             self.assertNotIn('CLAVE_SECRETA', serializado)
             self.assertNotIn('pooler.supabase.com', serializado)
+        finally:
+            os.environ.pop('BACKUP_DATABASE_URL', None)
+
+    def test_backup_url_postgres_fuerza_formato_dump_desde_sqlite_local(self):
+        from core.management.commands import backup_database as cmd
+
+        os.environ['BACKUP_DATABASE_URL'] = (
+            'postgresql://postgres.ref:CLAVE@pooler.supabase.com:5432/postgres')
+
+        def fake_dump(target_path):
+            with open(target_path, 'wb') as handle:
+                handle.write(b'PGDUMP-TEST')
+            return True, ''
+
+        try:
+            with patch.object(cmd, '_run_pg_dump', side_effect=fake_dump) as dump:
+                backup, path = cmd.create_backup(backup_type='manual')
+            self.assertTrue(dump.called)
+            self.assertEqual(backup.backup_format, 'dump')
+            self.assertTrue(path.endswith('.dump'))
+            backup.delete()
+            os.remove(path)
         finally:
             os.environ.pop('BACKUP_DATABASE_URL', None)
