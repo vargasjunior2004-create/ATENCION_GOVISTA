@@ -207,7 +207,11 @@ class PlanListView(IsAdminMixin, APIView):
         serializer = PlanSerializer(data=request.data)
         if not serializer.is_valid():
             return Response({'error': _first_error(serializer)}, status=status.HTTP_400_BAD_REQUEST)
-        serializer.save()
+        plan = serializer.save()
+        from .audit import record_audit
+        record_audit(request, 'created', 'plan', plan.id,
+                     after={'code': plan.code, 'type': plan.type,
+                            'active': plan.active, 'legacy': plan.legacy})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
@@ -246,7 +250,13 @@ class PlanDetailView(IsAdminMixin, APIView):
         serializer = PlanSerializer(plan, data=request.data, partial=True)
         if not serializer.is_valid():
             return Response({'error': _first_error(serializer)}, status=status.HTTP_400_BAD_REQUEST)
+        before = {'code': plan.code, 'type': plan.type,
+                  'active': plan.active, 'legacy': plan.legacy}
         serializer.save()
+        from .audit import record_audit
+        record_audit(request, 'updated', 'plan', plan.id, before=before,
+                     after={'code': plan.code, 'type': plan.type,
+                            'active': plan.active, 'legacy': plan.legacy})
         return Response(serializer.data)
 
 
@@ -295,7 +305,11 @@ class MotivoListView(IsAdminMixin, APIView):
         if not serializer.is_valid():
             return Response({'error': _first_error(serializer)},
                             status=status.HTTP_400_BAD_REQUEST)
-        serializer.save()
+        motivo = serializer.save()
+        from .audit import record_audit
+        record_audit(request, 'created', 'motivo', motivo.id,
+                     after={'categoria': motivo.categoria,
+                            'activo': motivo.activo})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
@@ -353,7 +367,12 @@ class MotivoDetailView(IsAdminMixin, APIView):
         if not serializer.is_valid():
             return Response({'error': _first_error(serializer)},
                             status=status.HTTP_400_BAD_REQUEST)
+        before = {'categoria': motivo.categoria, 'activo': motivo.activo}
         serializer.save()
+        from .audit import record_audit
+        record_audit(request, 'updated', 'motivo', motivo.id, before=before,
+                     after={'categoria': motivo.categoria,
+                            'activo': motivo.activo})
         return Response(serializer.data)
 
 
@@ -403,6 +422,11 @@ class PromotionListView(IsAdminMixin, APIView):
             created_by=request.user,
             **data,
         )
+        from .audit import record_audit
+        record_audit(request, 'created', 'promotion', promo.id,
+                     after={'plan_id': promo.plan_id, 'active': promo.active,
+                            'start_date': promo.start_date.isoformat(),
+                            'end_date': promo.end_date.isoformat()})
         return Response(PromotionSerializer(promo).data, status=status.HTTP_201_CREATED)
 
 
@@ -430,8 +454,12 @@ class PromotionDetailView(IsAdminMixin, APIView):
 
         # Simple toggle (active only) — skip full serializer
         if set(data.keys()) <= {'active'}:
+            before = {'active': promo.active}
             promo.active = data.get('active', promo.active)
             promo.save()
+            from .audit import record_audit
+            record_audit(request, 'updated', 'promotion', promo.id,
+                         before=before, after={'active': promo.active})
             return Response(PromotionSerializer(promo).data)
 
         serializer = PromotionWriteSerializer(data=data, partial=True)
@@ -459,6 +487,9 @@ class PromotionDetailView(IsAdminMixin, APIView):
                 {'error': 'Ya existe una promocion activa para este concepto en el periodo seleccionado'},
                 status=status.HTTP_400_BAD_REQUEST)
 
+        before = {'plan_id': promo.plan_id, 'active': promo.active,
+                  'start_date': promo.start_date.isoformat(),
+                  'end_date': promo.end_date.isoformat()}
         if 'name' in data:
             promo.name = data['name']
         promo.plan = plan
@@ -477,6 +508,12 @@ class PromotionDetailView(IsAdminMixin, APIView):
         if 'active' in data:
             promo.active = data['active']
         promo.save()
+        from .audit import record_audit
+        record_audit(request, 'updated', 'promotion', promo.id,
+                     before=before,
+                     after={'plan_id': promo.plan_id, 'active': promo.active,
+                            'start_date': promo.start_date.isoformat(),
+                            'end_date': promo.end_date.isoformat()})
         return Response(PromotionSerializer(promo).data)
 
     def delete(self, request, pk):
@@ -558,6 +595,11 @@ class TransferTariffListView(IsAdminMixin, APIView):
             tarifa=tariff, previous_amount=amount, new_amount=amount,
             previous_active=tariff.active, new_active=tariff.active,
             action='created', changed_by=request.user)
+        from .audit import record_audit
+        record_audit(request, 'created', 'transfer_tariff', tariff.id,
+                     after={'service_type': tariff.service_type,
+                            'amount': str(tariff.amount),
+                            'active': tariff.active})
         return Response(TarifaTrasladoSerializer(tariff).data, status=201)
 
 
@@ -1170,6 +1212,9 @@ class UserListView(IsAdminMixin, APIView):
             return Response({'error': 'La contraseña es requerida'},
                             status=status.HTTP_400_BAD_REQUEST)
         user = serializer.save()
+        from .audit import record_audit
+        record_audit(request, 'created', 'user', user.id,
+                     after={'role': user.role, 'active': user.active})
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
 
@@ -1213,7 +1258,11 @@ class UserDetailView(IsAdminMixin, APIView):
         serializer = UserWriteSerializer(user, data=request.data, partial=True)
         if not serializer.is_valid():
             return Response({'error': _first_error(serializer)}, status=status.HTTP_400_BAD_REQUEST)
+        before = {'role': user.role, 'active': user.active}
         serializer.save()
+        from .audit import record_audit
+        record_audit(request, 'updated', 'user', user.id, before=before,
+                     after={'role': user.role, 'active': user.active})
         return Response(UserSerializer(user).data)
 
 

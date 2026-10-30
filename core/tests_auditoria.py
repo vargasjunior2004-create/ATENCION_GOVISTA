@@ -53,3 +53,26 @@ class AuditLogTests(TestCase):
         event = AuditLog.objects.get(entity_id=str(sale.id), action='updated')
         self.assertEqual(event.before['version'], 1)
         self.assertEqual(event.after['version'], 2)
+
+    def test_plan_admin_changes_are_audited_without_sensitive_data(self):
+        response = self.client.post(
+            '/api/plans', {
+                'code': 'AUDIT-NEW', 'label': 'Plan nuevo',
+                'type': 'internet', 'monthly': '120', 'installation': '0',
+            }, content_type='application/json',
+            HTTP_AUTHORIZATION=f'Bearer {self.token()}')
+        self.assertEqual(response.status_code, 201, response.content)
+        created = AuditLog.objects.get(entity='plan', action='created',
+                                       entity_id=str(response.json()['id']))
+        self.assertEqual(created.after['code'], 'AUDIT-NEW')
+
+        response = self.client.put(
+            f"/api/plans/{response.json()['id']}", {'active': False},
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Bearer {self.token()}')
+        self.assertEqual(response.status_code, 200, response.content)
+        updated = AuditLog.objects.get(entity='plan', action='updated',
+                                       entity_id=created.entity_id)
+        self.assertTrue(updated.before['active'])
+        self.assertFalse(updated.after['active'])
+        self.assertNotIn('password', str(updated.after).lower())
