@@ -22,6 +22,8 @@ def is_system_admin(user):
 
 def has_permission(user, code):
     """Comprueba `module.action`; el administrador tiene acceso futuro total."""
+    if not user or not getattr(user, 'is_authenticated', False):
+        return False
     if is_system_admin(user):
         return True
     try:

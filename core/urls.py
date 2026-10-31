@@ -37,6 +37,7 @@ urlpatterns = [
     path('users/<int:user_id>/roles', views.UserRoleListView.as_view()),
     path('user-roles/<int:pk>', views.UserRoleDetailView.as_view()),
     path('permissions', views.PermissionListView.as_view()),
+    path('audit', views.AuditLogListView.as_view()),
     path('roles', views.RoleListView.as_view()),
     path('roles/<int:pk>', views.RoleDetailView.as_view()),
     path('temporary-functions', views.TemporaryFunctionListView.as_view()),
