@@ -699,7 +699,8 @@ class EquipmentBySerialView(APIView):
                 """
                 SELECT o.id_onu, o.serie,
                        c.codigo_item, c.descripcion, c.marca, c.modelo,
-                       t.id_tipo_onu, t.nombre
+                       t.id_tipo_onu, t.nombre,
+                       o.estado, o.ubicacion, o.actualizado_en
                 FROM public.onu AS o
                 INNER JOIN public.catalogo_item AS c
                     ON c.codigo_item = o.codigo_item
@@ -729,6 +730,9 @@ class EquipmentBySerialView(APIView):
                     'nombre': row[7],
                 },
             },
+            'estado': row[8],
+            'ubicacion': row[9],
+            'actualizadoEn': row[10],
         })
 
 
@@ -768,10 +772,28 @@ class InventoryConfirmReceptionView(IsAdminMixin, APIView):
             return Response({'error': 'Recepción pendiente no encontrada'}, status=404)
 
         now = timezone.now()
-        movement.estado = InventarioMovimiento.ESTADO_CONFIRMADO
-        movement.confirmed_by = request.user
-        movement.confirmed_at = now
-        movement.save(update_fields=['estado', 'confirmed_by', 'confirmed_at'])
+        with transaction.atomic():
+            movement = InventarioMovimiento.objects.select_for_update().get(id=pk)
+            if movement.estado != InventarioMovimiento.ESTADO_PENDIENTE:
+                return Response({'error': 'La recepción ya fue confirmada'}, status=409)
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE public.onu
+                    SET estado = %s,
+                        ubicacion = %s,
+                        actualizado_en = now()
+                    WHERE LOWER(TRIM(serie)) = LOWER(TRIM(%s))
+                    """,
+                    ['DEVUELTO', 'ALMACEN', movement.serie],
+                )
+                if cursor.rowcount != 1:
+                    return Response(
+                        {'error': 'El equipo ya no existe en inventario'}, status=409)
+            movement.estado = InventarioMovimiento.ESTADO_CONFIRMADO
+            movement.confirmed_by = request.user
+            movement.confirmed_at = now
+            movement.save(update_fields=['estado', 'confirmed_by', 'confirmed_at'])
         from .audit import record_audit
         record_audit(
             request, 'received', 'inventory_movement', movement.id,
