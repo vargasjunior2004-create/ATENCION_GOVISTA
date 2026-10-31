@@ -85,18 +85,20 @@ class MotivoApiTests(TestCase):
         self.assertNotIn('FALLECIMIENTO', nombres)
         self.assertNotIn('MEJOR CALIDAD', nombres)
 
-    def test_no_se_puede_borrar_motivo_con_movimientos(self):
+    def test_borrar_motivo_con_movimientos_es_baja_logica(self):
         self._crear_cambio()
         r = self.c.delete(f'/api/motivos/{self.cambio.id}',
                           **self._auth(self.admin, 'pass1'))
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 204)
         self.assertTrue(Motivo.objects.filter(id=self.cambio.id).exists())
+        self.assertFalse(Motivo.objects.get(id=self.cambio.id).activo)
 
-    def test_se_puede_borrar_motivo_sin_movimientos(self):
+    def test_borrar_motivo_sin_movimientos_es_baja_logica(self):
         r = self.c.delete(f'/api/motivos/{self.retiro.id}',
                           **self._auth(self.admin, 'pass1'))
         self.assertEqual(r.status_code, 204)
-        self.assertFalse(Motivo.objects.filter(id=self.retiro.id).exists())
+        self.assertTrue(Motivo.objects.filter(id=self.retiro.id).exists())
+        self.assertFalse(Motivo.objects.get(id=self.retiro.id).activo)
 
     # ------------------------------------------------------------- Alta
     def test_cambio_guarda_motivo_y_snapshot(self):

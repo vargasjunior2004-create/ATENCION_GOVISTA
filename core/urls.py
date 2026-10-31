@@ -35,6 +35,7 @@ urlpatterns = [
     path('users/<int:pk>', views.UserDetailView.as_view()),
 
     path('customers', views.CustomerListView.as_view()),
+    path('inventario/equipos/serie/<path:serie>', views.EquipmentBySerialView.as_view()),
 
     path('reports/dashboard/pdf', report_views.DashboardPdfView.as_view()),
     path('reports/dashboard/xlsx', report_views.DashboardXlsxView.as_view()),
@@ -45,9 +46,9 @@ urlpatterns = [
     path('reports/pdf-link', report_views.SalesPdfLinkView.as_view()),
     path('reports/xlsx-link', report_views.SalesXlsxLinkView.as_view()),
     path('reports/pdf-public', report_views.SalesPdfPublicView.as_view()),
-    path('reports/pdf-public/', report_views.SalesPdfPublicView.as_view()),
+    path('reports/pdf-public/', report_views.SalesPdfPublicSlashView.as_view()),
     path('reports/xlsx-public', report_views.SalesXlsxPublicView.as_view()),
-    path('reports/xlsx-public/', report_views.SalesXlsxPublicView.as_view()),
+    path('reports/xlsx-public/', report_views.SalesXlsxPublicSlashView.as_view()),
 
     path('backups', views.BackupListView.as_view()),
     path('backups/<int:pk>', views.BackupDeleteView.as_view()),

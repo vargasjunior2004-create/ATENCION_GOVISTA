@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 from .models import (
     User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
     TarifaTraslado, TarifaTrasladoHistorial, TrasladoExterno,
@@ -9,7 +10,9 @@ from .domain import (
     SERVICE_TYPE_LABELS, SERVICE_TYPE_FAMILY, SERVICE_TYPE_TO_PLAN_TYPE,
     service_family_label, previous_service_family, is_service_change,
     request_type_mode, request_type_catalog,
-    MODO_ADICION, MODO_CAMBIO_PLAN, MODOS_SOLO_MENSUAL,
+    MODO_ADICION, MODO_CAMBIO_PLAN, MODO_RETIRO, MODO_TRASLADO,
+    MODOS_SOLO_MENSUAL,
+    plan_is_selectable,
     motivo_categoria_de_modo, MOTIVO_CAMBIO,
 )
 
@@ -218,6 +221,7 @@ class PromotionSerializer(serializers.ModelSerializer):
                   'start_date', 'end_date', 'active',
                   'created_at', 'is_current']
 
+    @extend_schema_field(str)
     def get_planLabel(self, obj):
         return f'{obj.plan.code} - {obj.plan.label}'
 
@@ -238,8 +242,11 @@ class PromotionWriteSerializer(serializers.Serializer):
     def validate(self, attrs):
         plan_id = attrs.get('plan')
         try:
-            plan = Plan.objects.get(id=plan_id, active=True, legacy=False)
+            plan = Plan.objects.get(id=plan_id)
         except Plan.DoesNotExist:
+            raise serializers.ValidationError(
+                {'plan': 'Plan no encontrado, inactivo o anterior'})
+        if not plan_is_selectable(plan):
             raise serializers.ValidationError(
                 {'plan': 'Plan no encontrado, inactivo o anterior'})
         attrs['plan'] = plan
@@ -286,9 +293,11 @@ class TarifaTrasladoSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at', 'created_by',
                             'updated_by', 'createdBy', 'updatedBy']
 
+    @extend_schema_field(dict)
     def get_createdBy(self, obj):
         return {'id': obj.created_by_id, 'name': obj.created_by.name} if obj.created_by else None
 
+    @extend_schema_field(dict)
     def get_updatedBy(self, obj):
         return {'id': obj.updated_by_id, 'name': obj.updated_by.name} if obj.updated_by else None
 
@@ -302,6 +311,7 @@ class TarifaTrasladoHistorialSerializer(serializers.ModelSerializer):
                   'new_active', 'action', 'changed_by', 'changedBy',
                   'created_at']
 
+    @extend_schema_field(dict)
     def get_changedBy(self, obj):
         return {'id': obj.changed_by_id, 'name': obj.changed_by.name} if obj.changed_by else None
 
@@ -337,18 +347,21 @@ class SaleSerializer(serializers.ModelSerializer):
                    'applied_installation', 'applied_monthly', 'previousPlan']
         fields = fields + [
             'equipmentRetained', 'requiresTechnicalVisit', 'debtApplies',
-            'debtAmount', 'totalToCollect']
+            'debtAmount', 'totalToCollect', 'version']
         fields = fields + ['traslado']
 
+    @extend_schema_field(str)
     def get_motivoNombre(self, obj):
         """Nombre del motivo: el snapshot si existe, o el texto historico."""
         return obj.changeReason or ''
 
+    @extend_schema_field(dict)
     def get_Plan(self, obj):
         return {'id': obj.plan.id,
                 'label': obj.planName or obj.plan.label,
                 'code': obj.plan.code}
 
+    @extend_schema_field(dict)
     def get_previousPlan(self, obj):
         pf = getattr(obj, 'planFromId', None) or getattr(obj, 'planfromid', None)
         if pf:
@@ -357,6 +370,7 @@ class SaleSerializer(serializers.ModelSerializer):
                     'code': pf.code, 'type': pf.type}
         return None
 
+    @extend_schema_field(dict)
     def get_previousService(self, obj):
         """Servicio anterior del movimiento, deducido si no se registro."""
         if request_type_mode(obj.requestType, sale_catalog(self)) != MODO_CAMBIO_PLAN:
@@ -370,15 +384,19 @@ class SaleSerializer(serializers.ModelSerializer):
             'serviceType': obj.serviceTypeFrom or None,
         }
 
+    @extend_schema_field(bool)
     def get_isServiceChange(self, obj):
         return is_service_change(obj, sale_catalog(self))
 
+    @extend_schema_field(dict)
     def get_creator(self, obj):
         return {'id': obj.createdBy.id, 'name': obj.createdBy.name}
 
+    @extend_schema_field(str)
     def get_totalToCollect(self, obj):
         return obj.total or Decimal('0')
 
+    @extend_schema_field(dict)
     def get_traslado(self, obj):
         traslado = getattr(obj, 'traslado_externo', None)
         if not traslado:
@@ -447,7 +465,7 @@ class SaleCreateSerializer(serializers.Serializer):
         mode = tipo.modo
 
         is_rehire = request_type == 'recontratacion'
-        is_transfer = request_type == 'traslado_externo'
+        is_transfer = request_type_mode(request_type, catalog) == MODO_TRASLADO
         equipment_retained = attrs.get('equipment_retained')
         requires_technical_visit = attrs.get('requires_technical_visit')
         debt_applies = attrs.get('debt_applies', False)
@@ -505,22 +523,22 @@ class SaleCreateSerializer(serializers.Serializer):
                         {'transferTariffId': 'Los datos de traslado solo aplican a traslados externos'})
 
         try:
-            plan = Plan.objects.get(id=attrs['planId'], active=True)
+            plan = Plan.objects.get(id=attrs['planId'])
         except Plan.DoesNotExist:
             raise serializers.ValidationError(
                 {'planId': 'Plan no encontrado o inactivo'})
+
+        if not plan_is_selectable(plan, mode, request_type):
+            raise serializers.ValidationError(
+                {'planId': ('El plan legacy no esta disponible para este tipo '
+                            'de solicitud') if plan.legacy else
+                           'El plan no esta disponible para este tipo de solicitud'})
 
         # El plan nuevo debe pertenecer al tipo de servicio nuevo.
         expected_type = SERVICE_TYPE_TO_PLAN_TYPE.get(attrs['serviceType'])
         if plan.type != expected_type:
             raise serializers.ValidationError(
                 {'serviceType': 'El plan no pertenece al tipo de servicio seleccionado'})
-
-        # Un cambio de plan no puede tener como destino un plan del catalogo
-        # anterior. Los retiros si usan esos planes: son el plan que se retira.
-        if mode == MODO_CAMBIO_PLAN and plan.legacy:
-            raise serializers.ValidationError(
-                {'planId': 'No se puede cambiar a un plan anterior (legacy)'})
 
         # additionType requerido cuando el tipo es ADICION
         if mode == MODO_ADICION:

@@ -1,10 +1,15 @@
-from datetime import date
+from datetime import date, timedelta
+import uuid
 
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
+from drf_spectacular.utils import (
+    extend_schema, extend_schema_view, OpenApiResponse, OpenApiTypes,
+)
 
 from .reports import (
     build_sales_pdf, build_sales_xlsx, build_sales_png,
@@ -48,12 +53,49 @@ def _show_motivos(params):
     return value in ('1', 'true', 'si', 'sí', 'yes')
 
 
-def _pdf_response(buf, filename):
-    response = HttpResponse(buf.getvalue(), content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+def _download_headers(response):
+    response['Cache-Control'] = 'no-store'
+    response['X-Robots-Tag'] = 'noindex, nofollow'
+    response['Referrer-Policy'] = 'no-referrer'
     return response
 
 
+def _pdf_response(buf, filename):
+    response = HttpResponse(buf.getvalue(), content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return _download_headers(response)
+
+
+def _report_token(request, file_format):
+    now = timezone.now()
+    params = request.query_params
+    from_date, to_date = _sales_range(params)
+    return {
+        'from': from_date,
+        'to': to_date,
+        'requestType': params.get('requestType') or '',
+        'serviceType': params.get('serviceType') or '',
+        'serviceTypeFrom': params.get('serviceTypeFrom') or '',
+        'showMotivos': _show_motivos(params),
+        'format': file_format,
+        'issued_at': int(now.timestamp()),
+        'exp': int((now + timedelta(hours=1)).timestamp()),
+        'jti': uuid.uuid4().hex,
+        'user_id': request.user.id,
+    }
+
+
+def _filters_from_payload(payload):
+    return (
+        payload['from'], payload['to'],
+        payload['requestType'] or None,
+        payload['serviceType'] or None,
+        payload['serviceTypeFrom'] or None,
+        payload['showMotivos'],
+    )
+
+
+@extend_schema(responses={200: OpenApiResponse(OpenApiTypes.BINARY)})
 class SalesPdfView(APIView):
     permission_classes = [IsAdminRole]
 
@@ -69,6 +111,7 @@ class SalesPdfView(APIView):
         return _pdf_response(buf, f'planilla{suffix}-{from_date}-{to_date}.pdf')
 
 
+@extend_schema(responses={200: OpenApiResponse(OpenApiTypes.BINARY)})
 class SalesXlsxView(APIView):
     permission_classes = [IsAdminRole]
 
@@ -85,9 +128,10 @@ class SalesXlsxView(APIView):
             buf.getvalue(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = f'attachment; filename="planilla{suffix}-{from_date}-{to_date}.xlsx"'
-        return response
+        return _download_headers(response)
 
 
+@extend_schema(responses={200: OpenApiResponse(OpenApiTypes.BINARY)})
 class SalesPngView(APIView):
     permission_classes = [IsAdminRole]
 
@@ -101,9 +145,10 @@ class SalesPngView(APIView):
                               service_type_from, show_motivos)
         response = HttpResponse(buf.getvalue(), content_type='image/png')
         response['Content-Disposition'] = f'attachment; filename="foto-{from_date}-{to_date}.png"'
-        return response
+        return _download_headers(response)
 
 
+@extend_schema(responses={200: OpenApiResponse(OpenApiTypes.BINARY)})
 class DashboardPdfView(APIView):
     """Planilla del dia del dashboard: disponible para admin y operador."""
 
@@ -115,6 +160,7 @@ class DashboardPdfView(APIView):
         return _pdf_response(buf, f'planilla-{today}-{today}.pdf')
 
 
+@extend_schema(responses={200: OpenApiResponse(OpenApiTypes.BINARY)})
 class DashboardXlsxView(APIView):
     """Excel del dia del dashboard: disponible para admin y operador."""
 
@@ -127,9 +173,10 @@ class DashboardXlsxView(APIView):
             buf.getvalue(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = f'attachment; filename="planilla-{today}-{today}.xlsx"'
-        return response
+        return _download_headers(response)
 
 
+@extend_schema(responses={200: OpenApiResponse(OpenApiTypes.BINARY)})
 class DashboardPngView(APIView):
     """Foto del dia del dashboard: disponible para admin y operador."""
 
@@ -140,59 +187,76 @@ class DashboardPngView(APIView):
         buf = build_sales_png(today, today)
         response = HttpResponse(buf.getvalue(), content_type='image/png')
         response['Content-Disposition'] = f'attachment; filename="foto-{today}-{today}.png"'
-        return response
+        return _download_headers(response)
 
 
+@extend_schema(responses={200: dict, 400: dict, 429: dict})
 class SalesPdfLinkView(APIView):
     permission_classes = [IsAdminRole]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'report_link'
 
     def get(self, request):
-        from_date, to_date = _sales_range(request.query_params)
-        token = sign_report_token(f'{from_date}:{to_date}')
+        token = sign_report_token(_report_token(request, 'pdf'))
         url = f'/api/reports/pdf-public/?token={token}'
         return Response({'url': url})
 
 
+@extend_schema(responses={200: dict, 400: dict, 429: dict})
 class SalesXlsxLinkView(APIView):
     permission_classes = [IsAdminRole]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'report_link'
 
     def get(self, request):
-        from_date, to_date = _sales_range(request.query_params)
-        token = sign_report_token(f'xlsx:{from_date}:{to_date}')
+        token = sign_report_token(_report_token(request, 'xlsx'))
         url = f'/api/reports/xlsx-public/?token={token}'
         return Response({'url': url})
 
 
+@extend_schema(responses={200: OpenApiResponse(OpenApiTypes.BINARY), 400: dict, 403: dict})
 class SalesPdfPublicView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'report_public'
 
     def get(self, request):
         token = request.query_params.get('token', '')
         payload = unsign_report_token(token)
-        if not payload:
-            return HttpResponse('Enlace inválido o expirado', status=400)
-        parts = payload.split(':')
-        if payload.startswith('xlsx:'):
-            return HttpResponse('Tipo de archivo no válido', status=400)
-        if len(parts) != 2:
-            return HttpResponse('Enlace inválido', status=400)
-        from_date, to_date = parts
-        return _pdf_response(build_sales_pdf(from_date, to_date),
+        if not payload or payload.get('format') != 'pdf':
+            return HttpResponse('Enlace inválido o expirado', status=403)
+        filters = _filters_from_payload(payload)
+        from_date, to_date = filters[:2]
+        return _pdf_response(build_sales_pdf(*filters, public=True),
                              f'planilla-{from_date}-{to_date}.pdf')
 
 
+@extend_schema(responses={200: OpenApiResponse(OpenApiTypes.BINARY), 400: dict, 403: dict})
 class SalesXlsxPublicView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'report_public'
 
     def get(self, request):
         token = request.query_params.get('token', '')
         payload = unsign_report_token(token)
-        if not payload or not payload.startswith('xlsx:'):
-            return HttpResponse('Enlace inválido o expirado', status=400)
-        from_date, to_date = payload[5:].split(':')
-        buf = build_sales_xlsx(from_date, to_date)
+        if not payload or payload.get('format') != 'xlsx':
+            return HttpResponse('Enlace inválido o expirado', status=403)
+        filters = _filters_from_payload(payload)
+        from_date, to_date = filters[:2]
+        buf = build_sales_xlsx(*filters, public=True)
         response = HttpResponse(
             buf.getvalue(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = f'attachment; filename="planilla-{from_date}-{to_date}.xlsx"'
-        return response
+        return _download_headers(response)
+
+
+@extend_schema_view(get=extend_schema(exclude=True))
+class SalesPdfPublicSlashView(SalesPdfPublicView):
+    """Alias con slash final, excluido para evitar duplicar OpenAPI."""
+
+
+@extend_schema_view(get=extend_schema(exclude=True))
+class SalesXlsxPublicSlashView(SalesXlsxPublicView):
+    """Alias con slash final, excluido para evitar duplicar OpenAPI."""

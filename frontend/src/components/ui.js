@@ -64,6 +64,47 @@ export function Select({ label, error, children, className = '', ...props }) {
   );
 }
 
+export function RadioChoiceGroup({ label, name, value, options, onChange, help, columns = 2 }) {
+  return (
+    <fieldset className="space-y-2">
+      <legend className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">{label}</legend>
+      <div className={`grid grid-cols-1 ${columns === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3`}>
+        {options.map((option) => {
+          const selected = String(value) === String(option.value);
+          return (
+            <label
+              key={String(option.value)}
+              className={`relative flex items-start gap-3 rounded-xl border-2 p-3 cursor-pointer transition-all
+                focus-within:ring-2 focus-within:ring-brand-500/30
+                ${selected
+                  ? 'border-brand-500 bg-brand-50 shadow-sm'
+                  : 'border-slate-200 bg-white hover:border-brand-200 hover:bg-slate-50'}`}
+            >
+              <input
+                type="radio"
+                name={name}
+                value={option.value}
+                checked={selected}
+                onChange={onChange}
+                required={option.required}
+                className="mt-1 h-4 w-4 accent-brand-600"
+              />
+              <span className="min-w-0">
+                <span className={`block text-sm font-bold ${selected ? 'text-brand-800' : 'text-slate-800'}`}>
+                  {option.icon && <span className="mr-1.5 inline-flex align-middle">{option.icon}</span>}
+                  {option.label}
+                </span>
+                {option.description && <span className="mt-0.5 block text-xs leading-5 text-slate-500">{option.description}</span>}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      {help && <p className="text-xs text-slate-500">{help}</p>}
+    </fieldset>
+  );
+}
+
 export function Alert({ type = 'error', children }) {
   const styles = {
     error: 'bg-red-50 text-red-700 border border-red-200/60',

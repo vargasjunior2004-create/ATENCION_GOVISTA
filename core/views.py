@@ -1,10 +1,12 @@
+import json
 import logging
 import os
 import threading
 from decimal import Decimal, InvalidOperation
 from datetime import date, timedelta
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
+from django.db.models import ProtectedError
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.db.models import Count, Q, Sum
@@ -13,13 +15,15 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.renderers import JSONRenderer
 from rest_framework.views import APIView
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
 from .models import (
     User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
-    TarifaTraslado, TarifaTrasladoHistorial,
+    TarifaTraslado, TarifaTrasladoHistorial, SaleIdempotencyKey,
 )
 from .serializers import (
     UserSerializer, UserWriteSerializer, PlanSerializer,
@@ -32,7 +36,7 @@ from .serializers import (
 from .domain import (
     request_type_mode, request_type_catalog,
     MODO_RETIRO, MODO_CAMBIO_PLAN, MODO_ADICION,
-    MODO_SIMPLE,
+    MODO_SIMPLE, MODO_TRASLADO,
 )
 from .reports import build_sales_pdf, build_sales_xlsx
 
@@ -98,6 +102,7 @@ class IsAdminMixin:
         return None
 
 
+@extend_schema(responses={200: dict})
 class HealthView(APIView):
     permission_classes = [AllowAny]
 
@@ -105,6 +110,7 @@ class HealthView(APIView):
         return Response({'status': 'ok'})
 
 
+@extend_schema(responses={200: dict, 503: dict})
 class ReadyView(APIView):
     """Comprueba base y migraciones sin revelar detalles de infraestructura."""
     permission_classes = [AllowAny]
@@ -120,6 +126,9 @@ class ReadyView(APIView):
             return Response({'status': 'unavailable'}, status=503)
 
 
+@extend_schema_view(
+    post=extend_schema(request=dict, responses={200: dict, 400: dict, 401: dict}),
+)
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -146,11 +155,15 @@ class LoginView(APIView):
         return Response({'token': str(token.access_token), 'user': _user_payload(user)})
 
 
+@extend_schema(responses={200: dict})
 class MeView(APIView):
     def get(self, request):
         return Response({'user': _user_payload(request.user)})
 
 
+@extend_schema_view(
+    post=extend_schema(request=dict, responses={200: dict, 400: dict}),
+)
 class ChangePasswordView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -176,6 +189,10 @@ class ChangePasswordView(APIView):
         return Response({'message': 'Contrasena actualizada correctamente'})
 
 
+@extend_schema_view(
+    get=extend_schema(responses={200: PlanSerializer(many=True)}),
+    post=extend_schema(request=PlanSerializer, responses={201: PlanSerializer, 400: dict}),
+)
 class PlanListView(IsAdminMixin, APIView):
     def get(self, request):
         error = self.check_admin(request)
@@ -190,10 +207,18 @@ class PlanListView(IsAdminMixin, APIView):
         serializer = PlanSerializer(data=request.data)
         if not serializer.is_valid():
             return Response({'error': _first_error(serializer)}, status=status.HTTP_400_BAD_REQUEST)
-        serializer.save()
+        plan = serializer.save()
+        from .audit import record_audit
+        record_audit(request, 'created', 'plan', plan.id,
+                     after={'code': plan.code, 'type': plan.type,
+                            'active': plan.active, 'legacy': plan.legacy})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema_view(
+    put=extend_schema(request=PlanSerializer, responses={200: PlanSerializer, 400: dict, 404: dict}),
+    delete=extend_schema(responses={204: None, 400: dict, 404: dict}),
+)
 class PlanDetailView(IsAdminMixin, APIView):
     def _get_plan(self, pk):
         try:
@@ -208,15 +233,11 @@ class PlanDetailView(IsAdminMixin, APIView):
         plan = self._get_plan(pk)
         if not plan:
             return Response({'error': 'Plan no encontrado'}, status=status.HTTP_404_NOT_FOUND)
-        if Sale.objects.filter(plan=plan).exists():
-            return Response({'error': 'No se puede eliminar: tiene ventas asociadas'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        # Tambien como plan anterior: borrarlo dejaria movimientos historicos
-        # sin origen, que es justo lo que el cambio de plan debe conservar.
-        if Sale.objects.filter(planFromId=plan).exists():
-            return Response({'error': 'No se puede eliminar: es el plan anterior de un cambio de plan'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        plan.delete()
+        plan.active = False
+        plan.save(update_fields=['active'])
+        from .audit import record_audit
+        record_audit(request, 'deactivated', 'plan', pk,
+                     after={'active': False})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def put(self, request, pk):
@@ -229,16 +250,24 @@ class PlanDetailView(IsAdminMixin, APIView):
         serializer = PlanSerializer(plan, data=request.data, partial=True)
         if not serializer.is_valid():
             return Response({'error': _first_error(serializer)}, status=status.HTTP_400_BAD_REQUEST)
+        before = {'code': plan.code, 'type': plan.type,
+                  'active': plan.active, 'legacy': plan.legacy}
         serializer.save()
+        from .audit import record_audit
+        record_audit(request, 'updated', 'plan', plan.id, before=before,
+                     after={'code': plan.code, 'type': plan.type,
+                            'active': plan.active, 'legacy': plan.legacy})
         return Response(serializer.data)
 
 
+@extend_schema(responses={200: PlanPublicSerializer(many=True)})
 class ActivePlansView(APIView):
     def get(self, request):
         plans = Plan.objects.filter(active=True).order_by('type', 'code')
         return Response(PlanPublicSerializer(plans, many=True).data)
 
 
+@extend_schema(responses={200: TipoSolicitudPublicSerializer(many=True)})
 class ActiveRequestTypesView(APIView):
     """Catalogo para el formulario de movimientos.
 
@@ -251,6 +280,10 @@ class ActiveRequestTypesView(APIView):
             TipoSolicitud.objects.filter(activo=True), many=True).data)
 
 
+@extend_schema_view(
+    get=extend_schema(responses={200: MotivoSerializer(many=True)}),
+    post=extend_schema(request=MotivoSerializer, responses={201: MotivoSerializer, 400: dict}),
+)
 class MotivoListView(IsAdminMixin, APIView):
     """Catalogo administrable de motivos (solo administradores)."""
 
@@ -272,10 +305,15 @@ class MotivoListView(IsAdminMixin, APIView):
         if not serializer.is_valid():
             return Response({'error': _first_error(serializer)},
                             status=status.HTTP_400_BAD_REQUEST)
-        serializer.save()
+        motivo = serializer.save()
+        from .audit import record_audit
+        record_audit(request, 'created', 'motivo', motivo.id,
+                     after={'categoria': motivo.categoria,
+                            'activo': motivo.activo})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema(responses={200: MotivoPublicSerializer(many=True)})
 class ActiveMotivosView(APIView):
     """Motivos activos para el formulario de movimientos.
 
@@ -291,6 +329,10 @@ class ActiveMotivosView(APIView):
         return Response(MotivoPublicSerializer(qs, many=True).data)
 
 
+@extend_schema_view(
+    put=extend_schema(request=MotivoSerializer, responses={200: MotivoSerializer, 400: dict, 404: dict}),
+    delete=extend_schema(responses={204: None, 400: dict, 404: dict}),
+)
 class MotivoDetailView(IsAdminMixin, APIView):
     def _get_motivo(self, pk):
         try:
@@ -306,14 +348,11 @@ class MotivoDetailView(IsAdminMixin, APIView):
         if not motivo:
             return Response({'error': 'Motivo no encontrado'},
                             status=status.HTTP_404_NOT_FOUND)
-        # La FK es PROTECT: borrar un motivo usado dejaria el historial sin
-        # trazabilidad. Se desactiva en su lugar.
-        if Sale.objects.filter(motivo=motivo).exists():
-            return Response(
-                {'error': 'No se puede eliminar: tiene solicitudes asociadas. '
-                          'Desactivelo en su lugar para que deje de ofrecerse.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        motivo.delete()
+        motivo.activo = False
+        motivo.save(update_fields=['activo'])
+        from .audit import record_audit
+        record_audit(request, 'deactivated', 'motivo', pk,
+                     after={'activo': False})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def put(self, request, pk):
@@ -328,10 +367,19 @@ class MotivoDetailView(IsAdminMixin, APIView):
         if not serializer.is_valid():
             return Response({'error': _first_error(serializer)},
                             status=status.HTTP_400_BAD_REQUEST)
+        before = {'categoria': motivo.categoria, 'activo': motivo.activo}
         serializer.save()
+        from .audit import record_audit
+        record_audit(request, 'updated', 'motivo', motivo.id, before=before,
+                     after={'categoria': motivo.categoria,
+                            'activo': motivo.activo})
         return Response(serializer.data)
 
 
+@extend_schema_view(
+    get=extend_schema(responses={200: PromotionSerializer(many=True)}),
+    post=extend_schema(request=PromotionWriteSerializer, responses={201: PromotionSerializer, 400: dict}),
+)
 class PromotionListView(IsAdminMixin, APIView):
     def get(self, request):
         error = self.check_admin(request)
@@ -374,9 +422,18 @@ class PromotionListView(IsAdminMixin, APIView):
             created_by=request.user,
             **data,
         )
+        from .audit import record_audit
+        record_audit(request, 'created', 'promotion', promo.id,
+                     after={'plan_id': promo.plan_id, 'active': promo.active,
+                            'start_date': promo.start_date.isoformat(),
+                            'end_date': promo.end_date.isoformat()})
         return Response(PromotionSerializer(promo).data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema_view(
+    put=extend_schema(request=PromotionWriteSerializer, responses={200: PromotionSerializer, 400: dict, 404: dict}),
+    delete=extend_schema(responses={204: None, 400: dict, 404: dict}),
+)
 class PromotionDetailView(IsAdminMixin, APIView):
     def _get_promo(self, pk):
         try:
@@ -397,8 +454,12 @@ class PromotionDetailView(IsAdminMixin, APIView):
 
         # Simple toggle (active only) — skip full serializer
         if set(data.keys()) <= {'active'}:
+            before = {'active': promo.active}
             promo.active = data.get('active', promo.active)
             promo.save()
+            from .audit import record_audit
+            record_audit(request, 'updated', 'promotion', promo.id,
+                         before=before, after={'active': promo.active})
             return Response(PromotionSerializer(promo).data)
 
         serializer = PromotionWriteSerializer(data=data, partial=True)
@@ -426,6 +487,9 @@ class PromotionDetailView(IsAdminMixin, APIView):
                 {'error': 'Ya existe una promocion activa para este concepto en el periodo seleccionado'},
                 status=status.HTTP_400_BAD_REQUEST)
 
+        before = {'plan_id': promo.plan_id, 'active': promo.active,
+                  'start_date': promo.start_date.isoformat(),
+                  'end_date': promo.end_date.isoformat()}
         if 'name' in data:
             promo.name = data['name']
         promo.plan = plan
@@ -444,6 +508,12 @@ class PromotionDetailView(IsAdminMixin, APIView):
         if 'active' in data:
             promo.active = data['active']
         promo.save()
+        from .audit import record_audit
+        record_audit(request, 'updated', 'promotion', promo.id,
+                     before=before,
+                     after={'plan_id': promo.plan_id, 'active': promo.active,
+                            'start_date': promo.start_date.isoformat(),
+                            'end_date': promo.end_date.isoformat()})
         return Response(PromotionSerializer(promo).data)
 
     def delete(self, request, pk):
@@ -454,10 +524,15 @@ class PromotionDetailView(IsAdminMixin, APIView):
         if not promo:
             return Response({'error': 'Promocion no encontrada'},
                             status=status.HTTP_404_NOT_FOUND)
-        promo.delete()
+        promo.active = False
+        promo.save(update_fields=['active'])
+        from .audit import record_audit
+        record_audit(request, 'deactivated', 'promotion', pk,
+                     after={'active': False})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+@extend_schema(responses={200: PromotionSerializer(many=True), 400: dict})
 class ActivePromotionsView(APIView):
     """Promociones vigentes para un plan (cualquier usuario autenticado)."""
     def get(self, request):
@@ -475,6 +550,7 @@ class ActivePromotionsView(APIView):
         return Response(PromotionSerializer(promos, many=True).data)
 
 
+@extend_schema(responses={200: TarifaTrasladoSerializer(many=True)})
 class ActiveTransferTariffsView(APIView):
     """Tarifas vigentes para operadores y formularios comerciales."""
     def get(self, request):
@@ -482,6 +558,10 @@ class ActiveTransferTariffsView(APIView):
         return Response(TarifaTrasladoSerializer(tariffs, many=True).data)
 
 
+@extend_schema_view(
+    get=extend_schema(responses={200: TarifaTrasladoSerializer(many=True)}),
+    post=extend_schema(request=dict, responses={201: TarifaTrasladoSerializer, 400: dict}),
+)
 class TransferTariffListView(IsAdminMixin, APIView):
     def get(self, request):
         error = self.check_admin(request)
@@ -515,9 +595,18 @@ class TransferTariffListView(IsAdminMixin, APIView):
             tarifa=tariff, previous_amount=amount, new_amount=amount,
             previous_active=tariff.active, new_active=tariff.active,
             action='created', changed_by=request.user)
+        from .audit import record_audit
+        record_audit(request, 'created', 'transfer_tariff', tariff.id,
+                     after={'service_type': tariff.service_type,
+                            'amount': str(tariff.amount),
+                            'active': tariff.active})
         return Response(TarifaTrasladoSerializer(tariff).data, status=201)
 
 
+@extend_schema_view(
+    get=extend_schema(responses={200: TarifaTrasladoSerializer, 400: dict, 404: dict}),
+    put=extend_schema(request=dict, responses={200: TarifaTrasladoSerializer, 400: dict, 404: dict}),
+)
 class TransferTariffDetailView(IsAdminMixin, APIView):
     def _get(self, pk):
         try:
@@ -555,6 +644,11 @@ class TransferTariffDetailView(IsAdminMixin, APIView):
                 new_amount=tariff.amount, previous_active=old_active,
                 new_active=tariff.active, action='updated',
                 changed_by=request.user)
+            from .audit import record_audit
+            record_audit(
+                request, 'updated', 'transfer_tariff', tariff.id,
+                before={'amount': str(old_amount), 'active': old_active},
+                after={'amount': str(tariff.amount), 'active': tariff.active})
         return Response(TarifaTrasladoSerializer(tariff).data)
 
     def get(self, request, pk):
@@ -567,6 +661,7 @@ class TransferTariffDetailView(IsAdminMixin, APIView):
         return Response(TarifaTrasladoSerializer(tariff).data)
 
 
+@extend_schema(responses={200: TarifaTrasladoHistorialSerializer(many=True), 404: dict})
 class TransferTariffHistoryView(IsAdminMixin, APIView):
     def get(self, request, pk):
         error = self.check_admin(request)
@@ -578,6 +673,7 @@ class TransferTariffHistoryView(IsAdminMixin, APIView):
         return Response(TarifaTrasladoHistorialSerializer(history, many=True).data)
 
 
+@extend_schema(responses={200: CustomerSerializer(many=True)})
 class CustomerListView(APIView):
     """Busqueda de clientes por kardex o nombre (para autocompletar)."""
     def get(self, request):
@@ -588,6 +684,76 @@ class CustomerListView(APIView):
         return Response(CustomerSerializer(qs[:20], many=True).data)
 
 
+class EquipmentBySerialView(APIView):
+    """Consulta de solo lectura de un equipo físico por número de serie."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, serie):
+        normalized = (serie or '').strip()
+        if not normalized:
+            return Response({'error': 'Debe indicar un número de serie'}, status=400)
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT o.id_onu, o.serie,
+                       c.codigo_item, c.descripcion, c.marca, c.modelo,
+                       t.id_tipo_onu, t.nombre
+                FROM public.onu AS o
+                INNER JOIN public.catalogo_item AS c
+                    ON c.codigo_item = o.codigo_item
+                INNER JOIN public.tipo_onu AS t
+                    ON t.id_tipo_onu = c.id_tipo_onu
+                WHERE LOWER(TRIM(o.serie)) = LOWER(TRIM(%s))
+                LIMIT 1
+                """,
+                [normalized],
+            )
+            row = cursor.fetchone()
+
+        if row is None:
+            return Response(
+                {'error': 'No se encontró un equipo con esa serie'}, status=404)
+
+        return Response({
+            'id': row[0],
+            'serie': row[1],
+            'articulo': {
+                'codigo': row[2],
+                'descripcion': row[3],
+                'marca': row[4],
+                'modelo': row[5],
+                'tipo': {
+                    'id': row[6],
+                    'nombre': row[7],
+                },
+            },
+        })
+
+
+def _query_int(params, name, default, maximum=None):
+    raw = params.get(name)
+    if raw in (None, ''):
+        return default, None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None, Response(
+            {'error': {name: 'Debe ser un número entero'}},
+            status=status.HTTP_400_BAD_REQUEST)
+    if value < 1 or (maximum is not None and value > maximum):
+        message = 'Debe ser mayor que cero'
+        if maximum is not None:
+            message = f'Debe estar entre 1 y {maximum}'
+        return None, Response(
+            {'error': {name: message}}, status=status.HTTP_400_BAD_REQUEST)
+    return value, None
+
+
+@extend_schema_view(
+    get=extend_schema(responses={200: SaleSerializer(many=True), 400: dict}),
+    post=extend_schema(request=SaleCreateSerializer, responses={201: dict, 400: dict}),
+)
 class SaleListView(APIView):
     def get(self, request):
         from_date = request.query_params.get('from')
@@ -595,7 +761,46 @@ class SaleListView(APIView):
         rtype = request.query_params.get('requestType')
         stype = request.query_params.get('serviceType')
         stype_from = request.query_params.get('serviceTypeFrom')
-        qs = Sale.objects.select_related('plan', 'planFromId', 'createdBy').all().order_by('-date', '-id')
+        page, error = _query_int(request.query_params, 'page', 1)
+        if error:
+            return error
+        page_size, error = _query_int(
+            request.query_params, 'page_size', 25, maximum=100)
+        if error:
+            return error
+
+        try:
+            parsed_from = date.fromisoformat(from_date) if from_date else None
+            parsed_to = date.fromisoformat(to_date) if to_date else None
+        except ValueError:
+            return Response(
+                {'error': {'date': 'Use el formato YYYY-MM-DD'}},
+                status=status.HTTP_400_BAD_REQUEST)
+        if parsed_from and parsed_to and parsed_from > parsed_to:
+            return Response(
+                {'error': {'date': 'La fecha inicial no puede ser posterior a la final'}},
+                status=status.HTTP_400_BAD_REQUEST)
+        if parsed_from and parsed_to and (parsed_to - parsed_from).days > 366:
+            return Response(
+                {'error': {'date': 'El rango máximo permitido es de 366 días'}},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        from .domain import SERVICE_TYPE_LABELS, SERVICE_TYPE_TO_PLAN_TYPE
+        catalog = request_type_catalog()
+        if rtype and rtype not in catalog:
+            return Response(
+                {'error': {'requestType': 'Tipo de solicitud desconocido'}},
+                status=status.HTTP_400_BAD_REQUEST)
+        if stype and stype not in SERVICE_TYPE_LABELS:
+            return Response(
+                {'error': {'serviceType': 'Tipo de servicio desconocido'}},
+                status=status.HTTP_400_BAD_REQUEST)
+        if stype_from and stype_from not in SERVICE_TYPE_TO_PLAN_TYPE:
+            return Response(
+                {'error': {'serviceTypeFrom': 'Tipo de servicio desconocido'}},
+                status=status.HTTP_400_BAD_REQUEST)
+        qs = Sale.objects.select_related('plan', 'planFromId', 'createdBy').filter(
+            deleted_at__isnull=True).order_by('-date', '-id')
         if from_date:
             qs = qs.filter(date__gte=from_date)
         if to_date:
@@ -617,8 +822,6 @@ class SaleListView(APIView):
                 qs = qs.filter(serviceTypeFrom=stype_from)
 
         total = qs.count()
-        page = max(1, int(request.query_params.get('page', 1)))
-        page_size = max(1, int(request.query_params.get('page_size', 25)))
         start = (page - 1) * page_size
         end = start + page_size
         items = qs[start:end]
@@ -641,29 +844,109 @@ class SaleListView(APIView):
         logger = logging.getLogger('core')
         data = request.data.copy()
         data['date'] = timezone.localdate().isoformat()
-        logger.warning('SaleListView POST data: %s', data)
+        idempotency_key = request.headers.get('Idempotency-Key', '').strip()
+        if len(idempotency_key) > 128:
+            return Response(
+                {'error': 'Idempotency-Key no puede superar 128 caracteres'},
+                status=status.HTTP_400_BAD_REQUEST)
+        idempotency = None
+        if idempotency_key:
+            now = timezone.now()
+            existing = SaleIdempotencyKey.objects.filter(
+                user=request.user, key=idempotency_key).first()
+            if existing and existing.expires_at <= now:
+                existing.delete()
+                existing = None
+            if existing:
+                if existing.status == 'processing':
+                    return Response(
+                        {'error': 'La solicitud con esta clave todavía está en proceso'},
+                        status=status.HTTP_409_CONFLICT)
+                response = Response(
+                    existing.response_payload, status=existing.response_status)
+                response['Idempotent-Replayed'] = 'true'
+                return response
+            try:
+                idempotency = SaleIdempotencyKey.objects.create(
+                    user=request.user, key=idempotency_key, status='processing',
+                    expires_at=now + timedelta(hours=24))
+            except IntegrityError:
+                existing = SaleIdempotencyKey.objects.get(
+                    user=request.user, key=idempotency_key)
+                if existing.status == 'completed':
+                    response = Response(
+                        existing.response_payload, status=existing.response_status)
+                    response['Idempotent-Replayed'] = 'true'
+                    return response
+                return Response(
+                    {'error': 'La solicitud con esta clave está en proceso'},
+                    status=status.HTTP_409_CONFLICT)
+        logger.info(
+            'Sale creation requested user_id=%s request_type=%s',
+            getattr(request.user, 'id', None), data.get('requestType', 'nuevo_contrato'))
         try:
             serializer = SaleCreateSerializer(data=data, context={'user': request.user})
             if not serializer.is_valid():
+                if idempotency:
+                    idempotency.delete()
                 return Response({'error': _first_error(serializer)}, status=status.HTTP_400_BAD_REQUEST)
             with transaction.atomic():
                 sale = serializer.save()
-            return Response(SaleSerializer(sale).data, status=status.HTTP_201_CREATED)
+                payload = json.loads(JSONRenderer().render(SaleSerializer(sale).data))
+                if idempotency:
+                    idempotency.status = 'completed'
+                    idempotency.sale = sale
+                    idempotency.response_payload = payload
+                    idempotency.save(update_fields=[
+                        'status', 'sale', 'response_payload'])
+                from .audit import record_audit
+                record_audit(
+                    request, 'created', 'sale', sale.id,
+                    after={'requestType': sale.requestType,
+                           'serviceType': sale.serviceType,
+                           'total': str(sale.total),
+                           'version': sale.version})
+            response = Response(payload, status=status.HTTP_201_CREATED)
+            if idempotency:
+                response['Idempotent-Replayed'] = 'false'
+            return response
         except Exception as e:
+            if idempotency:
+                idempotency.delete()
             logger.error('SaleListView POST error: %s\n%s', e, traceback.format_exc())
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@extend_schema_view(
+    put=extend_schema(request=SaleCreateSerializer, responses={200: SaleSerializer, 400: dict, 404: dict, 409: dict}),
+    delete=extend_schema(responses={204: None, 404: dict, 409: dict}),
+)
 class SaleDetailView(IsAdminMixin, APIView):
     def delete(self, request, pk):
         error = self.check_admin(request)
         if error:
             return error
         try:
-            sale = Sale.objects.get(id=pk)
+            sale = Sale.objects.get(id=pk, deleted_at__isnull=True)
         except Sale.DoesNotExist:
             return Response({'error': 'Venta no encontrada'}, status=status.HTTP_404_NOT_FOUND)
-        sale.delete()
+        before_audit = {
+            'requestType': sale.requestType,
+            'serviceType': sale.serviceType,
+            'total': str(sale.total),
+            'version': sale.version,
+        }
+        if (hasattr(sale, 'traslado_externo')
+                or sale.idempotency_keys.exists()):
+            return Response(
+                {'error': 'No se puede eliminar la solicitud porque tiene '
+                          'dependencias o forma parte del historial.'},
+                status=status.HTTP_409_CONFLICT)
+        sale.deleted_at = timezone.now()
+        sale.save(update_fields=['deleted_at'])
+        from .audit import record_audit
+        record_audit(request, 'deactivated', 'sale', pk, before=before_audit,
+                     after={'deleted_at': sale.deleted_at.isoformat()})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def put(self, request, pk):
@@ -671,24 +954,36 @@ class SaleDetailView(IsAdminMixin, APIView):
         if error:
             return error
         try:
-            sale = Sale.objects.get(id=pk)
+            sale = Sale.objects.get(id=pk, deleted_at__isnull=True)
         except Sale.DoesNotExist:
             return Response({'error': 'Venta no encontrada'}, status=status.HTTP_404_NOT_FOUND)
 
         from .domain import (
             SERVICE_TYPE_LABELS, SERVICE_TYPE_TO_PLAN_TYPE,
-            motivo_categoria_de_modo)
+            motivo_categoria_de_modo, plan_is_selectable)
         from .serializers import (
             SaleSerializer, resolve_sale_prices, validate_cambio_plan,
             resolve_motivo)
 
         data = request.data
+        if 'version' in data:
+            try:
+                requested_version = int(data['version'])
+            except (TypeError, ValueError):
+                return Response(
+                    {'error': 'La version del registro no es valida'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if requested_version != sale.version:
+                return Response(
+                    {'error': 'El registro fue modificado por otro usuario',
+                     'currentVersion': sale.version},
+                    status=status.HTTP_409_CONFLICT)
         old_plan_id = sale.plan_id
         old_plan_from_id = sale.planFromId_id
 
         plan = sale.plan
         if data.get('planId'):
-            plan = Plan.objects.filter(id=data['planId'], active=True).first()
+            plan = Plan.objects.filter(id=data['planId']).first()
             if not plan:
                 return Response({'error': 'Plan no encontrado o inactivo'},
                                 status=status.HTTP_400_BAD_REQUEST)
@@ -707,6 +1002,24 @@ class SaleDetailView(IsAdminMixin, APIView):
         mode_changed = mode != request_type_mode(sale.requestType, catalog)
 
         is_rehire = request_type == 'recontratacion'
+        is_transfer = mode == MODO_TRASLADO
+        transfer = getattr(sale, 'traslado_externo', None)
+        if (request_type_mode(sale.requestType, catalog) == MODO_TRASLADO
+                and not is_transfer):
+            return Response(
+                {'error': 'Un traslado externo no puede cambiarse a otro tipo '
+                          'de solicitud.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if is_transfer:
+            if transfer is None:
+                return Response(
+                    {'error': 'El traslado externo no tiene detalle asociado.'},
+                    status=status.HTTP_409_CONFLICT)
+            expected_family = SERVICE_TYPE_TO_PLAN_TYPE.get(service_type)
+            if transfer.tariff.service_type != expected_family:
+                return Response(
+                    {'error': 'La tarifa del traslado no corresponde al servicio.'},
+                    status=status.HTTP_400_BAD_REQUEST)
         if is_rehire:
             equipment_retained = data.get(
                 'equipmentRetained', sale.equipment_retained)
@@ -750,12 +1063,12 @@ class SaleDetailView(IsAdminMixin, APIView):
                 {'error': 'El plan no pertenece al tipo de servicio seleccionado'},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        # Un cambio de plan no puede apuntar a un plan legacy. Se permite
-        # editar un movimiento historico que ya tenia ese plan como destino.
-        if (mode == MODO_CAMBIO_PLAN and plan.legacy
-                and (plan.id != old_plan_id or mode_changed)):
+        if (not plan_is_selectable(plan, mode, request_type)
+                and not (plan.id == old_plan_id and not mode_changed)):
             return Response(
-                {'error': 'No se puede cambiar a un plan anterior (legacy)'},
+                {'error': ('El plan legacy no esta disponible para este tipo '
+                           'de solicitud') if plan.legacy else
+                          'El plan no esta disponible para este tipo de solicitud'},
                 status=status.HTTP_400_BAD_REQUEST)
 
         plan_from = sale.planFromId
@@ -891,18 +1204,43 @@ class SaleDetailView(IsAdminMixin, APIView):
         else:
             installation, monthly, total = resolve_sale_prices(
                 plan, sale.promotion, request_type)
-        if is_rehire:
+        if is_transfer:
+            # El traslado se cobra con el snapshot de su tarifa, nunca con
+            # los importes del plan asociado a Sale.
+            installation = Decimal('0')
+            monthly = Decimal('0')
+            total = transfer.tariff_amount
+        elif is_rehire:
             total += debt_amount
         sale.applied_installation = installation
         sale.applied_monthly = monthly
         sale.total = total
 
+        before_audit = {
+            'requestType': sale.requestType,
+            'serviceType': sale.serviceType,
+            'total': str(sale.total),
+            'version': sale.version,
+        }
         sale.lastEditedBy = request.user
         sale.lastEditedAt = timezone.now()
+        sale.version += 1
         sale.save()
+        from .audit import record_audit
+        record_audit(
+            request, 'updated', 'sale', sale.id,
+            before=before_audit,
+            after={'requestType': sale.requestType,
+                   'serviceType': sale.serviceType,
+                   'total': str(sale.total),
+                   'version': sale.version})
         return Response(SaleSerializer(sale).data)
 
 
+@extend_schema_view(
+    get=extend_schema(responses={200: UserSerializer(many=True)}),
+    post=extend_schema(request=UserWriteSerializer, responses={201: UserSerializer, 400: dict}),
+)
 class UserListView(IsAdminMixin, APIView):
     def get(self, request):
         error = self.check_admin(request)
@@ -921,9 +1259,16 @@ class UserListView(IsAdminMixin, APIView):
             return Response({'error': 'La contraseña es requerida'},
                             status=status.HTTP_400_BAD_REQUEST)
         user = serializer.save()
+        from .audit import record_audit
+        record_audit(request, 'created', 'user', user.id,
+                     after={'role': user.role, 'active': user.active})
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema_view(
+    put=extend_schema(request=UserWriteSerializer, responses={200: UserSerializer, 400: dict, 404: dict}),
+    delete=extend_schema(responses={204: None, 400: dict, 404: dict, 409: dict}),
+)
 class UserDetailView(IsAdminMixin, APIView):
     def delete(self, request, pk):
         error = self.check_admin(request)
@@ -936,7 +1281,17 @@ class UserDetailView(IsAdminMixin, APIView):
         if user == request.user:
             return Response({'error': 'No puedes eliminarte a ti mismo'},
                             status=status.HTTP_400_BAD_REQUEST)
-        user.delete()
+        try:
+            user.active = False
+            user.save(update_fields=['active'])
+        except ProtectedError:
+            return Response(
+                {'error': 'No se puede eliminar el usuario porque tiene '
+                          'registros asociados.'},
+                status=status.HTTP_409_CONFLICT)
+        from .audit import record_audit
+        record_audit(request, 'deactivated', 'user', pk,
+                     after={'active': False})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def put(self, request, pk):
@@ -950,10 +1305,15 @@ class UserDetailView(IsAdminMixin, APIView):
         serializer = UserWriteSerializer(user, data=request.data, partial=True)
         if not serializer.is_valid():
             return Response({'error': _first_error(serializer)}, status=status.HTTP_400_BAD_REQUEST)
+        before = {'role': user.role, 'active': user.active}
         serializer.save()
+        from .audit import record_audit
+        record_audit(request, 'updated', 'user', user.id, before=before,
+                     after={'role': user.role, 'active': user.active})
         return Response(UserSerializer(user).data)
 
 
+@extend_schema(responses={200: dict, 400: dict, 500: dict})
 class DashboardStatsView(APIView):
     MOVEMENT_TYPES = {
         'all', 'nuevo_contrato', 'recontrataciones', 'instalaciones',
@@ -1152,7 +1512,7 @@ class DashboardStatsView(APIView):
             else:
                 from_date = to_date = today
 
-            all_sales = Sale.objects.all()
+            all_sales = Sale.objects.filter(deleted_at__isnull=True)
             # Retiros y cambios se derivan del MODO del catálogo. Los dos
             # tipos de alta comerciales se separan por su código histórico.
             catalog = request_type_catalog()
@@ -1237,6 +1597,7 @@ def _first_error(serializer):
     return 'Error de validación'
 
 
+@extend_schema(exclude=True)
 class BackupListView(IsAdminMixin, APIView):
     """Historial de respaldos. Solo metadatos: el archivo nunca se conserva."""
 
@@ -1310,6 +1671,7 @@ class BackupListView(IsAdminMixin, APIView):
                 _backup_in_progress = False
 
 
+@extend_schema(responses={204: None, 404: dict})
 class BackupDeleteView(IsAdminMixin, APIView):
     def delete(self, request, pk):
         error = self.check_admin(request)

@@ -2,7 +2,9 @@ from io import BytesIO
 from pathlib import Path
 from xml.sax.saxutils import escape
 
-from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
+from django.core import signing
+from django.core.signing import BadSignature, SignatureExpired
+from django.utils import timezone
 
 from .models import Sale
 from .domain import (
@@ -11,9 +13,6 @@ from .domain import (
     request_type_label, request_type_mode, request_type_catalog,
     MODO_ADICION,
 )
-
-SIGNER = TimestampSigner()
-
 
 def get_request_label(sale, catalog=None):
     """Label de solicitud para la columna SOLICITUD del reporte.
@@ -31,14 +30,27 @@ LOGO_PATH = Path(__file__).resolve().parent / 'logo.png'
 
 
 def sign_report_token(payload):
-    """Firma 'from:to' (o 'date') con expiración de 1 hora."""
-    return SIGNER.sign(payload)
+    """Firma todos los filtros y metadatos de un enlace de reporte."""
+    return signing.dumps(payload, salt='report-link')
 
 
 def unsign_report_token(token):
-    """Valida la firma. Devuelve el payload o None si es inválida/expirada."""
+    """Valida la firma. Devuelve un dict o None si es inválida/expirada."""
     try:
-        return SIGNER.unsign(token, max_age=3600)
+        payload = signing.loads(token, salt='report-link', max_age=3600)
+        if not isinstance(payload, dict):
+            return None
+        required = {'from', 'to', 'requestType', 'serviceType',
+                    'serviceTypeFrom', 'showMotivos', 'format',
+                    'issued_at', 'exp', 'jti', 'user_id'}
+        if not required.issubset(payload):
+            return None
+        now = int(timezone.now().timestamp())
+        if not isinstance(payload['issued_at'], int) or not isinstance(payload['exp'], int):
+            return None
+        if payload['issued_at'] > now + 60 or payload['exp'] < now:
+            return None
+        return payload
     except (BadSignature, SignatureExpired):
         return None
 
@@ -86,6 +98,7 @@ def _sales_queryset(from_date, to_date, request_type=None, service_type=None,
     from django.db.models import Q
 
     qs = Sale.objects.select_related('plan', 'planFromId', 'createdBy').filter(
+        deleted_at__isnull=True,
         date__gte=from_date, date__lte=to_date)
     if request_type:
         qs = qs.filter(requestType=request_type)
@@ -121,9 +134,19 @@ def _service_filter_label(service_type=None, service_type_from=None):
     return ' - '.join(parts) if parts else 'TODOS LOS SERVICIOS'
 
 
+def _report_identity(sale, public):
+    if public:
+        return '***', '***', '***'
+    return (
+        sale.clientCode or '',
+        sale.clientName or '',
+        sale.createdBy.name if sale.createdBy else '',
+    )
+
+
 def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
                     service_type_from=None, show_motivos=False,
-                    technical_only=False):
+                    technical_only=False, public=False):
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.units import mm
     from reportlab.lib import colors
@@ -171,10 +194,11 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
     rows = [[Paragraph(h, header_style) for h in header]]
     for s in sales:
         plan_from_label, plan_current_label = sale_plan_labels(s, catalog)
+        client_code, client_name, operator = _report_identity(s, public)
         row = [
             s.date.strftime('%d/%m/%Y') if s.date else '',
-            s.clientCode or '',
-            s.clientName or '',
+            client_code,
+            client_name,
             sale_service_label(s, catalog),
             get_request_label(s, catalog),
             plan_from_label,
@@ -184,7 +208,7 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
             row.append(s.changeReason or '')
         row += [
             f'{float(s.total):.2f}',
-            s.createdBy.name if s.createdBy else '',
+            operator,
         ]
         rows.append([Paragraph(escape(str(v)), cell_style) for v in row])
 
@@ -212,7 +236,7 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
 
 def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
                      service_type_from=None, show_motivos=False,
-                     technical_only=False):
+                     technical_only=False, public=False):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
@@ -249,11 +273,12 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
     catalog = request_type_catalog()
     for row_idx, s in enumerate(sales, 2):
         plan_from_label, plan_current_label = sale_plan_labels(s, catalog)
+        client_code, client_name, operator = _report_identity(s, public)
 
         data_row = [
             s.date.strftime('%d/%m/%Y') if s.date else '',
-            s.clientCode or '',
-            s.clientName or '',
+            client_code,
+            client_name,
             sale_service_label(s, catalog),
             get_request_label(s, catalog),
             plan_from_label,
@@ -263,7 +288,7 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
             data_row.append(s.changeReason or '')
         data_row += [
             float(s.total),
-            s.createdBy.name if s.createdBy else '',
+            operator,
         ]
 
         for col, value in enumerate(data_row, 1):
@@ -324,7 +349,7 @@ def _wrap_text(text, font, max_width):
 
 def build_sales_png(from_date, to_date, request_type=None, service_type=None,
                     service_type_from=None, show_motivos=False,
-                    technical_only=False):
+                    technical_only=False, public=False):
     from PIL import Image, ImageDraw, ImageFont
     from datetime import datetime
 
@@ -337,7 +362,7 @@ def build_sales_png(from_date, to_date, request_type=None, service_type=None,
     if show_motivos:
         headers.append('MOTIVO')
         col_widths.append(200)
-    headers += ['MONTO', 'OPERADOR']
+    headers += ['MONTO TOTAL', 'OPERADOR']
     col_widths += [120, 240]
     row_height = 40
     padding = 16
@@ -362,10 +387,11 @@ def build_sales_png(from_date, to_date, request_type=None, service_type=None,
     rows = []
     for s in sales:
         plan_from_label, plan_current_label = sale_plan_labels(s, catalog)
+        client_code, client_name, operator = _report_identity(s, public)
         values = [
             s.date.strftime('%d/%m/%Y') if s.date else '',
-            s.clientCode or '',
-            s.clientName or '',
+            client_code,
+            client_name,
             sale_service_label(s, catalog),
             get_request_label(s, catalog),
             plan_from_label,
@@ -375,7 +401,7 @@ def build_sales_png(from_date, to_date, request_type=None, service_type=None,
             values.append(s.changeReason or '')
         values += [
             f'{float(s.total):.2f}',
-            s.createdBy.name if s.createdBy else '',
+            operator,
         ]
         cells = [
             _wrap_text(v, font, col_widths[i] - h_padding * 2)

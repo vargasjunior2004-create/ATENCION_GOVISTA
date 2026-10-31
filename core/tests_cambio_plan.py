@@ -294,15 +294,15 @@ class CambioPlanEntreServiciosTest(TestCase):
         sale.refresh_from_db()
         self.assertEqual(sale.plan_id, self.plans[('internet', 1)].id)
 
-    def test_plan_anterior_no_se_puede_borrar(self):
-        """Borrar el plan anterior dejaria el historico sin origen."""
+    def test_plan_anterior_se_desactiva_y_conserva_el_historico(self):
         self._post_cambio('combo', 'internet')
         anterior = self.plans[('combo', 2)]
         token = self._token(self.admin, 'pass1')
         r = self.client_.delete(f'/api/plans/{anterior.id}',
                                 HTTP_AUTHORIZATION=f'Bearer {token}')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 204)
         self.assertTrue(Plan.objects.filter(id=anterior.id).exists())
+        self.assertFalse(Plan.objects.get(id=anterior.id).active)
         sale = Sale.objects.get(clientCode='CP001')
         self.assertIsNotNone(sale.planFromId_id)
 
@@ -504,6 +504,19 @@ class CambioPlanEntreServiciosTest(TestCase):
         self.assertEqual(r.status_code, 400)
         sale.refresh_from_db()
         self.assertEqual(sale.plan_id, self.plans[('internet', 1)].id)
+
+    def test_plan_legacy_no_se_puede_usar_en_un_contrato_nuevo(self):
+        legacy = Plan.objects.create(
+            code='LEG2', label='LEGACY 2', type='internet',
+            monthly=Decimal('10'), installation=Decimal('0'),
+            active=True, legacy=True)
+        r = self._post_sale({
+            'clientCode': 'CPLEG2', 'clientName': 'Legacy 2',
+            'serviceType': 'internet', 'requestType': 'nuevo_contrato',
+            'planId': legacy.id,
+        })
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('disponible', r.json()['error'])
 
     def test_pdf_soporta_nombres_de_plan_largos(self):
         from .reports import build_sales_pdf

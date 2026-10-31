@@ -129,6 +129,10 @@ const api = {
     return request(`/api/customers?${params.toString()}`);
   },
 
+  // Inventario (fase 1: solo lectura)
+  getEquipmentBySerial: (serie) =>
+    request(`/api/inventario/equipos/serie/${encodeURIComponent(serie.trim())}`),
+
   // Reportes
   getPDF: (from, to, requestType, serviceType = '', showMotivos = false) => {
     const params = new URLSearchParams();

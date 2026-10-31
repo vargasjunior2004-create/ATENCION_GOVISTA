@@ -68,7 +68,23 @@ MODO_NUEVO = 'nuevo'
 MODO_RETIRO = 'retiro'
 MODO_CAMBIO_PLAN = 'cambio_plan'
 MODO_ADICION = 'adicion'
+MODO_TRASLADO = 'traslado'
 MODO_SIMPLE = 'simple'
+
+
+def plan_is_selectable(plan, mode=None, request_type=None):
+    """Fuente unica para decidir si un plan puede usarse en un movimiento.
+
+    Un plan inactivo nunca se ofrece. Los planes legacy se conservan para
+    retiros y traslados, y pueden ser el plan anterior de un cambio; nunca
+    son destino de un cambio ni de un alta. Si no se conoce el modo, se
+    aplica la regla comercial segura: solo planes actuales.
+    """
+    if plan is None or not plan.active:
+        return False
+    if mode == MODO_TRASLADO or request_type == 'traslado_externo':
+        return True
+    return mode == MODO_RETIRO or not plan.legacy
 
 # El cliente ya tiene el servicio instalado: no se cobra instalacion.
 MODOS_SOLO_MENSUAL = (MODO_RETIRO, MODO_ADICION, MODO_CAMBIO_PLAN)
