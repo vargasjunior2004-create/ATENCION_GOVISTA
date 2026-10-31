@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { ArrowLeft, Box, ClipboardList, PackageCheck, Search, Tag } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { ArrowLeft, Box, ClipboardList, PackageCheck, Search, Tag, CheckCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import { Alert, Button, Card, Input } from '../../components/ui';
 
 function Detail({ label, value }) {
@@ -14,10 +15,39 @@ function Detail({ label, value }) {
 }
 
 export default function EquipmentPage() {
+  const { isAdmin } = useAuth();
   const [serie, setSerie] = useState('');
   const [equipment, setEquipment] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pending, setPending] = useState([]);
+  const [pendingLoading, setPendingLoading] = useState(false);
+  const [pendingMessage, setPendingMessage] = useState('');
+
+  const loadPending = async () => {
+    if (!isAdmin) return;
+    setPendingLoading(true);
+    try {
+      const result = await api.getPendingInventoryMovements();
+      setPending(result.items || []);
+    } catch (err) {
+      setPendingMessage(err?.error || 'No fue posible cargar las recepciones pendientes.');
+    } finally {
+      setPendingLoading(false);
+    }
+  };
+
+  useEffect(() => { loadPending(); }, [isAdmin]);
+
+  const confirmReception = async (movement) => {
+    try {
+      await api.confirmInventoryReception(movement.id);
+      setPendingMessage('Recepción confirmada correctamente.');
+      loadPending();
+    } catch (err) {
+      setPendingMessage(err?.error || 'No fue posible confirmar la recepción.');
+    }
+  };
 
   const search = async (event) => {
     event.preventDefault();
@@ -66,6 +96,26 @@ export default function EquipmentPage() {
         </Card>
 
         {error && <Alert type="error">{error}</Alert>}
+        {pendingMessage && <Alert type={pendingMessage.includes('No ') ? 'error' : 'success'}>{pendingMessage}</Alert>}
+
+        {isAdmin && (
+          <Card className="p-5 sm:p-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div><p className="text-sm font-black text-slate-800">Recepciones pendientes</p><p className="mt-1 text-xs text-slate-500">Equipos declarados en retiros comerciales, aún no confirmados físicamente.</p></div>
+              <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-700">{pending.length} pendientes</span>
+            </div>
+            {pendingLoading ? <p className="text-sm text-slate-400">Cargando pendientes...</p> : pending.length === 0 ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">No hay recepciones pendientes.</p> : (
+              <div className="space-y-3">
+                {pending.map((movement) => (
+                  <div key={movement.id} className="flex flex-col gap-3 rounded-xl border border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div><p className="text-sm font-black text-slate-800">Serie: {movement.serie}</p><p className="mt-1 text-xs text-slate-500">{movement.clientName} · {movement.clientCode} · Retiro del {movement.requestDate}</p><p className="mt-1 text-xs text-slate-400">Registrado por {movement.createdBy}</p></div>
+                    <Button variant="success" size="sm" onClick={() => confirmReception(movement)}><CheckCircle className="h-4 w-4" /> Confirmar recepción</Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        )}
 
         {equipment && (
           <Card className="overflow-hidden p-0">

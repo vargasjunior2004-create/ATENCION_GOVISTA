@@ -37,6 +37,8 @@ urlpatterns = [
 
     path('customers', views.CustomerListView.as_view()),
     path('inventario/equipos/serie/<path:serie>', views.EquipmentBySerialView.as_view()),
+    path('inventario/movimientos/pendientes', views.InventoryPendingListView.as_view()),
+    path('inventario/movimientos/<int:pk>/confirmar', views.InventoryConfirmReceptionView.as_view()),
 
     path('reports/dashboard/pdf', report_views.DashboardPdfView.as_view()),
     path('reports/dashboard/xlsx', report_views.DashboardXlsxView.as_view()),
