@@ -360,6 +360,10 @@ class InventarioMovimiento(models.Model):
     created_by = models.ForeignKey(
         User, on_delete=models.PROTECT, related_name='inventario_movimientos_created')
     created_at = models.DateTimeField(auto_now_add=True)
+    confirmed_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='inventario_movimientos_confirmed')
+    confirmed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         indexes = [models.Index(fields=['serie', 'estado'])]

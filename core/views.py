@@ -24,6 +24,7 @@ from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from .models import (
     User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
     TarifaTraslado, TarifaTrasladoHistorial, SaleIdempotencyKey, AuditLog,
+    InventarioMovimiento,
 )
 from .serializers import (
     UserSerializer, UserWriteSerializer, PlanSerializer,
@@ -729,6 +730,57 @@ class EquipmentBySerialView(APIView):
                 },
             },
         })
+
+
+class InventoryPendingListView(IsAdminMixin, APIView):
+    def get(self, request):
+        error = self.check_admin(request)
+        if error:
+            return error
+        movements = InventarioMovimiento.objects.filter(
+            estado=InventarioMovimiento.ESTADO_PENDIENTE
+        ).select_related('sale', 'created_by').order_by('-created_at')
+        return Response({
+            'items': [{
+                'id': movement.id,
+                'serie': movement.serie,
+                'tipo': movement.tipo,
+                'estado': movement.estado,
+                'saleId': movement.sale_id,
+                'clientCode': movement.sale.clientCode,
+                'clientName': movement.sale.clientName,
+                'requestDate': movement.sale.date,
+                'createdAt': movement.created_at,
+                'createdBy': movement.created_by.name,
+            } for movement in movements],
+        })
+
+
+class InventoryConfirmReceptionView(IsAdminMixin, APIView):
+    def post(self, request, pk):
+        error = self.check_admin(request)
+        if error:
+            return error
+        try:
+            movement = InventarioMovimiento.objects.select_related('sale').get(
+                id=pk, estado=InventarioMovimiento.ESTADO_PENDIENTE)
+        except InventarioMovimiento.DoesNotExist:
+            return Response({'error': 'Recepción pendiente no encontrada'}, status=404)
+
+        now = timezone.now()
+        movement.estado = InventarioMovimiento.ESTADO_CONFIRMADO
+        movement.confirmed_by = request.user
+        movement.confirmed_at = now
+        movement.save(update_fields=['estado', 'confirmed_by', 'confirmed_at'])
+        from .audit import record_audit
+        record_audit(
+            request, 'received', 'inventory_movement', movement.id,
+            before={'estado': InventarioMovimiento.ESTADO_PENDIENTE,
+                    'serie': movement.serie},
+            after={'estado': movement.estado,
+                   'sale_id': movement.sale_id},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 def _query_int(params, name, default, maximum=None):

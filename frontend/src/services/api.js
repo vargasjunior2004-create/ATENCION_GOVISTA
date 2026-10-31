@@ -134,6 +134,8 @@ const api = {
   // Inventario (fase 1: solo lectura)
   getEquipmentBySerial: (serie) =>
     request(`/api/inventario/equipos/serie/${encodeURIComponent(serie.trim())}`),
+  getPendingInventoryMovements: () => request('/api/inventario/movimientos/pendientes'),
+  confirmInventoryReception: (id) => request(`/api/inventario/movimientos/${id}/confirmar`, { method: 'POST' }),
 
   // Reportes
   getPDF: (from, to, requestType, serviceType = '', showMotivos = false) => {
