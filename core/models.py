@@ -376,6 +376,10 @@ class Contract(models.Model):
         max_length=10, choices=ORIGIN_CHOICES, null=True, blank=True,
         default=None)
     external_seller = models.CharField(max_length=160, blank=True, default='')
+    seller_user = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='contracts_as_seller')
+    seller_name = models.CharField(max_length=160, blank=True, default='')
     meter_number = models.CharField(
         max_length=80, null=True, blank=True, default=None, db_index=True,
         help_text='Número de medidor de luz')
@@ -483,6 +487,12 @@ class Sale(models.Model):
         help_text='Serie del equipo declarado en el retiro')
     createdBy = models.ForeignKey(
         User, on_delete=models.PROTECT, related_name='sales_created')
+    seller_user = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='sales_as_seller')
+    seller_name = models.CharField(
+        max_length=160, blank=True, default='',
+        help_text='Snapshot histórico del vendedor responsable')
     lastEditedBy = models.ForeignKey(
         User, null=True, blank=True, on_delete=models.SET_NULL,
         related_name='sales_edited')
