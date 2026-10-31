@@ -124,7 +124,7 @@ function SaleCard({ sale, isAdmin, onPreview, onEdit, onDelete, requestMode, req
               {isAdmin && (
                 <>
                   <Button variant="ghost" size="sm" onClick={() => onEdit(sale)}>Editar</Button>
-                  <Button variant="danger" size="sm" onClick={() => onDelete(sale)}>Eliminar</Button>
+                  <Button variant="danger" size="sm" onClick={() => onDelete(sale)}>Archivar</Button>
                 </>
               )}
             </div>
@@ -315,7 +315,7 @@ export default function SalesList() {
       loadSales(page);
       setMsg('Solicitud eliminada correctamente.');
     } catch (err) {
-      setMsg(err.error || 'Error al eliminar');
+      setMsg(err.error || 'Error al archivar la solicitud');
       setDeletingSale(null);
     }
   };
@@ -429,15 +429,15 @@ export default function SalesList() {
                 </svg>
               </div>
               <div>
-                <h3 className="text-lg font-bold text-slate-900">Eliminar solicitud</h3>
-                <p className="text-sm text-slate-500">Esta accion no se puede deshacer</p>
+                <h3 className="text-lg font-bold text-slate-900">Archivar solicitud</h3>
+                <p className="text-sm text-slate-500">Se ocultará de las solicitudes activas, pero conservará su historial.</p>
               </div>
             </div>
             <p className="text-sm text-slate-600">
-              Seguro que deseas eliminar la solicitud de <strong>{deletingSale.clientName}</strong> ({deletingSale.clientCode})?
+              ¿Deseas archivar la solicitud de <strong>{deletingSale.clientName}</strong> ({deletingSale.clientCode})? Sus relaciones e historial se conservarán.
             </p>
             <div className="flex gap-3 pt-2">
-              <Button variant="danger" onClick={handleDelete}>Si, eliminar</Button>
+              <Button variant="danger" onClick={handleDelete}>Sí, archivar</Button>
               <Button variant="secondary" onClick={() => setDeletingSale(null)}>Cancelar</Button>
             </div>
           </Card>
@@ -617,7 +617,7 @@ export default function SalesList() {
                         {isAdmin && (
                           <>
                             <Button variant="ghost" size="sm" onClick={() => startEdit(s)}>Editar</Button>
-                            <Button variant="danger" size="sm" onClick={() => setDeletingSale(s)}>Eliminar</Button>
+                            <Button variant="danger" size="sm" onClick={() => setDeletingSale(s)}>Archivar</Button>
                           </>
                         )}
                       </div>
