@@ -8,7 +8,6 @@ import {
   Percent,
   Tag,
   SlidersHorizontal,
-  ShieldCheck,
   Users,
   UserRoundSearch,
 } from 'lucide-react';
@@ -76,10 +75,5 @@ export const commercialAdminNavigation = [
     to: '/comercial/tarifas-traslados',
     label: 'Tarifas de traslados',
     icon: SlidersHorizontal,
-  },
-  {
-    to: '/comercial/seguridad',
-    label: 'Roles y permisos',
-    icon: ShieldCheck,
   },
 ];

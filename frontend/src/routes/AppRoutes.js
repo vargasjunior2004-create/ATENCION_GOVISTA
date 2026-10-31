@@ -14,7 +14,6 @@ import SalesList from '../modules/comercial/pages/SalesList';
 import CustomersList from '../modules/comercial/pages/CustomersList';
 import CustomerDetail from '../modules/comercial/pages/CustomerDetail';
 import ContractDetail from '../modules/comercial/pages/ContractDetail';
-import SecurityModule from '../modules/comercial/pages/SecurityModule';
 import TransferTariffs from '../modules/comercial/pages/TransferTariffs';
 import { AdminRoute, ProtectedRoute, PublicRoute } from './guards';
 import LegacyRedirect from './LegacyRedirect';
@@ -47,7 +46,7 @@ export default function AppRoutes() {
             <Route path="usuarios" element={<UsersModule />} />
             <Route path="backups" element={<BackupModule />} />
             <Route path="tarifas-traslados" element={<TransferTariffs />} />
-            <Route path="seguridad" element={<SecurityModule />} />
+            <Route path="seguridad" element={<Navigate to="/comercial/usuarios?seccion=seguridad" replace />} />
           </Route>
         </Route>
 
