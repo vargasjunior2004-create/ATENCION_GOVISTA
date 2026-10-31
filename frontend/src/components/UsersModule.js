@@ -13,12 +13,43 @@ export default function UsersModule() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [deletingUser, setDeletingUser] = useState(null);
+  const [roleUser, setRoleUser] = useState(null);
+  const [roleAssignments, setRoleAssignments] = useState([]);
+  const [roles, setRoles] = useState([]);
+  const [selectedRole, setSelectedRole] = useState('');
 
   const loadUsers = useCallback(async () => {
     try { setUsers(await api.getUsers()); } catch (err) { console.error(err); } finally { setLoading(false); }
   }, []);
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
+
+  const openRoles = async (user) => {
+    setRoleUser(user); setSelectedRole(''); setError('');
+    try {
+      const [assigned, available] = await Promise.all([
+        api.getUserRoles(user.id), api.getRoles(),
+      ]);
+      setRoleAssignments(assigned); setRoles(available);
+    } catch (err) { setError(err.error || 'No fue posible cargar los roles.'); }
+  };
+
+  const assignRole = async () => {
+    if (!selectedRole || !roleUser) return;
+    try {
+      await api.assignUserRole(roleUser.id, Number(selectedRole));
+      setRoleAssignments(await api.getUserRoles(roleUser.id));
+      setSelectedRole(''); setSuccess('Rol asignado correctamente.');
+    } catch (err) { setError(err.error || 'No fue posible asignar el rol.'); }
+  };
+
+  const revokeRole = async (assignment) => {
+    try {
+      await api.revokeUserRole(assignment.id);
+      setRoleAssignments(await api.getUserRoles(roleUser.id));
+      setSuccess('Rol revocado correctamente.');
+    } catch (err) { setError(err.error || 'No fue posible revocar el rol.'); }
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -106,6 +137,18 @@ export default function UsersModule() {
         </div>
       )}
 
+      {roleUser && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setRoleUser(null)}>
+          <Card className="w-full max-w-lg p-6 space-y-5" onClick={(e) => e.stopPropagation()}>
+            <div><h3 className="text-lg font-black text-slate-900">Roles de {roleUser.name}</h3><p className="text-sm text-slate-500 mt-1">El rol permanente no reemplaza una función temporal.</p></div>
+            {error && <Alert type="error">{error}</Alert>}
+            <div className="space-y-2"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Roles asignados</p>{roleAssignments.length === 0 ? <p className="text-sm text-slate-500">No tiene roles RBAC asignados.</p> : roleAssignments.filter((assignment) => assignment.active).map((assignment) => <div key={assignment.id} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2"><span className="text-sm font-semibold text-slate-700">{assignment.roleName}</span><Button variant="danger" size="sm" onClick={() => revokeRole(assignment)}>Revocar</Button></div>)}</div>
+            <div className="flex gap-2"><Select label="Agregar rol" value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)}><option value="">Seleccionar...</option>{roles.filter((role) => !role.is_system_role && !roleAssignments.some((assignment) => assignment.active && assignment.role === role.id)).map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</Select><Button className="mt-6" onClick={assignRole} disabled={!selectedRole}>Asignar</Button></div>
+            <Button variant="secondary" onClick={() => setRoleUser(null)}>Cerrar</Button>
+          </Card>
+        </div>
+      )}
+
       {/* Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowForm(false)}>
@@ -152,7 +195,8 @@ export default function UsersModule() {
                   <Badge color={u.active ? 'green' : 'red'}>{u.active ? 'Activo' : 'Inactivo'}</Badge>
                 </td>
                 <td className="px-4 py-3 space-x-1">
-                  <Button variant="ghost" size="sm" onClick={() => openEdit(u)}>Editar</Button>
+                   <Button variant="ghost" size="sm" onClick={() => openEdit(u)}>Editar</Button>
+                   <Button variant="ghost" size="sm" onClick={() => openRoles(u)}>Roles</Button>
                   <Button variant="danger" size="sm" onClick={() => setDeletingUser(u)}>Eliminar</Button>
                   <Button variant={u.active ? 'danger' : 'success'} size="sm" onClick={() => toggleActive(u)}>
                     {u.active ? 'Desactivar' : 'Activar'}
@@ -179,6 +223,7 @@ export default function UsersModule() {
             </div>
             <div className="flex gap-2 pt-1">
               <Button variant="ghost" size="sm" onClick={() => openEdit(u)} className="flex-1">Editar</Button>
+               <Button variant="ghost" size="sm" onClick={() => openRoles(u)} className="flex-1">Roles</Button>
               <Button variant="danger" size="sm" onClick={() => setDeletingUser(u)} className="flex-1">Eliminar</Button>
               <Button variant={u.active ? 'danger' : 'success'} size="sm" onClick={() => toggleActive(u)} className="flex-1">
                 {u.active ? 'Desactivar' : 'Activar'}
