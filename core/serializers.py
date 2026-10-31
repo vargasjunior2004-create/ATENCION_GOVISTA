@@ -1,10 +1,12 @@
 from decimal import Decimal
+from django.db import connection
 
 from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_field
 from .models import (
     User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
     TarifaTraslado, TarifaTrasladoHistorial, TrasladoExterno,
+    InventarioMovimiento,
 )
 from .domain import (
     SERVICE_TYPE_LABELS, SERVICE_TYPE_FAMILY, SERVICE_TYPE_TO_PLAN_TYPE,
@@ -451,6 +453,10 @@ class SaleCreateSerializer(serializers.Serializer):
     transferZone = serializers.CharField(required=False, allow_blank=True, max_length=120)
     transferReferences = serializers.CharField(required=False, allow_blank=True, max_length=500)
     transferHasSketch = serializers.BooleanField(required=False, allow_null=True)
+    equipmentDelivered = serializers.BooleanField(
+        source='equipment_delivered', required=False, allow_null=True)
+    equipmentSerial = serializers.CharField(
+        source='equipment_serial', required=False, allow_blank=True, max_length=255)
 
     def validate(self, attrs):
         catalog = request_type_catalog()
@@ -470,6 +476,42 @@ class SaleCreateSerializer(serializers.Serializer):
         requires_technical_visit = attrs.get('requires_technical_visit')
         debt_applies = attrs.get('debt_applies', False)
         debt_amount = attrs.get('debt_amount')
+        equipment_delivered = attrs.get('equipment_delivered')
+        equipment_serial = (attrs.get('equipment_serial') or '').strip().upper()
+
+        if mode == MODO_RETIRO:
+            if equipment_delivered is None:
+                raise serializers.ValidationError(
+                    {'equipmentDelivered': 'Indique si el cliente entregó equipo'})
+            if equipment_delivered:
+                if not equipment_serial:
+                    raise serializers.ValidationError(
+                        {'equipmentSerial': 'Ingrese la serie del equipo entregado'})
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT o.serie
+                        FROM public.onu AS o
+                        WHERE LOWER(TRIM(o.serie)) = LOWER(TRIM(%s))
+                        LIMIT 1
+                        """,
+                        [equipment_serial],
+                    )
+                    registered = cursor.fetchone()
+                if registered is None:
+                    raise serializers.ValidationError(
+                        {'equipmentSerial': 'La serie no está registrada en inventario'})
+                if InventarioMovimiento.objects.filter(
+                        serie__iexact=registered[0],
+                        estado=InventarioMovimiento.ESTADO_PENDIENTE).exists():
+                    raise serializers.ValidationError(
+                        {'equipmentSerial': 'La serie ya tiene una recepción pendiente'})
+                attrs['equipment_serial'] = registered[0]
+            else:
+                attrs['equipment_serial'] = ''
+        else:
+            attrs['equipment_delivered'] = None
+            attrs['equipment_serial'] = ''
 
         if is_rehire:
             if equipment_retained is None:
@@ -660,6 +702,8 @@ class SaleCreateSerializer(serializers.Serializer):
             requires_technical_visit=validated_data.get('requires_technical_visit'),
             debt_applies=validated_data.get('debt_applies', False),
             debt_amount=validated_data.get('debt_amount', Decimal('0')),
+            equipment_delivered=validated_data.get('equipment_delivered'),
+            equipment_serial=validated_data.get('equipment_serial', ''),
             createdBy=user,
         )
         if transfer_tariff is not None:
@@ -675,6 +719,14 @@ class SaleCreateSerializer(serializers.Serializer):
                 has_physical_sketch=validated_data.get('transferHasSketch'),
                 status=('recibido' if validated_data.get('transferHasSketch')
                         else 'pendiente_ubicacion'),
+                created_by=user,
+            )
+        if validated_data.get('equipment_delivered'):
+            InventarioMovimiento.objects.create(
+                sale=sale,
+                serie=validated_data['equipment_serial'],
+                tipo=InventarioMovimiento.TIPO_DEVOLUCION_DECLARADA,
+                estado=InventarioMovimiento.ESTADO_PENDIENTE,
                 created_by=user,
             )
         return sale
