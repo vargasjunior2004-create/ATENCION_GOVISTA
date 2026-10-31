@@ -936,12 +936,8 @@ class SaleDetailView(IsAdminMixin, APIView):
             'total': str(sale.total),
             'version': sale.version,
         }
-        if (hasattr(sale, 'traslado_externo')
-                or sale.idempotency_keys.exists()):
-            return Response(
-                {'error': 'No se puede eliminar la solicitud porque tiene '
-                          'dependencias o forma parte del historial.'},
-                status=status.HTTP_409_CONFLICT)
+        # La baja es lógica: no elimina la venta ni sus relaciones. Por eso
+        # puede archivarse aunque tenga traslado o claves de idempotencia.
         sale.deleted_at = timezone.now()
         sale.save(update_fields=['deleted_at'])
         from .audit import record_audit
