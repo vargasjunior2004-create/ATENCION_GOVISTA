@@ -795,6 +795,32 @@ class ContractMeterReviewView(IsAdminMixin, APIView):
         return Response(ContractSerializer(contract).data)
 
 
+class ContractMeterUpdateView(APIView):
+    """Permite que cualquier operador autenticado registre el medidor."""
+
+    def patch(self, request, pk):
+        contract = Contract.objects.filter(pk=pk).first()
+        if contract is None:
+            return Response({'error': 'Contrato no encontrado'}, status=404)
+        meter_number = (request.data.get('meter_number') or '').strip() or None
+        before = {'meter_number': contract.meter_number}
+        contract.meter_number = meter_number
+        # Un cambio de medidor requiere volver a verificarlo manualmente.
+        contract.meter_review_status = 'pendiente'
+        contract.meter_review_notes = ''
+        contract.meter_reviewed_by = None
+        contract.meter_reviewed_at = None
+        contract.save(update_fields=[
+            'meter_number', 'meter_review_status', 'meter_review_notes',
+            'meter_reviewed_by', 'meter_reviewed_at',
+        ])
+        from .audit import record_audit
+        record_audit(
+            request, 'updated', 'contract', contract.id,
+            before=before, after={'meter_number': contract.meter_number})
+        return Response(ContractSerializer(contract).data)
+
+
 class ContractDetailView(APIView):
     """Detalle de un contrato sin alterar el movimiento comercial original."""
 

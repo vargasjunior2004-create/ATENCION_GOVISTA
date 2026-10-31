@@ -313,8 +313,6 @@ export default function SaleForm() {
         date: form.date,
         clientCode: form.clientCode,
         clientName: form.clientName,
-        clientCi: form.clientCi,
-        clientPhone: form.clientPhone,
         serviceType: form.serviceType,
         requestType: form.requestType,
         additionType: isAdicion ? form.additionType : '',
@@ -325,6 +323,8 @@ export default function SaleForm() {
         planId: Number(form.planId),
       };
       if (isContract) {
+        payload.clientCi = form.clientCi;
+        payload.clientPhone = form.clientPhone;
         payload.meterNumber = form.meterNumber;
         payload.contractOrigin = form.contractOrigin;
         payload.externalSeller = form.contractOrigin === 'externo' ? form.externalSeller : '';
@@ -464,10 +464,10 @@ export default function SaleForm() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {isContract && <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Input label="CI / Carnet de identidad" name="clientCi" value={form.clientCi} onChange={handleChange} placeholder="Número de carnet" />
             <Input label="Teléfono" name="clientPhone" value={form.clientPhone} onChange={handleChange} placeholder="Número de contacto" />
-          </div>
+          </div>}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Select label="Tipo de Solicitud *" name="requestType" value={form.requestType} onChange={handleChange} required>
