@@ -127,6 +127,7 @@ const api = {
   reviewContractMeter: (id, data) => request(`/api/contracts/${id}/meter-review`, {
     method: 'PATCH', body: JSON.stringify(data),
   }),
+  getContract: (id) => request(`/api/contracts/${id}`),
 
   // Usuarios
   getUsers: () => request('/api/users'),
