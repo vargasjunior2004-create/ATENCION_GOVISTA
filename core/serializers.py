@@ -18,6 +18,7 @@ from .domain import (
     plan_is_selectable,
     motivo_categoria_de_modo, MOTIVO_CAMBIO,
 )
+from .rbac import can_register_external_sale
 
 
 def sale_catalog(serializer_or_context=None):
@@ -224,6 +225,9 @@ class CustomerSerializer(serializers.ModelSerializer):
 class ContractSerializer(serializers.ModelSerializer):
     customerId = serializers.IntegerField(source='customer_id', read_only=True)
     saleId = serializers.IntegerField(source='sale_id', read_only=True)
+    sellerUserId = serializers.IntegerField(
+        source='seller_user_id', read_only=True)
+    sellerName = serializers.CharField(source='seller_name', read_only=True)
     planLabel = serializers.SerializerMethodField()
     createdBy = serializers.SerializerMethodField()
     reviewedBy = serializers.SerializerMethodField()
@@ -234,12 +238,14 @@ class ContractSerializer(serializers.ModelSerializer):
             'id', 'number', 'customerId', 'saleId', 'service_type',
             'plan', 'planLabel', 'contracted_on', 'status', 'origin',
             'external_seller', 'meter_number', 'meter_review_status',
-            'meter_review_notes', 'reviewedBy', 'meter_reviewed_at',
+            'sellerUserId', 'sellerName', 'meter_review_notes', 'reviewedBy',
+            'meter_reviewed_at',
             'createdBy', 'created_at',
         ]
         read_only_fields = [
-            'id', 'customerId', 'saleId', 'planLabel', 'reviewedBy',
-            'meter_reviewed_at', 'createdBy', 'created_at',
+            'id', 'customerId', 'saleId', 'sellerUserId', 'sellerName',
+            'planLabel', 'reviewedBy', 'meter_reviewed_at', 'createdBy',
+            'created_at',
         ]
 
     def get_planLabel(self, obj):
@@ -415,6 +421,9 @@ class SaleSerializer(serializers.ModelSerializer):
     """Respuesta de venta con las claves exactas que consume el frontend:
     sale.Plan.label y sale.creator.name."""
     planId = serializers.IntegerField(source='plan_id', read_only=True)
+    sellerUserId = serializers.IntegerField(
+        source='seller_user_id', read_only=True)
+    sellerName = serializers.CharField(source='seller_name', read_only=True)
     Plan = serializers.SerializerMethodField()
     creator = serializers.SerializerMethodField()
     previousPlan = serializers.SerializerMethodField()
@@ -438,7 +447,7 @@ class SaleSerializer(serializers.ModelSerializer):
                   'motivoNombre', 'planFrom',
                   'serviceTypeFrom', 'previousService', 'isServiceChange',
                    'totalFrom', 'notes', 'planId', 'total', 'Plan', 'creator',
-                   'promotion', 'promotion_name',
+                   'sellerUserId', 'sellerName', 'promotion', 'promotion_name',
                    'applied_installation', 'applied_monthly', 'previousPlan']
         fields = fields + [
             'equipmentRetained', 'requiresTechnicalVisit', 'debtApplies',
@@ -534,6 +543,7 @@ class SaleCreateSerializer(serializers.Serializer):
         required=False, default='oficina')
     externalSeller = serializers.CharField(
         required=False, allow_blank=True, max_length=160)
+    sellerUserId = serializers.IntegerField(required=False, allow_null=True)
     promotionId = serializers.IntegerField(required=False, allow_null=True)
     additionType = serializers.ChoiceField(
         choices=[c[0] for c in Sale.ADDITION_TYPE_CHOICES],
@@ -583,18 +593,31 @@ class SaleCreateSerializer(serializers.Serializer):
         contract_mode = mode == 'nuevo' or is_rehire
         meter_number = (attrs.get('meterNumber') or '').strip()
         origin = attrs.get('contractOrigin', 'oficina')
-        external_seller = (attrs.get('externalSeller') or '').strip()
+        seller_user_id = attrs.get('sellerUserId')
 
         if contract_mode:
-            if origin == 'externo' and not external_seller:
-                raise serializers.ValidationError(
-                    {'externalSeller': 'Identifique al vendedor externo'})
+            if origin == 'externo':
+                seller = User.objects.filter(
+                    id=seller_user_id, active=True).first()
+                if seller is None or not can_register_external_sale(seller):
+                    raise serializers.ValidationError(
+                        {'sellerUserId':
+                         'Seleccione un usuario con asignación externa activa'})
+                attrs['sellerUser'] = seller
+                attrs['sellerName'] = seller.name
+                attrs['externalSeller'] = seller.name
+            else:
+                attrs['sellerUser'] = None
+                attrs['sellerName'] = ''
+                attrs['externalSeller'] = ''
         else:
             attrs['clientCi'] = ''
             attrs['clientPhone'] = ''
             attrs['meterNumber'] = ''
             attrs['contractOrigin'] = 'oficina'
             attrs['externalSeller'] = ''
+            attrs['sellerUser'] = None
+            attrs['sellerName'] = ''
 
         if mode == MODO_RETIRO:
             if equipment_delivered is None:
@@ -768,7 +791,6 @@ class SaleCreateSerializer(serializers.Serializer):
         attrs['plan'] = plan
         attrs['promotion'] = promotion
         attrs['meterNumber'] = meter_number
-        attrs['externalSeller'] = external_seller
         return attrs
 
     def create(self, validated_data):
@@ -844,6 +866,8 @@ class SaleCreateSerializer(serializers.Serializer):
             debt_amount=validated_data.get('debt_amount', Decimal('0')),
             equipment_delivered=validated_data.get('equipment_delivered'),
             equipment_serial=validated_data.get('equipment_serial', ''),
+            seller_user=validated_data.get('sellerUser'),
+            seller_name=validated_data.get('sellerName', ''),
             createdBy=user,
         )
         if transfer_tariff is not None:
@@ -873,6 +897,8 @@ class SaleCreateSerializer(serializers.Serializer):
                 contracted_on=sale.date,
                 origin=validated_data.get('contractOrigin', 'oficina'),
                 external_seller=validated_data.get('externalSeller', ''),
+                seller_user=validated_data.get('sellerUser'),
+                seller_name=validated_data.get('sellerName', ''),
                 meter_number=validated_data.get('meterNumber') or None,
                 created_by=user,
             )

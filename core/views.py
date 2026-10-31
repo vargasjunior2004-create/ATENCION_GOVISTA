@@ -312,6 +312,25 @@ class TemporaryAssignmentListView(PermissionMixin, APIView):
         return Response(TemporaryAssignmentSerializer(assignment).data, status=201)
 
 
+class ExternalSellerListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        now = timezone.now()
+        users = User.objects.filter(
+            active=True,
+            temporary_assignments__function__code='external_seller',
+            temporary_assignments__function__active=True,
+            temporary_assignments__status='active',
+            temporary_assignments__starts_at__lte=now,
+            temporary_assignments__ends_at__gte=now,
+        ).distinct()
+        return Response([
+            {'id': user.id, 'name': user.name}
+            for user in users.order_by('name', 'id')
+        ])
+
+
 class TemporaryAssignmentDetailView(PermissionMixin, APIView):
     def patch(self, request, pk):
         error = self.check_permission(request, 'temporary_assignments.assign')
