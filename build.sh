@@ -39,7 +39,7 @@ echo "--- Version de pg_dump instalada ---"
 # -------------------------------------------------------------------------
 
 echo "Running collectstatic..."
-python manage.py collectstatic --noinput --verbosity 2
+python manage.py collectstatic --clear --noinput --verbosity 2
 
 echo "Aplicando migraciones de base de datos..."
 python manage.py migrate --noinput
