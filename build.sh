@@ -41,6 +41,9 @@ echo "--- Version de pg_dump instalada ---"
 echo "Running collectstatic..."
 python manage.py collectstatic --noinput --verbosity 2
 
+echo "Aplicando migraciones de base de datos..."
+python manage.py migrate --noinput
+
 echo "Verificando assets del frontend..."
 FRONTEND_JS=$(sed -n 's|.*"main.js": "/static/js/\([^"]*\)".*|\1|p' frontend_build/asset-manifest.json)
 FRONTEND_CSS=$(sed -n 's|.*"main.css": "/static/css/\([^"]*\)".*|\1|p' frontend_build/asset-manifest.json)
