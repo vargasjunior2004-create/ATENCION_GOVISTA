@@ -128,6 +128,9 @@ const api = {
     method: 'PATCH', body: JSON.stringify(data),
   }),
   getContract: (id) => request(`/api/contracts/${id}`),
+  updateContractMeter: (id, meter_number) => request(`/api/contracts/${id}/meter`, {
+    method: 'PATCH', body: JSON.stringify({ meter_number }),
+  }),
 
   // Usuarios
   getUsers: () => request('/api/users'),

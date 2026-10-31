@@ -530,6 +530,8 @@ class SaleCreateSerializer(serializers.Serializer):
                 raise serializers.ValidationError(
                     {'externalSeller': 'Identifique al vendedor externo'})
         else:
+            attrs['clientCi'] = ''
+            attrs['clientPhone'] = ''
             attrs['meterNumber'] = ''
             attrs['contractOrigin'] = 'oficina'
             attrs['externalSeller'] = ''
@@ -811,7 +813,7 @@ class SaleCreateSerializer(serializers.Serializer):
                 contracted_on=sale.date,
                 origin=validated_data.get('contractOrigin', 'oficina'),
                 external_seller=validated_data.get('externalSeller', ''),
-                meter_number=validated_data.get('meterNumber', ''),
+                meter_number=validated_data.get('meterNumber') or None,
                 created_by=user,
             )
         if validated_data.get('equipment_delivered'):
