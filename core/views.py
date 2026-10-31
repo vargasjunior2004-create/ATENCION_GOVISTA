@@ -795,6 +795,23 @@ class ContractMeterReviewView(IsAdminMixin, APIView):
         return Response(ContractSerializer(contract).data)
 
 
+class ContractDetailView(APIView):
+    """Detalle de un contrato sin alterar el movimiento comercial original."""
+
+    def get(self, request, pk):
+        contract = Contract.objects.select_related(
+            'customer', 'plan', 'created_by', 'meter_reviewed_by', 'sale').filter(
+                pk=pk).first()
+        if contract is None:
+            return Response({'error': 'Contrato no encontrado'}, status=404)
+        payload = ContractSerializer(contract).data
+        payload['customer'] = CustomerSerializer(contract.customer).data
+        payload['sale'] = SaleSerializer(
+            contract.sale, context={'catalog': request_type_catalog()}).data \
+            if contract.sale else None
+        return Response(payload)
+
+
 class EquipmentBySerialView(APIView):
     """Consulta de solo lectura de un equipo físico por número de serie."""
     permission_classes = [IsAuthenticated]

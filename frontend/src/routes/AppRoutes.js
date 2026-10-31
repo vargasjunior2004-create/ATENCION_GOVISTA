@@ -13,6 +13,7 @@ import SaleForm from '../modules/comercial/pages/SaleForm';
 import SalesList from '../modules/comercial/pages/SalesList';
 import CustomersList from '../modules/comercial/pages/CustomersList';
 import CustomerDetail from '../modules/comercial/pages/CustomerDetail';
+import ContractDetail from '../modules/comercial/pages/ContractDetail';
 import TransferTariffs from '../modules/comercial/pages/TransferTariffs';
 import { AdminRoute, ProtectedRoute, PublicRoute } from './guards';
 import LegacyRedirect from './LegacyRedirect';
@@ -36,6 +37,7 @@ export default function AppRoutes() {
           <Route path="solicitudes/nueva" element={<SaleForm />} />
           <Route path="clientes" element={<CustomersList />} />
           <Route path="clientes/:id" element={<CustomerDetail />} />
+          <Route path="clientes/:id/contratos/:contractId" element={<ContractDetail />} />
 
           <Route element={<AdminRoute />}>
             <Route path="planes" element={<PlansModule />} />
