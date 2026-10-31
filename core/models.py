@@ -31,6 +31,112 @@ class User(models.Model):
         return f'{self.name} ({self.role})'
 
 
+class Role(models.Model):
+    """Rol permanente administrable del sistema."""
+    code = models.SlugField(max_length=40, unique=True)
+    name = models.CharField(max_length=120)
+    description = models.CharField(max_length=255, blank=True, default='')
+    active = models.BooleanField(default=True)
+    is_system_role = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name', 'id']
+
+
+class Permission(models.Model):
+    """Permiso granular expresado como módulo + acción."""
+    ACTION_CHOICES = [
+        ('view', 'Consultar'),
+        ('create', 'Crear'),
+        ('change', 'Modificar'),
+        ('delete', 'Eliminar'),
+        ('manage', 'Administrar'),
+        ('export', 'Exportar'),
+        ('assign', 'Asignar'),
+    ]
+
+    module = models.SlugField(max_length=60)
+    action = models.CharField(max_length=12, choices=ACTION_CHOICES)
+    name = models.CharField(max_length=120)
+    description = models.CharField(max_length=255, blank=True, default='')
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['module', 'action']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['module', 'action'], name='unique_permission_module_action')
+        ]
+
+    @property
+    def code(self):
+        return f'{self.module}.{self.action}'
+
+
+class RolePermission(models.Model):
+    role = models.ForeignKey(Role, on_delete=models.CASCADE, related_name='role_permissions')
+    permission = models.ForeignKey(Permission, on_delete=models.CASCADE, related_name='role_permissions')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['role', 'permission'], name='unique_role_permission')
+        ]
+
+
+class UserRole(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='role_assignments')
+    role = models.ForeignKey(Role, on_delete=models.PROTECT, related_name='user_assignments')
+    assigned_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='roles_assigned')
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['user', 'active'])]
+
+
+class TemporaryFunction(models.Model):
+    """Catálogo de funciones temporales, no cargos permanentes."""
+    code = models.SlugField(max_length=40, unique=True)
+    name = models.CharField(max_length=120)
+    description = models.CharField(max_length=255, blank=True, default='')
+    active = models.BooleanField(default=True)
+
+
+class TemporaryAssignment(models.Model):
+    STATUS_CHOICES = [
+        ('scheduled', 'Programada'),
+        ('active', 'Activa'),
+        ('finished', 'Finalizada'),
+        ('revoked', 'Revocada'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.PROTECT, related_name='temporary_assignments')
+    function = models.ForeignKey(
+        TemporaryFunction, on_delete=models.PROTECT, related_name='assignments')
+    assigned_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='temporary_assignments_created')
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField()
+    finished_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default='scheduled')
+    notes = models.CharField(max_length=500, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-starts_at', '-id']
+        indexes = [
+            models.Index(fields=['user', 'function', 'status']),
+            models.Index(fields=['starts_at', 'ends_at']),
+        ]
+
+
 class Plan(models.Model):
     """Plan de servicio. total = monthly + installation (regla de negocio)."""
     TYPE_CHOICES = [('internet', 'internet'), ('tv', 'tv'), ('combo', 'combo')]
