@@ -177,6 +177,8 @@ Catalogo administrable de motivos para cambios de plan y retiros (solo admin). R
 - Crear, editar, activar/desactivar, eliminar
 - Notificaciones de exito al crear o editar usuario
 - Admin no puede eliminarse a si mismo
+- Roles permanentes, permisos y asignaciones temporales se administran dentro de `/comercial/usuarios`, en la seccion **Permisos y asignaciones**
+- La ruta anterior `/comercial/seguridad` redirige a esa seccion para conservar enlaces guardados
 
 ### Sesion
 
@@ -261,6 +263,7 @@ Sales_Tracker/
 | `/comercial/promociones` | Promociones | Admin |
 | `/comercial/usuarios` | Usuarios | Admin |
 | `/comercial/backups` | Copias de seguridad | Admin |
+| `/comercial/seguridad` | Redirige a permisos y asignaciones dentro de Usuarios | Admin |
 
 Los filtros del historial se guardan en la URL (`from`, `to`, `requestType`, `serviceType`, `format`, `motivos`, `page`) y se restauran al volver a la pantalla.
 

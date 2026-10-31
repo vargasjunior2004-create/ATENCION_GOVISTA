@@ -1,10 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import { Button, Input, Select, Card, Alert, Badge } from './ui';
+import SecurityModule from '../modules/comercial/pages/SecurityModule';
 
 const emptyUser = { name: '', password: '', role: 'ventas' };
 
 export default function UsersModule() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const section = searchParams.get('seccion') === 'seguridad'
+    ? 'seguridad'
+    : 'usuarios';
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -101,16 +107,52 @@ export default function UsersModule() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Usuarios</h1>
-          <p className="text-sm text-slate-400 mt-1">Gestion de cuentas de usuario</p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-600">
+            Administración comercial
+          </p>
+          <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-900">
+            Usuarios y accesos
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Cuentas, roles y asignaciones temporales en un solo lugar.
+          </p>
         </div>
-        <Button onClick={openNew}>+ Agregar Usuario</Button>
+        {section === 'usuarios' && <Button onClick={openNew}>+ Agregar Usuario</Button>}
       </div>
 
-      {success && <Alert type="success">{success}</Alert>}
+      <div className="flex gap-2 border-b border-slate-200" role="tablist" aria-label="Administración de usuarios">
+        {[
+          { id: 'usuarios', label: 'Cuentas y roles' },
+          { id: 'seguridad', label: 'Permisos y asignaciones' },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            id={`users-tab-${tab.id}`}
+            type="button"
+            role="tab"
+            aria-selected={section === tab.id}
+            aria-controls={`users-panel-${tab.id}`}
+            onClick={() => setSearchParams(tab.id === 'usuarios' ? {} : { seccion: 'seguridad' })}
+            className={`-mb-px border-b-2 px-4 py-3 text-sm font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 ${
+              section === tab.id
+                ? 'border-brand-600 text-brand-700'
+                : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
+      {section === 'seguridad' ? (
+        <div id="users-panel-seguridad" role="tabpanel" aria-labelledby="users-tab-seguridad">
+          <SecurityModule />
+        </div>
+      ) : (
+      <div id="users-panel-usuarios" role="tabpanel" aria-labelledby="users-tab-usuarios" className="space-y-6">
+      {success && <Alert type="success">{success}</Alert>}
       {/* Delete confirmation modal */}
       {deletingUser && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setDeletingUser(null)}>
@@ -232,6 +274,8 @@ export default function UsersModule() {
           </Card>
         ))}
       </div>
+      </div>
+      )}
     </div>
   );
 }
