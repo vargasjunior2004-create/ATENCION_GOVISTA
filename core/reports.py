@@ -362,7 +362,7 @@ def build_sales_png(from_date, to_date, request_type=None, service_type=None,
     if show_motivos:
         headers.append('MOTIVO')
         col_widths.append(200)
-    headers += ['MONTO', 'OPERADOR']
+    headers += ['MONTO TOTAL', 'OPERADOR']
     col_widths += [120, 240]
     row_height = 40
     padding = 16

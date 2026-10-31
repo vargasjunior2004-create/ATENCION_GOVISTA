@@ -14,6 +14,7 @@ import SalesList from '../modules/comercial/pages/SalesList';
 import TransferTariffs from '../modules/comercial/pages/TransferTariffs';
 import { AdminRoute, ProtectedRoute, PublicRoute } from './guards';
 import LegacyRedirect from './LegacyRedirect';
+import EquipmentPage from '../modules/equipos/EquipmentPage';
 
 export default function AppRoutes() {
   return (
@@ -24,6 +25,7 @@ export default function AppRoutes() {
 
       <Route element={<ProtectedRoute />}>
         <Route path="/" element={<ModuleSelector />} />
+        <Route path="/equipos" element={<EquipmentPage />} />
 
         <Route path="/comercial" element={<ComercialLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
