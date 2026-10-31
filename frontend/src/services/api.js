@@ -137,6 +137,17 @@ const api = {
   createUser: (data) => request('/api/users', { method: 'POST', body: JSON.stringify(data) }),
   updateUser: (id, data) => request(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteUser: (id) => request(`/api/users/${id}`, { method: 'DELETE' }),
+  getRoles: () => request('/api/roles'),
+  getPermissions: () => request('/api/permissions'),
+  createRole: (data) => request('/api/roles', { method: 'POST', body: JSON.stringify(data) }),
+  updateRole: (id, data) => request(`/api/roles/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  getUserRoles: (id) => request(`/api/users/${id}/roles`),
+  assignUserRole: (id, role) => request(`/api/users/${id}/roles`, { method: 'POST', body: JSON.stringify({ role }) }),
+  revokeUserRole: (id) => request(`/api/user-roles/${id}`, { method: 'DELETE' }),
+  getTemporaryFunctions: () => request('/api/temporary-functions'),
+  getTemporaryAssignments: () => request('/api/temporary-assignments'),
+  createTemporaryAssignment: (data) => request('/api/temporary-assignments', { method: 'POST', body: JSON.stringify(data) }),
+  finishTemporaryAssignment: (id, status) => request(`/api/temporary-assignments/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
 
   // Clientes
   searchCustomers: (q) => {
