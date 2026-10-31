@@ -60,6 +60,8 @@ const formatDate = (date) => {
   return `${day}/${month}/${year}`;
 };
 
+const formatDateTime = (value) => value ? new Date(value).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+
 function EyeButton({ onClick }) {
   return (
     <button
@@ -77,13 +79,14 @@ function EyeButton({ onClick }) {
   );
 }
 
-function SaleCard({ sale, isAdmin, onPreview, onEdit, onDelete, requestMode, requestLabel, showMotivos }) {
+function SaleCard({ sale, isAdmin, archived, onPreview, onEdit, onDelete, onRestore, requestMode, requestLabel, showMotivos }) {
   return (
     <Card className="p-4 space-y-3">
       <div className="flex items-start justify-between">
         <div>
           <p className="font-semibold text-slate-900">{sale.clientName}</p>
           <p className="text-sm text-slate-400">{sale.clientCode} &middot; {sale.date}</p>
+          {archived && <p className="mt-1 text-xs text-amber-700">Archivada: {formatDateTime(sale.archivedAt)} · {sale.archivedBy}</p>}
         </div>
         <Badge color={MODO_COLOR[requestMode(sale.requestType)]}>{requestLabel(sale)}</Badge>
       </div>
@@ -123,8 +126,10 @@ function SaleCard({ sale, isAdmin, onPreview, onEdit, onDelete, requestMode, req
               <EyeButton onClick={() => onPreview(sale)} />
               {isAdmin && (
                 <>
-                  <Button variant="ghost" size="sm" onClick={() => onEdit(sale)}>Editar</Button>
-                  <Button variant="danger" size="sm" onClick={() => onDelete(sale)}>Archivar</Button>
+                  {!archived && <Button variant="ghost" size="sm" onClick={() => onEdit(sale)}>Editar</Button>}
+                  {archived
+                    ? <Button variant="success" size="sm" onClick={() => onRestore(sale)}>Restaurar</Button>
+                    : <Button variant="danger" size="sm" onClick={() => onDelete(sale)}>Archivar</Button>}
                 </>
               )}
             </div>
@@ -157,6 +162,7 @@ export default function SalesList() {
   const [generatingReport, setGeneratingReport] = useState(false);
   const [msg, setMsg] = useState('');
   const [deletingSale, setDeletingSale] = useState(null);
+  const [archived, setArchived] = useState(searchParams.get('archived') === 'true');
   const [previewSale, setPreviewSale] = useState(null);
 
   // El catalogo es administrable: etiqueta y color del movimiento salen de
@@ -209,7 +215,7 @@ export default function SalesList() {
     }
     setLoading(true);
     try {
-      const res = await api.getSales(from, to, requestType, p, 25, serviceType);
+      const res = await api.getSales(from, to, requestType, p, 25, serviceType, archived);
       setSales(res.items);
       setPagination({ total: res.total, total_pages: res.total_pages, page: res.page });
       setPage(res.page);
@@ -229,13 +235,13 @@ export default function SalesList() {
     } finally {
       setLoading(false);
     }
-  }, [from, to, requestType, serviceType, reportFormat, showMotivos, hasSelection, searchParams, setSearchParams]);
+  }, [from, to, requestType, serviceType, reportFormat, showMotivos, archived, hasSelection, searchParams, setSearchParams]);
 
   const filtersMounted = useRef(false);
   useEffect(() => {
     loadSales(filtersMounted.current ? 1 : initialPage);
     filtersMounted.current = true;
-  }, [hasSelection]);
+  }, [hasSelection, archived]);
   useEffect(() => {
     if (isAdmin) api.getPlans().then(setPlans).catch(() => {});
   }, [isAdmin]);
@@ -313,11 +319,27 @@ export default function SalesList() {
       await api.deleteSale(deletingSale.id);
       setDeletingSale(null);
       loadSales(page);
-      setMsg('Solicitud eliminada correctamente.');
+       setMsg('Solicitud archivada correctamente.');
     } catch (err) {
       setMsg(err.error || 'Error al archivar la solicitud');
       setDeletingSale(null);
     }
+  };
+
+  const handleRestore = async (sale) => {
+    try {
+      await api.restoreSale(sale.id);
+      setMsg('Solicitud restaurada correctamente.');
+      loadSales(page);
+    } catch (err) {
+      setMsg(err.error || 'Error al restaurar la solicitud');
+    }
+  };
+
+  const changeArchiveView = (value) => {
+    setArchived(value);
+    setPage(1);
+    setMsg('');
   };
 
   const handleGenerateReport = async () => {
@@ -357,6 +379,12 @@ export default function SalesList() {
       <div>
         <h1 className="text-2xl font-black text-slate-900 tracking-tight">Historial de Solicitudes</h1>
         <p className="text-sm text-slate-400 mt-1">Consulta y gestion de solicitudes registradas</p>
+        {isAdmin && (
+          <div className="mt-4 inline-flex rounded-xl bg-slate-100 p-1">
+            <button type="button" onClick={() => changeArchiveView(false)} className={`rounded-lg px-4 py-2 text-xs font-bold ${!archived ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500'}`}>Activas</button>
+            <button type="button" onClick={() => changeArchiveView(true)} className={`rounded-lg px-4 py-2 text-xs font-bold ${archived ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500'}`}>Archivadas</button>
+          </div>
+        )}
       </div>
 
       {/* Filters */}
@@ -597,7 +625,7 @@ export default function SalesList() {
               <tbody className="divide-y divide-slate-50">
                 {sales.map((s) => (
                   <tr key={s.id} className="hover:bg-brand-50/30 transition-colors">
-                    <td className="px-5 py-3.5 text-slate-500">{s.date}</td>
+                    <td className="px-5 py-3.5 text-slate-500">{s.date}{archived && <div className="mt-1 text-[11px] text-amber-700">{formatDateTime(s.archivedAt)} · {s.archivedBy}</div>}</td>
                     <td className="px-5 py-3.5 text-slate-500 font-mono text-xs">{s.clientCode}</td>
                     <td className="px-5 py-3.5 font-medium text-slate-900">{s.clientName}</td>
                     <td className="px-5 py-3.5"><Badge color={MODO_COLOR[requestMode(s.requestType)]}>{requestLabel(s)}</Badge></td>
@@ -616,8 +644,10 @@ export default function SalesList() {
                         <EyeButton onClick={() => setPreviewSale(s)} />
                         {isAdmin && (
                           <>
-                            <Button variant="ghost" size="sm" onClick={() => startEdit(s)}>Editar</Button>
-                            <Button variant="danger" size="sm" onClick={() => setDeletingSale(s)}>Archivar</Button>
+                            {!archived && <Button variant="ghost" size="sm" onClick={() => startEdit(s)}>Editar</Button>}
+                            {archived
+                              ? <Button variant="success" size="sm" onClick={() => handleRestore(s)}>Restaurar</Button>
+                              : <Button variant="danger" size="sm" onClick={() => setDeletingSale(s)}>Archivar</Button>}
                           </>
                         )}
                       </div>
@@ -631,7 +661,7 @@ export default function SalesList() {
           {/* Mobile cards */}
           <div className="md:hidden space-y-3">
             {sales.map((s) => (
-              <SaleCard key={s.id} sale={s} isAdmin={isAdmin} onPreview={setPreviewSale} onEdit={startEdit} onDelete={(sale) => setDeletingSale(sale)} requestMode={requestMode} requestLabel={requestLabel} showMotivos={showMotivosColumn} />
+              <SaleCard key={s.id} sale={s} isAdmin={isAdmin} archived={archived} onPreview={setPreviewSale} onEdit={startEdit} onDelete={(sale) => setDeletingSale(sale)} onRestore={handleRestore} requestMode={requestMode} requestLabel={requestLabel} showMotivos={showMotivosColumn} />
             ))}
           </div>
 

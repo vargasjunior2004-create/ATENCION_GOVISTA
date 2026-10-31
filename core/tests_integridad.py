@@ -97,6 +97,18 @@ class ProtectedDeleteTests(TestCase):
         self.assertEqual(listed.status_code, 200)
         self.assertNotIn(sale.id, [row['id'] for row in listed.json()['items']])
 
+    def test_admin_can_restore_archived_sale(self):
+        sale = Sale.objects.create(
+            date=date.today(), clientCode='RESTORE-1', clientName='PRUEBA RESTAURAR',
+            serviceType='internet', plan=self.plan, total=150,
+            createdBy=self.admin, deleted_at=date.today())
+        response = self.client.post(
+            f'/api/sales/{sale.id}/restore',
+            HTTP_AUTHORIZATION=f'Bearer {self.token()}')
+        self.assertEqual(response.status_code, 204)
+        sale.refresh_from_db()
+        self.assertIsNone(sale.deleted_at)
+
     def test_edit_with_stale_version_returns_409(self):
         sale = Sale.objects.create(
             date=date.today(), clientCode='VERSION-1', clientName='PRUEBA',
