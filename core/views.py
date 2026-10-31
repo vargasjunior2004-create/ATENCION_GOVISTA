@@ -100,9 +100,16 @@ def _user_payload(user):
 
 
 class IsAdminMixin:
+    permission_code = None
+
     def check_admin(self, request):
         user = request.user
-        if not user or not getattr(user, 'active', True) or user.role != 'admin':
+        allowed = (
+            user and getattr(user, 'active', True)
+            and (has_permission(user, self.permission_code)
+                 if self.permission_code else getattr(user, 'role', None) == 'admin')
+        )
+        if not allowed:
             return Response({'error': 'Se requieren permisos de administrador'},
                             status=status.HTTP_403_FORBIDDEN)
         return None
@@ -129,6 +136,27 @@ class PermissionListView(PermissionMixin, APIView):
         return Response(PermissionSerializer(
             Permission.objects.filter(active=True).order_by('module', 'action'),
             many=True).data)
+
+
+class AuditLogListView(PermissionMixin, APIView):
+    permission_code = 'audit.view'
+
+    def get(self, request):
+        error = self.check_permission(request)
+        if error:
+            return error
+        events = AuditLog.objects.select_related('actor').all()[:200]
+        return Response([{
+            'id': event.id,
+            'action': event.action,
+            'entity': event.entity,
+            'entityId': event.entity_id,
+            'actor': event.actor.name if event.actor else 'Sistema',
+            'before': event.before,
+            'after': event.after,
+            'ip': event.ip,
+            'createdAt': event.created_at,
+        } for event in events])
 
 
 class RoleListView(PermissionMixin, APIView):
@@ -396,6 +424,7 @@ class ChangePasswordView(APIView):
     post=extend_schema(request=PlanSerializer, responses={201: PlanSerializer, 400: dict}),
 )
 class PlanListView(IsAdminMixin, APIView):
+    permission_code = 'commercial_config.manage'
     def get(self, request):
         error = self.check_admin(request)
         if error:
@@ -422,6 +451,7 @@ class PlanListView(IsAdminMixin, APIView):
     delete=extend_schema(responses={204: None, 400: dict, 404: dict}),
 )
 class PlanDetailView(IsAdminMixin, APIView):
+    permission_code = 'commercial_config.manage'
     def _get_plan(self, pk):
         try:
             return Plan.objects.get(id=pk)
@@ -487,6 +517,7 @@ class ActiveRequestTypesView(APIView):
     post=extend_schema(request=MotivoSerializer, responses={201: MotivoSerializer, 400: dict}),
 )
 class MotivoListView(IsAdminMixin, APIView):
+    permission_code = 'commercial_config.manage'
     """Catalogo administrable de motivos (solo administradores)."""
 
     def get(self, request):
@@ -536,6 +567,7 @@ class ActiveMotivosView(APIView):
     delete=extend_schema(responses={204: None, 400: dict, 404: dict}),
 )
 class MotivoDetailView(IsAdminMixin, APIView):
+    permission_code = 'commercial_config.manage'
     def _get_motivo(self, pk):
         try:
             return Motivo.objects.get(id=pk)
@@ -583,6 +615,7 @@ class MotivoDetailView(IsAdminMixin, APIView):
     post=extend_schema(request=PromotionWriteSerializer, responses={201: PromotionSerializer, 400: dict}),
 )
 class PromotionListView(IsAdminMixin, APIView):
+    permission_code = 'commercial_config.manage'
     def get(self, request):
         error = self.check_admin(request)
         if error:
@@ -637,6 +670,7 @@ class PromotionListView(IsAdminMixin, APIView):
     delete=extend_schema(responses={204: None, 400: dict, 404: dict}),
 )
 class PromotionDetailView(IsAdminMixin, APIView):
+    permission_code = 'commercial_config.manage'
     def _get_promo(self, pk):
         try:
             return Promotion.objects.get(id=pk)
@@ -765,6 +799,7 @@ class ActiveTransferTariffsView(APIView):
     post=extend_schema(request=dict, responses={201: TarifaTrasladoSerializer, 400: dict}),
 )
 class TransferTariffListView(IsAdminMixin, APIView):
+    permission_code = 'commercial_config.manage'
     def get(self, request):
         error = self.check_admin(request)
         if error:
@@ -810,6 +845,7 @@ class TransferTariffListView(IsAdminMixin, APIView):
     put=extend_schema(request=dict, responses={200: TarifaTrasladoSerializer, 400: dict, 404: dict}),
 )
 class TransferTariffDetailView(IsAdminMixin, APIView):
+    permission_code = 'commercial_config.manage'
     def _get(self, pk):
         try:
             return TarifaTraslado.objects.get(pk=pk)
@@ -865,6 +901,7 @@ class TransferTariffDetailView(IsAdminMixin, APIView):
 
 @extend_schema(responses={200: TarifaTrasladoHistorialSerializer(many=True), 404: dict})
 class TransferTariffHistoryView(IsAdminMixin, APIView):
+    permission_code = 'commercial_config.view'
     def get(self, request, pk):
         error = self.check_admin(request)
         if error:
@@ -940,7 +977,7 @@ class CustomerDetailView(APIView):
         })
 
     def put(self, request, pk):
-        if getattr(request.user, 'role', None) != 'admin':
+        if not has_permission(request.user, 'customers.change'):
             return Response(
                 {'error': 'Solo administradores pueden editar clientes'}, status=403)
         customer = self.get_customer(pk)
@@ -1091,6 +1128,7 @@ class EquipmentBySerialView(APIView):
 
 
 class InventoryPendingListView(IsAdminMixin, APIView):
+    permission_code = 'inventory.manage'
     def get(self, request):
         error = self.check_admin(request)
         if error:
@@ -1115,6 +1153,7 @@ class InventoryPendingListView(IsAdminMixin, APIView):
 
 
 class InventoryConfirmReceptionView(IsAdminMixin, APIView):
+    permission_code = 'inventory.manage'
     def post(self, request, pk):
         error = self.check_admin(request)
         if error:
@@ -1369,6 +1408,7 @@ class SaleListView(APIView):
     delete=extend_schema(responses={204: None, 404: dict, 409: dict}),
 )
 class SaleDetailView(IsAdminMixin, APIView):
+    permission_code = 'comercial.change'
     def delete(self, request, pk):
         error = self.check_admin(request)
         if error:
@@ -1685,6 +1725,7 @@ class SaleDetailView(IsAdminMixin, APIView):
     post=extend_schema(request=UserWriteSerializer, responses={201: UserSerializer, 400: dict}),
 )
 class SaleRestoreView(IsAdminMixin, APIView):
+    permission_code = 'comercial.change'
     def post(self, request, pk):
         error = self.check_admin(request)
         if error:
@@ -1707,6 +1748,7 @@ class SaleRestoreView(IsAdminMixin, APIView):
 
 
 class UserListView(IsAdminMixin, APIView):
+    permission_code = 'users.manage'
     def get(self, request):
         error = self.check_admin(request)
         if error:
@@ -1735,6 +1777,7 @@ class UserListView(IsAdminMixin, APIView):
     delete=extend_schema(responses={204: None, 400: dict, 404: dict, 409: dict}),
 )
 class UserDetailView(IsAdminMixin, APIView):
+    permission_code = 'users.manage'
     def delete(self, request, pk):
         error = self.check_admin(request)
         if error:
@@ -2064,6 +2107,7 @@ def _first_error(serializer):
 
 @extend_schema(exclude=True)
 class BackupListView(IsAdminMixin, APIView):
+    permission_code = 'roles.manage'
     """Historial de respaldos. Solo metadatos: el archivo nunca se conserva."""
 
     def get(self, request):
@@ -2138,6 +2182,7 @@ class BackupListView(IsAdminMixin, APIView):
 
 @extend_schema(responses={204: None, 404: dict})
 class BackupDeleteView(IsAdminMixin, APIView):
+    permission_code = 'roles.manage'
     def delete(self, request, pk):
         error = self.check_admin(request)
         if error:
