@@ -23,7 +23,7 @@ from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
 from .models import (
     User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
-    TarifaTraslado, TarifaTrasladoHistorial, SaleIdempotencyKey,
+    TarifaTraslado, TarifaTrasladoHistorial, SaleIdempotencyKey, AuditLog,
 )
 from .serializers import (
     UserSerializer, UserWriteSerializer, PlanSerializer,
@@ -756,6 +756,9 @@ def _query_int(params, name, default, maximum=None):
 )
 class SaleListView(APIView):
     def get(self, request):
+        archived = request.query_params.get('archived', '').lower() == 'true'
+        if archived and getattr(request.user, 'role', None) != 'admin':
+            return Response({'error': 'Solo administradores pueden ver solicitudes archivadas'}, status=403)
         from_date = request.query_params.get('from')
         to_date = request.query_params.get('to')
         rtype = request.query_params.get('requestType')
@@ -800,7 +803,7 @@ class SaleListView(APIView):
                 {'error': {'serviceTypeFrom': 'Tipo de servicio desconocido'}},
                 status=status.HTTP_400_BAD_REQUEST)
         qs = Sale.objects.select_related('plan', 'planFromId', 'createdBy').filter(
-            deleted_at__isnull=True).order_by('-date', '-id')
+            deleted_at__isnull=not archived).order_by('-date', '-id')
         if from_date:
             qs = qs.filter(date__gte=from_date)
         if to_date:
@@ -827,12 +830,28 @@ class SaleListView(APIView):
         items = qs[start:end]
         total_pages = max(1, (total + page_size - 1) // page_size)
 
+        serialized = SaleSerializer(
+            items, many=True, context={'catalog': request_type_catalog()}).data
+        if archived:
+            ids = [str(item.id) for item in items]
+            audit_events = AuditLog.objects.filter(
+                entity='sale', entity_id__in=ids, action='deactivated'
+            ).select_related('actor').order_by('created_at')
+            archive_data = {}
+            for event in audit_events:
+                archive_data[event.entity_id] = {
+                    'at': event.created_at,
+                    'by': event.actor.name if event.actor else 'Sistema',
+                }
+            for item, sale in zip(serialized, items):
+                event = archive_data.get(str(sale.id))
+                item['archivedAt'] = event['at'] if event else sale.deleted_at
+                item['archivedBy'] = event['by'] if event else '—'
+
         return Response({
             # El catalogo va en el context: sin esto, get_previousService y
             # get_isServiceChange lo pedirian una vez por cada venta de la pagina.
-            'items': SaleSerializer(
-                items, many=True,
-                context={'catalog': request_type_catalog()}).data,
+            'items': serialized,
             'total': total,
             'page': page,
             'page_size': page_size,
@@ -1237,6 +1256,28 @@ class SaleDetailView(IsAdminMixin, APIView):
     get=extend_schema(responses={200: UserSerializer(many=True)}),
     post=extend_schema(request=UserWriteSerializer, responses={201: UserSerializer, 400: dict}),
 )
+class SaleRestoreView(IsAdminMixin, APIView):
+    def post(self, request, pk):
+        error = self.check_admin(request)
+        if error:
+            return error
+        try:
+            sale = Sale.objects.get(id=pk, deleted_at__isnull=False)
+        except Sale.DoesNotExist:
+            return Response({'error': 'Solicitud archivada no encontrada'}, status=404)
+
+        archived_at = sale.deleted_at
+        sale.deleted_at = None
+        sale.save(update_fields=['deleted_at'])
+        from .audit import record_audit
+        record_audit(
+            request, 'restored', 'sale', pk,
+            before={'deleted_at': archived_at.isoformat()},
+            after={'deleted_at': None},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class UserListView(IsAdminMixin, APIView):
     def get(self, request):
         error = self.check_admin(request)

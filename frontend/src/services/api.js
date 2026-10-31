@@ -102,12 +102,13 @@ const api = {
   deletePromotion: (id) => request(`/api/promotions/${id}`, { method: 'DELETE' }),
 
   // Ventas
-  getSales: (from, to, requestType, page = 1, pageSize = 25, serviceType = '') => {
+  getSales: (from, to, requestType, page = 1, pageSize = 25, serviceType = '', archived = false) => {
     const params = new URLSearchParams();
     if (from) params.set('from', from);
     if (to) params.set('to', to);
     if (requestType && requestType !== 'all') params.set('requestType', requestType);
     if (serviceType && serviceType !== 'all') params.set('serviceType', serviceType);
+    if (archived) params.set('archived', 'true');
     params.set('page', page);
     params.set('page_size', pageSize);
     return request(`/api/sales?${params.toString()}`);
@@ -115,6 +116,7 @@ const api = {
   createSale: (data) => request('/api/sales', { method: 'POST', body: JSON.stringify(data) }),
   updateSale: (id, data) => request(`/api/sales/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteSale: (id) => request(`/api/sales/${id}`, { method: 'DELETE' }),
+  restoreSale: (id) => request(`/api/sales/${id}/restore`, { method: 'POST' }),
 
   // Usuarios
   getUsers: () => request('/api/users'),

@@ -28,6 +28,7 @@ urlpatterns = [
     path('transfer-tariffs/<int:pk>/history', views.TransferTariffHistoryView.as_view()),
 
     path('sales', views.SaleListView.as_view()),
+    path('sales/<int:pk>/restore', views.SaleRestoreView.as_view()),
     path('sales/<int:pk>', views.SaleDetailView.as_view()),
     path('dashboard/stats', views.DashboardStatsView.as_view()),
 
