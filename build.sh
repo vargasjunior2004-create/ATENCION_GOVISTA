@@ -44,6 +44,13 @@ python manage.py collectstatic --clear --noinput --verbosity 2
 echo "Aplicando migraciones de base de datos..."
 python manage.py migrate --noinput
 
+if [ "${BACKFILL_CUSTOMERS:-false}" = "true" ]; then
+  echo "Ejecutando backfill autorizado de clientes y contratos históricos..."
+  python manage.py backfill_customers --apply
+else
+  echo "Backfill histórico omitido (BACKFILL_CUSTOMERS no está habilitado)."
+fi
+
 echo "Verificando assets del frontend..."
 FRONTEND_JS=$(sed -n 's|.*"main.js": "/static/js/\([^"]*\)".*|\1|p' frontend_build/asset-manifest.json)
 FRONTEND_CSS=$(sed -n 's|.*"main.css": "/static/css/\([^"]*\)".*|\1|p' frontend_build/asset-manifest.json)
