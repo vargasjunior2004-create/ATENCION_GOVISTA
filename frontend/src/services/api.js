@@ -118,6 +118,16 @@ const api = {
   deleteSale: (id) => request(`/api/sales/${id}`, { method: 'DELETE' }),
   restoreSale: (id) => request(`/api/sales/${id}/restore`, { method: 'POST' }),
 
+  // Clientes y contratos
+  searchCustomers: (q = '') => request(`/api/customers?q=${encodeURIComponent(q)}`),
+  getCustomer: (id) => request(`/api/customers/${id}`),
+  updateCustomer: (id, data) => request(`/api/customers/${id}`, {
+    method: 'PUT', body: JSON.stringify(data),
+  }),
+  reviewContractMeter: (id, data) => request(`/api/contracts/${id}/meter-review`, {
+    method: 'PATCH', body: JSON.stringify(data),
+  }),
+
   // Usuarios
   getUsers: () => request('/api/users'),
   createUser: (data) => request('/api/users', { method: 'POST', body: JSON.stringify(data) }),

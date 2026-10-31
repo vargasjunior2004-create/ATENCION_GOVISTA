@@ -55,12 +55,13 @@ export default function SaleForm() {
   const today = getToday();
   const [plans, setPlans] = useState([]);
   const [form, setForm] = useState({
-    date: today, clientCode: '', clientName: '', serviceType: 'internet',
+    date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet',
     requestType: 'nuevo_contrato', additionType: '', planFromId: '',
     serviceTypeFrom: '', motivoId: '', notes: '',
     planId: '',
     equipmentRetained: null, requiresTechnicalVisit: null,
     equipmentDelivered: null, equipmentSerial: '',
+    meterNumber: '', contractOrigin: 'oficina', externalSeller: '',
     debtApplies: false, debtAmount: '',
     transferCurrentAddress: '', transferNewAddress: '', transferZone: '',
     transferReferences: '', transferHasSketch: null,
@@ -113,7 +114,7 @@ export default function SaleForm() {
 
   const pickCustomer = (c) => {
     setSelectedCustomer(c);
-    setForm((prev) => ({ ...prev, clientCode: c.code, clientName: c.name }));
+    setForm((prev) => ({ ...prev, clientCode: c.code, clientName: c.name, clientCi: c.ci || '', clientPhone: c.phone || '' }));
     setQuery(c.name);
     setCustomers([]);
     setShowDropdown(false);
@@ -131,6 +132,7 @@ export default function SaleForm() {
   const isCambio = modo === 'cambio_plan';
   const isAdicion = modo === 'adicion';
   const isRecontratacion = form.requestType === 'recontratacion';
+  const isContract = modo === 'nuevo' || isRecontratacion;
   const isTransfer = form.requestType === 'traslado_externo';
 
   // Motivos del catalogo segun el formulario que corresponde.
@@ -311,6 +313,8 @@ export default function SaleForm() {
         date: form.date,
         clientCode: form.clientCode,
         clientName: form.clientName,
+        clientCi: form.clientCi,
+        clientPhone: form.clientPhone,
         serviceType: form.serviceType,
         requestType: form.requestType,
         additionType: isAdicion ? form.additionType : '',
@@ -320,6 +324,11 @@ export default function SaleForm() {
         notes: form.notes,
         planId: Number(form.planId),
       };
+      if (isContract) {
+        payload.meterNumber = form.meterNumber;
+        payload.contractOrigin = form.contractOrigin;
+        payload.externalSeller = form.contractOrigin === 'externo' ? form.externalSeller : '';
+      }
       if (isRecontratacion) {
         payload.equipmentRetained = form.equipmentRetained;
         payload.requiresTechnicalVisit = form.requiresTechnicalVisit;
@@ -345,7 +354,7 @@ export default function SaleForm() {
       }
       await api.createSale(payload);
       setSuccess('Registro guardado correctamente');
-       setForm({ date: today, clientCode: '', clientName: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', equipmentRetained: null, requiresTechnicalVisit: null, equipmentDelivered: null, equipmentSerial: '', debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferZone: '', transferReferences: '', transferHasSketch: null });
+       setForm({ date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', equipmentRetained: null, requiresTechnicalVisit: null, equipmentDelivered: null, equipmentSerial: '', meterNumber: '', contractOrigin: 'oficina', externalSeller: '', debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferZone: '', transferReferences: '', transferHasSketch: null });
        setEquipmentLookup(null); setEquipmentLookupError('');
       setSelectedPlan(null); setSelectedCustomer(null); setQuery(''); setCustomers([]);
       setPromotions([]); setSelectedPromotion(null); setPriceMode('normal');
@@ -455,6 +464,11 @@ export default function SaleForm() {
             )}
           </div>
 
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Input label="CI / Carnet de identidad" name="clientCi" value={form.clientCi} onChange={handleChange} placeholder="Número de carnet" />
+            <Input label="Teléfono" name="clientPhone" value={form.clientPhone} onChange={handleChange} placeholder="Número de contacto" />
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Select label="Tipo de Solicitud *" name="requestType" value={form.requestType} onChange={handleChange} required>
               {requestTypes.map((t) => (
@@ -473,13 +487,26 @@ export default function SaleForm() {
              </Select>
           </div>
 
-          {isAdicion && (
+           {isAdicion && (
             <Select label="Tipo de Adicion *" name="additionType" value={form.additionType} onChange={handleChange} required>
               <option value="">--Seleccione--</option>
               {ADDITION_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </Select>
+           )}
+
+          {isContract && (
+            <div className="space-y-4 rounded-2xl border border-sky-200 bg-sky-50/60 p-4">
+              <div><p className="text-sm font-black text-slate-800">Datos del contrato</p><p className="mt-1 text-xs text-slate-500">El medidor de luz se conserva en el contrato para detectar coincidencias posteriores.</p></div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Input label="Número de medidor de luz" name="meterNumber" value={form.meterNumber} onChange={handleChange} placeholder="Opcional si aún no está disponible" />
+                <Select label="Origen" name="contractOrigin" value={form.contractOrigin} onChange={handleChange}>
+                  <option value="oficina">OFICINA</option><option value="virtual">VIRTUAL</option><option value="externo">EXTERNO</option>
+                </Select>
+              </div>
+              {form.contractOrigin === 'externo' && <Input label="Vendedor externo *" name="externalSeller" value={form.externalSeller} onChange={handleChange} placeholder="Nombre del vendedor" required />}
+            </div>
           )}
 
           {isTransfer && (

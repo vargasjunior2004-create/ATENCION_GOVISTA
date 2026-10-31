@@ -36,6 +36,8 @@ urlpatterns = [
     path('users/<int:pk>', views.UserDetailView.as_view()),
 
     path('customers', views.CustomerListView.as_view()),
+    path('customers/<int:pk>', views.CustomerDetailView.as_view()),
+    path('contracts/<int:pk>/meter-review', views.ContractMeterReviewView.as_view()),
     path('inventario/equipos/serie/<path:serie>', views.EquipmentBySerialView.as_view()),
     path('inventario/movimientos/pendientes', views.InventoryPendingListView.as_view()),
     path('inventario/movimientos/<int:pk>/confirmar', views.InventoryConfirmReceptionView.as_view()),

@@ -22,13 +22,13 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
 from .models import (
-    User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
+    User, Customer, Contract, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
     TarifaTraslado, TarifaTrasladoHistorial, SaleIdempotencyKey, AuditLog,
     InventarioMovimiento,
 )
 from .serializers import (
     UserSerializer, UserWriteSerializer, PlanSerializer,
-    PlanPublicSerializer, CustomerSerializer, SaleSerializer,
+    PlanPublicSerializer, CustomerSerializer, ContractSerializer, SaleSerializer,
     SaleCreateSerializer, BackupSerializer,
     PromotionSerializer, PromotionWriteSerializer,
     TipoSolicitudPublicSerializer, MotivoSerializer, MotivoPublicSerializer,
@@ -679,10 +679,120 @@ class CustomerListView(APIView):
     """Busqueda de clientes por kardex o nombre (para autocompletar)."""
     def get(self, request):
         q = request.query_params.get('q', '').strip()
-        qs = Customer.objects.all().order_by('code')
+        qs = Customer.objects.all().order_by('name', 'code')
         if q:
-            qs = qs.filter(Q(code__icontains=q) | Q(name__icontains=q))
+            qs = qs.filter(
+                Q(code__icontains=q) | Q(name__icontains=q)
+                | Q(ci__icontains=q) | Q(phone__icontains=q)
+                | Q(contracts__meter_number__icontains=q)
+            ).distinct()
         return Response(CustomerSerializer(qs[:20], many=True).data)
+
+
+class CustomerDetailView(APIView):
+    """Ficha consolidada del cliente: contratos y movimientos reales."""
+
+    def get_customer(self, pk):
+        return Customer.objects.prefetch_related(
+            'contracts__plan', 'contracts__created_by',
+            'contracts__meter_reviewed_by',
+        ).filter(pk=pk).first()
+
+    def get(self, request, pk):
+        customer = self.get_customer(pk)
+        if customer is None:
+            return Response({'error': 'Cliente no encontrado'}, status=404)
+
+        contracts = list(customer.contracts.all())
+        meter_numbers = {c.meter_number for c in contracts if c.meter_number}
+        matching = Contract.objects.filter(
+            meter_number__in=meter_numbers
+        ).exclude(customer_id=customer.id).select_related(
+            'customer', 'plan')
+        matches_by_meter = {}
+        for contract in matching:
+            matches_by_meter.setdefault(contract.meter_number, []).append({
+                'id': contract.id,
+                'number': contract.number,
+                'customerId': contract.customer_id,
+                'customerName': contract.customer.name,
+                'status': contract.status,
+            })
+
+        contract_data = ContractSerializer(contracts, many=True).data
+        for item in contract_data:
+            item['meterMatches'] = matches_by_meter.get(item['meter_number'], [])
+
+        sales = Sale.objects.filter(customer=customer).select_related(
+            'plan', 'planFromId', 'createdBy').order_by('-date', '-id')
+        timeline = SaleSerializer(
+            sales, many=True, context={'catalog': request_type_catalog()}).data
+        return Response({
+            'customer': CustomerSerializer(customer).data,
+            'summary': {
+                'contracts': len(contracts),
+                'meters': len({c.meter_number for c in contracts if c.meter_number}),
+                'movements': sales.count(),
+            },
+            'contracts': contract_data,
+            'timeline': timeline,
+        })
+
+    def put(self, request, pk):
+        if getattr(request.user, 'role', None) != 'admin':
+            return Response(
+                {'error': 'Solo administradores pueden editar clientes'}, status=403)
+        customer = self.get_customer(pk)
+        if customer is None:
+            return Response({'error': 'Cliente no encontrado'}, status=404)
+        serializer = CustomerSerializer(customer, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response({'error': serializer.errors}, status=400)
+        before = CustomerSerializer(customer).data
+        customer = serializer.save()
+        from .audit import record_audit
+        record_audit(
+            request, 'updated', 'customer', customer.id,
+            before=before, after=CustomerSerializer(customer).data)
+        return Response(CustomerSerializer(customer).data)
+
+
+class ContractMeterReviewView(IsAdminMixin, APIView):
+    """Registra la comprobación manual del medidor en el otro sistema."""
+
+    def patch(self, request, pk):
+        error = self.check_admin(request)
+        if error:
+            return error
+        contract = Contract.objects.filter(pk=pk).first()
+        if contract is None:
+            return Response({'error': 'Contrato no encontrado'}, status=404)
+        review_status = request.data.get('meter_review_status')
+        if review_status not in {'pendiente', 'verificado', 'observado'}:
+            return Response(
+                {'error': 'Estado de revisión inválido'}, status=400)
+        notes = (request.data.get('meter_review_notes') or '').strip()
+        before = {
+            'meter_review_status': contract.meter_review_status,
+            'meter_review_notes': contract.meter_review_notes,
+        }
+        contract.meter_review_status = review_status
+        contract.meter_review_notes = notes
+        contract.meter_reviewed_by = request.user
+        contract.meter_reviewed_at = timezone.now()
+        contract.save(update_fields=[
+            'meter_review_status', 'meter_review_notes',
+            'meter_reviewed_by', 'meter_reviewed_at',
+        ])
+        from .audit import record_audit
+        record_audit(
+            request, 'reviewed', 'contract', contract.id,
+            before=before,
+            after={
+                'meter_review_status': contract.meter_review_status,
+                'meter_review_notes': contract.meter_review_notes,
+            })
+        return Response(ContractSerializer(contract).data)
 
 
 class EquipmentBySerialView(APIView):

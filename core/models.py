@@ -209,13 +209,85 @@ class TarifaTrasladoHistorial(models.Model):
 
 class Customer(models.Model):
     """Cliente maestro (KARDEX). Clave natural: code."""
+    STATUS_CHOICES = [
+        ('activo', 'Activo'),
+        ('inactivo', 'Inactivo'),
+        ('observado', 'Observado'),
+    ]
+
     code = models.CharField(max_length=40, unique=True)
     name = models.CharField(max_length=160)
+    ci = models.CharField(
+        max_length=30, blank=True, default='', db_index=True,
+        help_text='Carnet de identidad; puede faltar en registros históricos')
+    phone = models.CharField(max_length=40, blank=True, default='')
+    status = models.CharField(
+        max_length=12, choices=STATUS_CHOICES, default='activo')
     active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f'{self.code} {self.name}'
+
+
+class Contract(models.Model):
+    """Contrato histórico de una contratación o recontratación.
+
+    Sale conserva el movimiento comercial; este modelo conserva la relación
+    estable entre cliente, servicio y medidor de luz.
+    """
+    STATUS_CHOICES = [
+        ('activo', 'Activo'),
+        ('retirado', 'Retirado'),
+        ('suspendido', 'Suspendido'),
+        ('inactivo', 'Inactivo'),
+    ]
+    ORIGIN_CHOICES = [
+        ('oficina', 'OFICINA'),
+        ('virtual', 'VIRTUAL'),
+        ('externo', 'EXTERNO'),
+    ]
+    METER_REVIEW_CHOICES = [
+        ('pendiente', 'Pendiente'),
+        ('verificado', 'Verificado'),
+        ('observado', 'Observado'),
+    ]
+
+    number = models.CharField(max_length=40, unique=True)
+    customer = models.ForeignKey(
+        Customer, on_delete=models.PROTECT, related_name='contracts')
+    sale = models.OneToOneField(
+        'Sale', null=True, blank=True, on_delete=models.PROTECT,
+        related_name='contract')
+    service_type = models.CharField(max_length=20)
+    plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='contracts')
+    plan_name = models.CharField(max_length=120, blank=True, default='')
+    contracted_on = models.DateField()
+    status = models.CharField(
+        max_length=12, choices=STATUS_CHOICES, default='activo')
+    origin = models.CharField(
+        max_length=10, choices=ORIGIN_CHOICES, default='oficina')
+    external_seller = models.CharField(max_length=160, blank=True, default='')
+    meter_number = models.CharField(
+        max_length=80, blank=True, default='', db_index=True,
+        help_text='Número de medidor de luz')
+    meter_review_status = models.CharField(
+        max_length=12, choices=METER_REVIEW_CHOICES, default='pendiente')
+    meter_review_notes = models.CharField(max_length=500, blank=True, default='')
+    meter_reviewed_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='meter_reviews')
+    meter_reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='contracts_created')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-contracted_on', '-id']
+        indexes = [
+            models.Index(fields=['customer', 'status']),
+            models.Index(fields=['meter_number', 'status']),
+        ]
 
 
 class Sale(models.Model):

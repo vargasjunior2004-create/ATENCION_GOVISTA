@@ -11,6 +11,8 @@ import ComercialLayout from '../modules/comercial/ComercialLayout';
 import Dashboard from '../modules/comercial/pages/Dashboard';
 import SaleForm from '../modules/comercial/pages/SaleForm';
 import SalesList from '../modules/comercial/pages/SalesList';
+import CustomersList from '../modules/comercial/pages/CustomersList';
+import CustomerDetail from '../modules/comercial/pages/CustomerDetail';
 import TransferTariffs from '../modules/comercial/pages/TransferTariffs';
 import { AdminRoute, ProtectedRoute, PublicRoute } from './guards';
 import LegacyRedirect from './LegacyRedirect';
@@ -32,6 +34,8 @@ export default function AppRoutes() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="solicitudes" element={<SalesList />} />
           <Route path="solicitudes/nueva" element={<SaleForm />} />
+          <Route path="clientes" element={<CustomersList />} />
+          <Route path="clientes/:id" element={<CustomerDetail />} />
 
           <Route element={<AdminRoute />}>
             <Route path="planes" element={<PlansModule />} />
