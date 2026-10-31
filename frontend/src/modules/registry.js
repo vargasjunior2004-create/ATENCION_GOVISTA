@@ -21,6 +21,6 @@ export const MODULES = [
     name: 'Gestión de Equipos',
     description: 'Inventario, equipos instalados en clientes, cambios e historial.',
     icon: Router,
-    status: 'available',
+    status: 'soon',
   },
 ];
