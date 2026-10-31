@@ -147,10 +147,10 @@ export default function SalesList() {
   const initialPage = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
   const [from, setFrom] = useState(searchParams.get('from') || today);
   const [to, setTo] = useState(searchParams.get('to') || today);
-  const [requestType, setRequestType] = useState(searchParams.get('requestType') || '');
-  const [serviceType, setServiceType] = useState(searchParams.get('serviceType') || '');
+  const [requestType, setRequestType] = useState(searchParams.get('requestType') || 'all');
+  const [serviceType, setServiceType] = useState(searchParams.get('serviceType') || 'all');
   const [reportFormat, setReportFormat] = useState(searchParams.get('format') || '');
-  const [showMotivos, setShowMotivos] = useState(searchParams.get('motivos') || '');
+  const [showMotivos, setShowMotivos] = useState(searchParams.get('motivos') || 'no');
   const [sales, setSales] = useState([]);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -204,10 +204,11 @@ export default function SalesList() {
   });
 
   const showMotivosColumn = showMotivos === 'si';
-  const hasSelection = requestType !== '' && serviceType !== '' && reportFormat !== '' && showMotivos !== '';
+  const listReady = requestType !== '' && serviceType !== '';
+  const reportReady = listReady && reportFormat !== '' && showMotivos !== '';
 
   const loadSales = useCallback(async (p = 1, commitFilters = true) => {
-    if (!hasSelection) {
+    if (!listReady) {
       setSales([]);
       setPagination({ total: 0, total_pages: 1, page: 1 });
       if (searchParams.toString()) setSearchParams({}, { replace: true });
@@ -235,13 +236,13 @@ export default function SalesList() {
     } finally {
       setLoading(false);
     }
-  }, [from, to, requestType, serviceType, reportFormat, showMotivos, archived, hasSelection, searchParams, setSearchParams]);
+  }, [from, to, requestType, serviceType, reportFormat, showMotivos, archived, listReady, searchParams, setSearchParams]);
 
   const filtersMounted = useRef(false);
   useEffect(() => {
     loadSales(filtersMounted.current ? 1 : initialPage);
     filtersMounted.current = true;
-  }, [hasSelection, archived]);
+  }, [listReady, archived]);
   useEffect(() => {
     if (isAdmin) api.getPlans().then(setPlans).catch(() => {});
   }, [isAdmin]);
@@ -430,16 +431,16 @@ export default function SalesList() {
           <Button
             variant="primary"
             onClick={handleGenerateReport}
-            disabled={!isAdmin || !hasSelection || generatingReport}
-            className={(!isAdmin || !hasSelection) ? 'opacity-50 cursor-not-allowed' : ''}
+             disabled={!isAdmin || !reportReady || generatingReport}
+             className={(!isAdmin || !reportReady) ? 'opacity-50 cursor-not-allowed' : ''}
           >
             {generatingReport ? 'Generando...' : 'Reporte'}
           </Button>
           {!isAdmin && (
             <p className="text-xs text-slate-400">Solo los administradores pueden generar reportes desde el historial</p>
           )}
-          {isAdmin && !hasSelection && (
-            <p className="text-xs text-slate-400">Selecciona todos los filtros para habilitar el reporte</p>
+          {isAdmin && !reportReady && (
+            <p className="text-xs text-slate-400">Selecciona solicitud, servicio, mostrar motivos y formato para habilitar el reporte</p>
           )}
         </div>
       </Card>
@@ -588,13 +589,13 @@ export default function SalesList() {
       />
 
       {/* Sales */}
-      {!hasSelection ? (
+      {!listReady ? (
         <Card className="p-16 text-center">
           <svg className="w-12 h-12 text-slate-200 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
           </svg>
           <p className="text-slate-500 font-medium">Selecciona filtros para mostrar informacion</p>
-          <p className="text-xs text-slate-400 mt-1">Elige tipo de solicitud, tipo de servicio y formato, luego presiona Buscar</p>
+           <p className="text-xs text-slate-400 mt-1">Elige tipo de solicitud y tipo de servicio, luego presiona Buscar</p>
         </Card>
       ) : loading ? (
         <div className="flex items-center justify-center py-20">
