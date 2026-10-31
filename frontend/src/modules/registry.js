@@ -14,13 +14,13 @@ export const MODULES = [
     name: 'Gestion operativa',
     description: 'Tickets, atenciones, quejas, reclamos y acciones de soporte.',
     icon: Headphones,
-    status: 'available',
+    status: 'soon',
   },
   {
     id: 'equipos',
     name: 'Gestión de Equipos',
     description: 'Inventario, equipos instalados en clientes, cambios e historial.',
     icon: Router,
-    status: 'soon',
+    status: 'available',
   },
 ];
