@@ -22,12 +22,15 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
 from .models import (
-    User, Customer, Contract, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
+    User, Customer, Contract, Role, Permission, RolePermission, UserRole,
+    TemporaryFunction, TemporaryAssignment, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
     TarifaTraslado, TarifaTrasladoHistorial, SaleIdempotencyKey, AuditLog,
     InventarioMovimiento,
 )
 from .serializers import (
-    UserSerializer, UserWriteSerializer, PlanSerializer,
+    UserSerializer, UserWriteSerializer, PermissionSerializer, RoleSerializer,
+    UserRoleSerializer, TemporaryFunctionSerializer, TemporaryAssignmentSerializer,
+    PlanSerializer,
     PlanPublicSerializer, CustomerSerializer, ContractSerializer, SaleSerializer,
     SaleCreateSerializer, BackupSerializer,
     PromotionSerializer, PromotionWriteSerializer,
@@ -40,6 +43,8 @@ from .domain import (
     MODO_SIMPLE, MODO_TRASLADO,
 )
 from .reports import build_sales_pdf, build_sales_xlsx
+from .rbac import has_permission, is_system_admin
+from .audit import record_audit
 
 # Evita que dos respaldos corran a la vez. Con gunicorn --workers 2 este
 # lock es por proceso, lo cual es suficiente para el caso de un unico
@@ -101,6 +106,202 @@ class IsAdminMixin:
             return Response({'error': 'Se requieren permisos de administrador'},
                             status=status.HTTP_403_FORBIDDEN)
         return None
+
+
+class PermissionMixin:
+    permission_code = None
+
+    def check_permission(self, request, code=None):
+        if not has_permission(request.user, code or self.permission_code):
+            return Response(
+                {'error': 'No tienes permiso para realizar esta operación'},
+                status=status.HTTP_403_FORBIDDEN)
+        return None
+
+
+class PermissionListView(PermissionMixin, APIView):
+    permission_code = 'roles.view'
+
+    def get(self, request):
+        error = self.check_permission(request)
+        if error:
+            return error
+        return Response(PermissionSerializer(
+            Permission.objects.filter(active=True).order_by('module', 'action'),
+            many=True).data)
+
+
+class RoleListView(PermissionMixin, APIView):
+    def get(self, request):
+        error = self.check_permission(request, 'roles.view')
+        if error:
+            return error
+        return Response(RoleSerializer(
+            Role.objects.filter(active=True).prefetch_related(
+                'role_permissions__permission'), many=True).data)
+
+    def post(self, request):
+        error = self.check_permission(request, 'roles.manage')
+        if error:
+            return error
+        serializer = RoleSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({'error': serializer.errors}, status=400)
+        role = serializer.save()
+        self._set_permissions(role, request.data.get('permissionIds', []))
+        record_audit(request, 'created', 'role', role.id,
+                     after={'code': role.code, 'name': role.name})
+        return Response(RoleSerializer(role).data, status=201)
+
+    @staticmethod
+    def _set_permissions(role, permission_ids):
+        if permission_ids is None:
+            return
+        RolePermission.objects.filter(role=role).delete()
+        for permission in Permission.objects.filter(id__in=permission_ids, active=True):
+            RolePermission.objects.get_or_create(role=role, permission=permission)
+
+
+class RoleDetailView(PermissionMixin, APIView):
+    def get_object(self, pk):
+        return Role.objects.filter(pk=pk).first()
+
+    def get(self, request, pk):
+        error = self.check_permission(request, 'roles.view')
+        if error:
+            return error
+        role = self.get_object(pk)
+        if role is None:
+            return Response({'error': 'Rol no encontrado'}, status=404)
+        return Response(RoleSerializer(role).data)
+
+    def put(self, request, pk):
+        error = self.check_permission(request, 'roles.manage')
+        if error:
+            return error
+        role = self.get_object(pk)
+        if role is None:
+            return Response({'error': 'Rol no encontrado'}, status=404)
+        if role.is_system_role:
+            return Response({'error': 'El rol del sistema no puede modificarse'}, status=400)
+        serializer = RoleSerializer(role, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response({'error': serializer.errors}, status=400)
+        before = {'name': role.name, 'active': role.active}
+        role = serializer.save()
+        RoleListView._set_permissions(role, request.data.get('permissionIds'))
+        record_audit(request, 'updated', 'role', role.id,
+                     before=before, after={'name': role.name, 'active': role.active})
+        return Response(RoleSerializer(role).data)
+
+
+class TemporaryFunctionListView(PermissionMixin, APIView):
+    def get(self, request):
+        error = self.check_permission(request, 'temporary_assignments.view')
+        if error:
+            return error
+        return Response(TemporaryFunctionSerializer(
+            TemporaryFunction.objects.filter(active=True), many=True).data)
+
+
+class UserRoleListView(PermissionMixin, APIView):
+    def get(self, request, user_id):
+        error = self.check_permission(request, 'roles.view')
+        if error:
+            return error
+        if not User.objects.filter(pk=user_id).exists():
+            return Response({'error': 'Usuario no encontrado'}, status=404)
+        assignments = UserRole.objects.filter(user_id=user_id).select_related('user', 'role')
+        return Response(UserRoleSerializer(assignments, many=True).data)
+
+    def post(self, request, user_id):
+        error = self.check_permission(request, 'roles.manage')
+        if error:
+            return error
+        user = User.objects.filter(pk=user_id).first()
+        role = Role.objects.filter(pk=request.data.get('role'), active=True).first()
+        if user is None or role is None:
+            return Response({'error': 'Usuario o rol no encontrado'}, status=404)
+        assignment, created = UserRole.objects.get_or_create(
+            user=user, role=role, active=True,
+            defaults={'assigned_by': request.user})
+        if not created:
+            return Response({'error': 'El usuario ya tiene ese rol activo'}, status=409)
+        record_audit(request, 'assigned', 'user_role', assignment.id,
+                     after={'user_id': user.id, 'role': role.code})
+        return Response(UserRoleSerializer(assignment).data, status=201)
+
+
+class UserRoleDetailView(PermissionMixin, APIView):
+    def delete(self, request, pk):
+        error = self.check_permission(request, 'roles.manage')
+        if error:
+            return error
+        assignment = UserRole.objects.select_related('role', 'user').filter(pk=pk).first()
+        if assignment is None:
+            return Response({'error': 'Asignación de rol no encontrada'}, status=404)
+        assignment.active = False
+        assignment.revoked_at = timezone.now()
+        assignment.save(update_fields=['active', 'revoked_at'])
+        record_audit(request, 'revoked', 'user_role', assignment.id,
+                     after={'user_id': assignment.user_id, 'role': assignment.role.code})
+        return Response(status=204)
+
+
+class TemporaryAssignmentListView(PermissionMixin, APIView):
+    def get(self, request):
+        error = self.check_permission(request, 'temporary_assignments.view')
+        if error:
+            return error
+        assignments = TemporaryAssignment.objects.select_related(
+            'user', 'function', 'assigned_by').all()
+        return Response(TemporaryAssignmentSerializer(assignments, many=True).data)
+
+    def post(self, request):
+        error = self.check_permission(request, 'temporary_assignments.assign')
+        if error:
+            return error
+        serializer = TemporaryAssignmentSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({'error': serializer.errors}, status=400)
+        starts_at = serializer.validated_data['starts_at']
+        ends_at = serializer.validated_data['ends_at']
+        user = serializer.validated_data['user']
+        function = serializer.validated_data['function']
+        if starts_at >= ends_at:
+            return Response({'error': 'El inicio debe ser anterior al fin'}, status=400)
+        overlap = TemporaryAssignment.objects.filter(
+            user=user, function=function,
+            status__in=['scheduled', 'active'],
+            starts_at__lt=ends_at, ends_at__gt=starts_at).exists()
+        if overlap:
+            return Response({'error': 'Existe una asignación temporal superpuesta'}, status=409)
+        assignment = serializer.save(assigned_by=request.user)
+        record_audit(request, 'created', 'temporary_assignment', assignment.id,
+                     after={'user_id': user.id, 'function': function.code,
+                            'starts_at': starts_at.isoformat(),
+                            'ends_at': ends_at.isoformat()})
+        return Response(TemporaryAssignmentSerializer(assignment).data, status=201)
+
+
+class TemporaryAssignmentDetailView(PermissionMixin, APIView):
+    def patch(self, request, pk):
+        error = self.check_permission(request, 'temporary_assignments.assign')
+        if error:
+            return error
+        assignment = TemporaryAssignment.objects.filter(pk=pk).first()
+        if assignment is None:
+            return Response({'error': 'Asignación no encontrada'}, status=404)
+        new_status = request.data.get('status')
+        if new_status not in {'finished', 'revoked'}:
+            return Response({'error': 'Solo se puede finalizar o revocar'}, status=400)
+        before = {'status': assignment.status}
+        assignment.status = new_status
+        assignment.finished_at = timezone.now()
+        assignment.save(update_fields=['status', 'finished_at'])
+        record_audit(request, new_status, 'temporary_assignment', assignment.id,
+                     before=before, after={'status': new_status})
+        return Response(TemporaryAssignmentSerializer(assignment).data)
 
 
 @extend_schema(responses={200: dict})

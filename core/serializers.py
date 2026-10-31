@@ -4,7 +4,8 @@ from django.db import connection
 from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_field
 from .models import (
-    User, Customer, Plan, Promotion, Sale, Contract, Backup, TipoSolicitud, Motivo,
+    User, Customer, Contract, Role, Permission, RolePermission, UserRole,
+    TemporaryFunction, TemporaryAssignment, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
     TarifaTraslado, TarifaTrasladoHistorial, TrasladoExterno,
     InventarioMovimiento,
 )
@@ -153,6 +154,65 @@ class UserWriteSerializer(serializers.ModelSerializer):
         if password:
             instance.set_password(password)
         return super().update(instance, validated_data)
+
+
+class PermissionSerializer(serializers.ModelSerializer):
+    code = serializers.ReadOnlyField()
+
+    class Meta:
+        model = Permission
+        fields = ['id', 'code', 'module', 'action', 'name', 'description', 'active']
+
+
+class RoleSerializer(serializers.ModelSerializer):
+    permissions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Role
+        fields = [
+            'id', 'code', 'name', 'description', 'active',
+            'is_system_role', 'permissions', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['is_system_role', 'permissions', 'created_at', 'updated_at']
+
+    def get_permissions(self, obj):
+        permissions = Permission.objects.filter(
+            role_permissions__role=obj, active=True).order_by('module', 'action')
+        return PermissionSerializer(permissions, many=True).data
+
+
+class UserRoleSerializer(serializers.ModelSerializer):
+    roleName = serializers.CharField(source='role.name', read_only=True)
+    userName = serializers.CharField(source='user.name', read_only=True)
+
+    class Meta:
+        model = UserRole
+        fields = [
+            'id', 'user', 'userName', 'role', 'roleName', 'assigned_by',
+            'assigned_at', 'revoked_at', 'active',
+        ]
+        read_only_fields = ['assigned_by', 'assigned_at', 'revoked_at']
+
+
+class TemporaryFunctionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TemporaryFunction
+        fields = ['id', 'code', 'name', 'description', 'active']
+
+
+class TemporaryAssignmentSerializer(serializers.ModelSerializer):
+    userName = serializers.CharField(source='user.name', read_only=True)
+    functionName = serializers.CharField(source='function.name', read_only=True)
+    assignedByName = serializers.CharField(source='assigned_by.name', read_only=True)
+
+    class Meta:
+        model = TemporaryAssignment
+        fields = [
+            'id', 'user', 'userName', 'function', 'functionName',
+            'assigned_by', 'assignedByName', 'starts_at', 'ends_at',
+            'finished_at', 'status', 'notes', 'created_at',
+        ]
+        read_only_fields = ['assigned_by', 'finished_at', 'created_at']
 
 
 class CustomerSerializer(serializers.ModelSerializer):

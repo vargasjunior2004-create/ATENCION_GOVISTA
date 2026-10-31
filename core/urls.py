@@ -34,6 +34,14 @@ urlpatterns = [
 
     path('users', views.UserListView.as_view()),
     path('users/<int:pk>', views.UserDetailView.as_view()),
+    path('users/<int:user_id>/roles', views.UserRoleListView.as_view()),
+    path('user-roles/<int:pk>', views.UserRoleDetailView.as_view()),
+    path('permissions', views.PermissionListView.as_view()),
+    path('roles', views.RoleListView.as_view()),
+    path('roles/<int:pk>', views.RoleDetailView.as_view()),
+    path('temporary-functions', views.TemporaryFunctionListView.as_view()),
+    path('temporary-assignments', views.TemporaryAssignmentListView.as_view()),
+    path('temporary-assignments/<int:pk>', views.TemporaryAssignmentDetailView.as_view()),
 
     path('customers', views.CustomerListView.as_view()),
     path('customers/<int:pk>', views.CustomerDetailView.as_view()),
