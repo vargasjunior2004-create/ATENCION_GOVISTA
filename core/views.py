@@ -684,6 +684,53 @@ class CustomerListView(APIView):
         return Response(CustomerSerializer(qs[:20], many=True).data)
 
 
+class EquipmentBySerialView(APIView):
+    """Consulta de solo lectura de un equipo físico por número de serie."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, serie):
+        normalized = (serie or '').strip()
+        if not normalized:
+            return Response({'error': 'Debe indicar un número de serie'}, status=400)
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT o.id_onu, o.serie,
+                       c.codigo_item, c.descripcion, c.marca, c.modelo,
+                       t.id_tipo_onu, t.nombre
+                FROM public.onu AS o
+                INNER JOIN public.catalogo_item AS c
+                    ON c.codigo_item = o.codigo_item
+                INNER JOIN public.tipo_onu AS t
+                    ON t.id_tipo_onu = c.id_tipo_onu
+                WHERE LOWER(TRIM(o.serie)) = LOWER(TRIM(%s))
+                LIMIT 1
+                """,
+                [normalized],
+            )
+            row = cursor.fetchone()
+
+        if row is None:
+            return Response(
+                {'error': 'No se encontró un equipo con esa serie'}, status=404)
+
+        return Response({
+            'id': row[0],
+            'serie': row[1],
+            'articulo': {
+                'codigo': row[2],
+                'descripcion': row[3],
+                'marca': row[4],
+                'modelo': row[5],
+                'tipo': {
+                    'id': row[6],
+                    'nombre': row[7],
+                },
+            },
+        })
+
+
 def _query_int(params, name, default, maximum=None):
     raw = params.get(name)
     if raw in (None, ''):

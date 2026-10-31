@@ -35,6 +35,7 @@ urlpatterns = [
     path('users/<int:pk>', views.UserDetailView.as_view()),
 
     path('customers', views.CustomerListView.as_view()),
+    path('inventario/equipos/serie/<path:serie>', views.EquipmentBySerialView.as_view()),
 
     path('reports/dashboard/pdf', report_views.DashboardPdfView.as_view()),
     path('reports/dashboard/xlsx', report_views.DashboardXlsxView.as_view()),
