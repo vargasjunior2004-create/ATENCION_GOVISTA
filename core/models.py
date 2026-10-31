@@ -264,12 +264,14 @@ class Contract(models.Model):
     plan_name = models.CharField(max_length=120, blank=True, default='')
     contracted_on = models.DateField()
     status = models.CharField(
-        max_length=12, choices=STATUS_CHOICES, default='activo')
+        max_length=12, choices=STATUS_CHOICES, null=True, blank=True,
+        default=None)
     origin = models.CharField(
-        max_length=10, choices=ORIGIN_CHOICES, default='oficina')
+        max_length=10, choices=ORIGIN_CHOICES, null=True, blank=True,
+        default=None)
     external_seller = models.CharField(max_length=160, blank=True, default='')
     meter_number = models.CharField(
-        max_length=80, blank=True, default='', db_index=True,
+        max_length=80, null=True, blank=True, default=None, db_index=True,
         help_text='Número de medidor de luz')
     meter_review_status = models.CharField(
         max_length=12, choices=METER_REVIEW_CHOICES, default='pendiente')
