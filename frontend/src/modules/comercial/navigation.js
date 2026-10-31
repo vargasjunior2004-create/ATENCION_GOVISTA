@@ -9,6 +9,7 @@ import {
   Tag,
   SlidersHorizontal,
   Users,
+  UserRoundSearch,
 } from 'lucide-react';
 
 export const moduleReturnItem = {
@@ -34,6 +35,12 @@ export const commercialNavigation = [
     to: '/comercial/solicitudes',
     label: 'Historial de Solicitudes',
     icon: History,
+    end: true,
+  },
+  {
+    to: '/comercial/clientes',
+    label: 'Clientes',
+    icon: UserRoundSearch,
     end: true,
   },
 ];
