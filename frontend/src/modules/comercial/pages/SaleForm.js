@@ -60,6 +60,7 @@ export default function SaleForm() {
     serviceTypeFrom: '', motivoId: '', notes: '',
     planId: '',
     equipmentRetained: null, requiresTechnicalVisit: null,
+    equipmentDelivered: null, equipmentSerial: '',
     debtApplies: false, debtAmount: '',
     transferCurrentAddress: '', transferNewAddress: '', transferZone: '',
     transferReferences: '', transferHasSketch: null,
@@ -84,6 +85,8 @@ export default function SaleForm() {
   const [selectedPromotion, setSelectedPromotion] = useState(null);
   const [priceMode, setPriceMode] = useState('normal');
   const [transferTariffs, setTransferTariffs] = useState([]);
+  const [equipmentLookup, setEquipmentLookup] = useState(null);
+  const [equipmentLookupError, setEquipmentLookupError] = useState('');
 
   useEffect(() => {
     api.getActivePlans().then(setPlans).catch(() => {});
@@ -255,6 +258,12 @@ export default function SaleForm() {
           next.debtApplies = false;
           next.debtAmount = '';
         }
+        if (nuevoModo !== 'retiro') {
+          next.equipmentDelivered = null;
+          next.equipmentSerial = '';
+          setEquipmentLookup(null);
+          setEquipmentLookupError('');
+        }
         if (value !== 'traslado_externo') {
           next.transferCurrentAddress = '';
           next.transferNewAddress = '';
@@ -278,6 +287,18 @@ export default function SaleForm() {
       // o digital) de la misma familia.
       serviceTypeFrom: picked ? (FAMILY_DEFAULT_SERVICE[picked.type] || '') : '',
     }));
+  };
+
+  const lookupEquipment = async (value) => {
+    const serial = value.trim();
+    setEquipmentLookup(null);
+    setEquipmentLookupError('');
+    if (!serial) return;
+    try {
+      setEquipmentLookup(await api.getEquipmentBySerial(serial));
+    } catch (err) {
+      setEquipmentLookupError(err?.error || 'Serie no encontrada en inventario.');
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -305,6 +326,10 @@ export default function SaleForm() {
         payload.debtApplies = form.debtApplies;
         payload.debtAmount = form.debtApplies ? Number(form.debtAmount) : 0;
       }
+      if (isRetiro) {
+        payload.equipmentDelivered = form.equipmentDelivered;
+        payload.equipmentSerial = form.equipmentDelivered ? form.equipmentSerial : '';
+      }
       if (isTransfer) {
         const family = SERVICE_TYPE_TO_PLAN_TYPE[form.serviceType];
         const tariff = transferTariffs.find((item) => item.service_type === family);
@@ -320,7 +345,8 @@ export default function SaleForm() {
       }
       await api.createSale(payload);
       setSuccess('Registro guardado correctamente');
-       setForm({ date: today, clientCode: '', clientName: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', equipmentRetained: null, requiresTechnicalVisit: null, debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferZone: '', transferReferences: '', transferHasSketch: null });
+       setForm({ date: today, clientCode: '', clientName: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', equipmentRetained: null, requiresTechnicalVisit: null, equipmentDelivered: null, equipmentSerial: '', debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferZone: '', transferReferences: '', transferHasSketch: null });
+       setEquipmentLookup(null); setEquipmentLookupError('');
       setSelectedPlan(null); setSelectedCustomer(null); setQuery(''); setCustomers([]);
       setPromotions([]); setSelectedPromotion(null); setPriceMode('normal');
       setShowPreview(false);
@@ -589,10 +615,29 @@ export default function SaleForm() {
           )}
 
           {isRetiro && (
-            <Select label="Motivo del Retiro *" name="motivoId" value={form.motivoId} onChange={handleChange} required>
-              <option value="">Seleccionar motivo...</option>
-              {motivosRetiro.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-            </Select>
+            <div className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
+              <Select label="Motivo del Retiro *" name="motivoId" value={form.motivoId} onChange={handleChange} required>
+                <option value="">Seleccionar motivo...</option>
+                {motivosRetiro.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+              </Select>
+              <RadioChoiceGroup
+                label="Entrega de equipo"
+                name="equipmentDelivered"
+                value={form.equipmentDelivered === null ? '' : String(form.equipmentDelivered)}
+                onChange={(event) => setForm((prev) => ({ ...prev, equipmentDelivered: event.target.value === 'true', equipmentSerial: event.target.value === 'true' ? prev.equipmentSerial : '' }))}
+                options={[
+                  { value: 'true', label: 'Sí, trae equipo', description: 'Se enviará a recepción pendiente de Inventario.', icon: <Package size={15} /> },
+                  { value: 'false', label: 'No trae equipo', description: 'El retiro continúa sin devolución física.', icon: <Check size={15} /> },
+                ]}
+              />
+              {form.equipmentDelivered && (
+                <div className="space-y-2">
+                  <Input label="Serie del equipo *" value={form.equipmentSerial} onChange={(event) => { setForm((prev) => ({ ...prev, equipmentSerial: event.target.value.toUpperCase() })); setEquipmentLookup(null); setEquipmentLookupError(''); }} onBlur={(event) => lookupEquipment(event.target.value)} placeholder="Escanea o escribe la serie" autoComplete="off" required />
+                  {equipmentLookup && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">Equipo identificado: <strong>{equipmentLookup.articulo.marca} {equipmentLookup.articulo.modelo}</strong> · {equipmentLookup.articulo.tipo.nombre}. No se creará otro registro.</div>}
+                  {equipmentLookupError && <p className="text-xs font-semibold text-red-600">{equipmentLookupError}</p>}
+                </div>
+              )}
+            </div>
           )}
 
           {isRecontratacion && (
@@ -773,7 +818,7 @@ export default function SaleForm() {
             </div>
           )}
 
-           <Button type="submit" size="lg" className="w-full" disabled={!form.planId || samePlanSelected || ((isCambio || isRetiro) && !form.motivoId) || (isRecontratacion && (form.equipmentRetained === null || form.requiresTechnicalVisit === null || (form.debtApplies && (!form.debtAmount || Number(form.debtAmount) <= 0)))) || (isTransfer && (!form.transferNewAddress.trim() || form.transferHasSketch === null || !transferTariffs.some((item) => item.service_type === SERVICE_TYPE_TO_PLAN_TYPE[form.serviceType])))}>
+          <Button type="submit" size="lg" className="w-full" disabled={!form.planId || samePlanSelected || ((isCambio || isRetiro) && !form.motivoId) || (isRetiro && (form.equipmentDelivered === null || (form.equipmentDelivered && (!form.equipmentSerial.trim() || !equipmentLookup)))) || (isRecontratacion && (form.equipmentRetained === null || form.requiresTechnicalVisit === null || (form.debtApplies && (!form.debtAmount || Number(form.debtAmount) <= 0)))) || (isTransfer && (!form.transferNewAddress.trim() || form.transferHasSketch === null || !transferTariffs.some((item) => item.service_type === SERVICE_TYPE_TO_PLAN_TYPE[form.serviceType])))}>
             Revisar Registro
           </Button>
         </form>

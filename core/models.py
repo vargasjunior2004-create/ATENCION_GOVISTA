@@ -295,6 +295,12 @@ class Sale(models.Model):
     debt_amount = models.DecimalField(
         max_digits=12, decimal_places=2, default=0,
         help_text='Adeudo registrado al momento de la recontratacion')
+    equipment_delivered = models.BooleanField(
+        null=True, blank=True,
+        help_text='Si el cliente entrego equipo durante el retiro')
+    equipment_serial = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text='Serie del equipo declarado en el retiro')
     createdBy = models.ForeignKey(
         User, on_delete=models.PROTECT, related_name='sales_created')
     lastEditedBy = models.ForeignKey(
@@ -338,6 +344,25 @@ class SaleIdempotencyKey(models.Model):
                 fields=['user', 'key'], name='unique_sale_idempotency_user_key')
         ]
         indexes = [models.Index(fields=['expires_at'])]
+
+
+class InventarioMovimiento(models.Model):
+    """Cola de movimientos físicos vinculados a una solicitud comercial."""
+    TIPO_DEVOLUCION_DECLARADA = 'DEVOLUCION_DECLARADA'
+    ESTADO_PENDIENTE = 'PENDIENTE_RECEPCION'
+    ESTADO_CONFIRMADO = 'RECEPCION_CONFIRMADA'
+
+    sale = models.ForeignKey(
+        Sale, on_delete=models.PROTECT, related_name='inventario_movimientos')
+    serie = models.CharField(max_length=255)
+    tipo = models.CharField(max_length=40, default=TIPO_DEVOLUCION_DECLARADA)
+    estado = models.CharField(max_length=40, default=ESTADO_PENDIENTE)
+    created_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='inventario_movimientos_created')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['serie', 'estado'])]
 
 
 class AuditLog(models.Model):
