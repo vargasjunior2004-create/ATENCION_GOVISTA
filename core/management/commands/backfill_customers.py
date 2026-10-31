@@ -14,7 +14,7 @@ from collections import defaultdict
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from core.models import Customer, Sale
+from core.models import Contract, Customer, Sale
 
 
 class Command(BaseCommand):
@@ -53,6 +53,13 @@ class Command(BaseCommand):
         self.stdout.write(f'Clientes nuevos posibles: {len(missing)}')
         self.stdout.write(f'Clientes vinculables: {len(linkable)}')
         self.stdout.write(f'Conflictos para revisión manual: {len(conflicts)}')
+        historical_contracts = Sale.objects.filter(
+            customer__isnull=False,
+            requestType__in=['nuevo_contrato', 'recontratacion'],
+            contract__isnull=True,
+        ).count()
+        self.stdout.write(
+            f'Contratos históricos posibles: {historical_contracts}')
         for code, current, historical in conflicts[:20]:
             self.stdout.write(
                 self.style.WARNING(
@@ -65,6 +72,7 @@ class Command(BaseCommand):
 
         created = 0
         linked = 0
+        contracts_created = 0
         with transaction.atomic():
             for code, name in missing:
                 customer = Customer.objects.create(code=code, name=name)
@@ -80,5 +88,29 @@ class Command(BaseCommand):
                     customer=customer)
                 linked += 1
 
+            historical_sales = Sale.objects.filter(
+                customer__isnull=False,
+                requestType__in=['nuevo_contrato', 'recontratacion'],
+                contract__isnull=True,
+            ).select_related('customer', 'plan')
+            for sale in historical_sales.iterator():
+                Contract.objects.create(
+                    number=f'GV-H-{sale.id}',
+                    customer=sale.customer,
+                    sale=sale,
+                    service_type=sale.serviceType,
+                    plan=sale.plan,
+                    plan_name=sale.planName or sale.plan.label,
+                    contracted_on=sale.date,
+                    # Estos valores no se conocen para ventas antiguas.
+                    status=None,
+                    origin=None,
+                    external_seller='',
+                    meter_number=None,
+                    created_by=sale.createdBy,
+                )
+                contracts_created += 1
+
         self.stdout.write(self.style.SUCCESS(
-            f'Aplicado: {created} clientes creados, {linked} ventas vinculadas.'))
+            f'Aplicado: {created} clientes creados, {linked} ventas vinculadas, '
+            f'{contracts_created} contratos históricos creados.'))
