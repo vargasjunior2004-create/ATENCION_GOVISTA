@@ -77,6 +77,7 @@ Despues del login se muestra un selector de modulos:
 | Adicion | 0 | solo mensualidad |
 
 - **Promociones:** modalidad de precio (normal o promocional) al registrar o editar una solicitud
+- **Origen del contrato:** se determina automaticamente y no se puede editar. Caja registra `OFICINA`, Call Center registra `VIRTUAL` y elegir un vendedor externo con asignacion temporal activa registra `EXTERNO`; la venta y el contrato conservan el vendedor responsable en su historial
 - **Vista previa:** confirmacion antes de guardar
 - **Edicion:** admin puede editar cualquier solicitud (incluye plan anterior, tipo de adicion)
 - **Eliminacion:** admin puede eliminar con confirmacion ("Solicitud eliminada correctamente.")
@@ -173,9 +174,12 @@ Catalogo administrable de motivos para cambios de plan y retiros (solo admin). R
 
 ### Usuarios
 
-- Crear, editar, activar/desactivar, eliminar
+- Crear y editar usuarios, asignando uno o varios roles permanentes desde el mismo formulario
+- La lista muestra los nombres de los roles; los roles RBAC definen los permisos de acceso
+- Las cuentas se desactivan en lugar de eliminarlas desde la interfaz, para conservar los registros historicos
 - Notificaciones de exito al crear o editar usuario
-- Admin no puede eliminarse a si mismo
+- Roles permanentes, permisos y asignaciones temporales se administran dentro de `/comercial/usuarios`, en la seccion **Permisos y asignaciones**
+- La ruta anterior `/comercial/seguridad` redirige a esa seccion para conservar enlaces guardados
 
 ### Sesion
 
@@ -260,6 +264,7 @@ Sales_Tracker/
 | `/comercial/promociones` | Promociones | Admin |
 | `/comercial/usuarios` | Usuarios | Admin |
 | `/comercial/backups` | Copias de seguridad | Admin |
+| `/comercial/seguridad` | Redirige a permisos y asignaciones dentro de Usuarios | Admin |
 
 Los filtros del historial se guardan en la URL (`from`, `to`, `requestType`, `serviceType`, `format`, `motivos`, `page`) y se restauran al volver a la pantalla.
 
@@ -291,10 +296,13 @@ Los filtros del historial se guardan en la URL (`from`, `to`, `requestType`, `se
 | PUT | /api/sales/:id | Admin | Editar solicitud |
 | DELETE | /api/sales/:id | Admin | Eliminar solicitud |
 | GET | /api/dashboard/stats | Si | Estadisticas del dashboard |
-| GET | /api/users | Admin | Listar usuarios |
-| POST | /api/users | Admin | Crear usuario |
-| PUT | /api/users/:id | Admin | Editar usuario |
-| DELETE | /api/users/:id | Admin | Eliminar usuario |
+| GET | /api/users | Admin | Listar usuarios con roles activos |
+| POST | /api/users | Admin | Crear usuario; requiere `roleIds` para asignar roles en la misma operacion |
+| PUT | /api/users/:id | Admin | Editar usuario; acepta `roleIds` para sincronizar roles |
+| DELETE | /api/users/:id | Admin | Desactivar usuario (ruta heredada; no elimina datos) |
+| GET | /api/external-sellers/active | Si | Vendedores con asignacion externa activa |
+
+Las cuentas se autorizan por los roles RBAC. El campo heredado `role` (`admin`/`ventas`) no se acepta para escritura; el backend conserva su valor por compatibilidad con operaciones antiguas.
 | GET | /api/reports/dashboard/pdf | Si | PDF del dia (dashboard) |
 | GET | /api/reports/dashboard/xlsx | Si | XLSX del dia (dashboard) |
 | GET | /api/reports/dashboard/png | Si | PNG del dia (dashboard) |
@@ -313,9 +321,18 @@ Los filtros del historial se guardan en la URL (`from`, `to`, `requestType`, `se
 - **Hosting:** Render free tier (512MB RAM, 0.1 CPU, 750 hrs/mes)
 - **Database:** Supabase PostgreSQL 17.6
 - **Estaticos:** WhiteNoise sirve archivos desde `staticfiles/`
-- **Frontend:** cada deploy ejecuta `npm ci` y `npm run build`; React genera `frontend_build/` y Django recopila sus assets en `staticfiles/`
-- **Build:** Render ejecuta `pip install -r requirements.txt && bash build.sh`. El script valida que `pg_dump` sea versión 17 o superior y falla si faltan assets del frontend
+- **Frontend:** cada deploy ejecuta `npm ci` y `npm run build`; React genera `frontend_build/` y Django recopila sus archivos en `staticfiles/`
+- **Build:** Render ejecuta `pip install -r requirements.txt && bash build.sh`. El script valida `pg_dump` 17 o superior y verifica los assets compilados
 - **Inicio:** `gunicorn salestracker.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 60`
+### Configurar Vercel
+
+1. Importa el mismo repositorio y selecciona `frontend` como **Root Directory**.
+2. Usa Create React App, `npm ci` como Install Command, `npm run build` como Build Command y `build` como Output Directory.
+3. Conserva `frontend/vercel.json`: primero reenvía `/api/*` a Render y luego resuelve las rutas de React a `index.html`.
+4. No hace falta configurar una variable de API ni CORS en el navegador; el rewrite mantiene las llamadas bajo el mismo origen de Vercel.
+5. Prueba inicio de sesión y operaciones con la URL Preview antes de asignar el dominio final.
+
+En Render, conserva la API y configura `SERVE_FRONTEND=false` en Environment. En el próximo deploy el dominio de Render deja de servir el React; el frontend se abre desde Vercel.
 
 ### Variables de entorno en Render
 
@@ -358,7 +375,7 @@ Y comparalo con el campo `checksum` del historial en la app.
 
 ### Notas
 
-- `frontend_build/` y `staticfiles/` van committeados (archivos servidos por WhiteNoise)
+- `staticfiles/` se genera durante el deploy; WhiteNoise sirve los archivos del backend. Vercel sirve el build React
 - El selector de modulos es solo navegacion; la autorizacion real sigue siendo por rol en el backend. Aun no existen permisos por modulo
 - Atencion al Cliente y Gestion de Equipos estan deshabilitados hasta implementar su backend y permisos
 - `wsgi.py` ejecuta migraciones + seed automaticamente si no hay datos
@@ -375,6 +392,6 @@ Y comparalo con el campo `checksum` del historial en la app.
 - Los respaldos son manuales: no hay scheduler automatico
 - El `.dump` no va cifrado; en produccion solo existe en el servidor mientras se descarga
 - Un respaldo pendiente de un proceso que muere queda en estado `running`: se puede borrar desde el historial
-- `pg_dump` debe ser igual o mas nuevo que el servidor; `build.sh` instala la version 17 y el comando verifica la compatibilidad antes de respaldar
+- `pg_dump` debe ser igual o mas nuevo que el servidor; Render instala la version 17 declarada en `apt.txt` y el comando verifica la compatibilidad antes de respaldar
 - El historial guarda metadata, nunca el archivo
 - `core/tests.py`, `core/tests_full.py`, `core/tests_cambio_plan.py` y `core/tests_motivos.py` cubren permisos, generacion, streaming, integridad, concurrencia, cobro por tipo de cambio y ciclo `pg_dump` → `pg_restore`

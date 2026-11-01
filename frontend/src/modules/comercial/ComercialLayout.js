@@ -12,7 +12,7 @@ import {
 } from './navigation';
 
 export default function ComercialLayout() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, hasPermission } = useAuth();
   const reducedMotion = useReducedMotion();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarHover, setSidebarHover] = useState(false);
@@ -20,6 +20,9 @@ export default function ComercialLayout() {
   const showSidebar = mobileOpen || sidebarHover;
   const closeMobile = useCallback(() => setMobileOpen(false), []);
   const transitionClass = reducedMotion ? '' : 'transition-all duration-300 ease-out';
+  const visibleAdminNavigation = commercialAdminNavigation.filter(
+    (item) => isAdmin || (item.permission && hasPermission(item.permission)),
+  );
 
   const linkClass = ({ isActive }) =>
     `flex items-center gap-3 px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-200 group
@@ -75,12 +78,12 @@ export default function ComercialLayout() {
             </NavLink>
           ))}
 
-          {isAdmin && (
+          {visibleAdminNavigation.length > 0 && (
             <>
               <div className="pt-5 pb-2 px-4">
                 <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-green-400/30">Administracion</span>
               </div>
-              {commercialAdminNavigation.map((item) => (
+              {visibleAdminNavigation.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}

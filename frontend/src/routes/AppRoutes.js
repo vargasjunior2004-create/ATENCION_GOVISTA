@@ -11,6 +11,9 @@ import ComercialLayout from '../modules/comercial/ComercialLayout';
 import Dashboard from '../modules/comercial/pages/Dashboard';
 import SaleForm from '../modules/comercial/pages/SaleForm';
 import SalesList from '../modules/comercial/pages/SalesList';
+import CustomersList from '../modules/comercial/pages/CustomersList';
+import CustomerDetail from '../modules/comercial/pages/CustomerDetail';
+import ContractDetail from '../modules/comercial/pages/ContractDetail';
 import TransferTariffs from '../modules/comercial/pages/TransferTariffs';
 import { AdminRoute, ProtectedRoute, PublicRoute } from './guards';
 import LegacyRedirect from './LegacyRedirect';
@@ -32,15 +35,39 @@ export default function AppRoutes() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="solicitudes" element={<SalesList />} />
           <Route path="solicitudes/nueva" element={<SaleForm />} />
+          <Route path="clientes" element={<CustomersList />} />
+          <Route path="clientes/:id" element={<CustomerDetail />} />
+          <Route path="clientes/:id/contratos/:contractId" element={<ContractDetail />} />
 
-          <Route element={<AdminRoute />}>
-            <Route path="planes" element={<PlansModule />} />
-            <Route path="motivos" element={<MotivosModule />} />
-            <Route path="promociones" element={<PromotionsModule />} />
-            <Route path="usuarios" element={<UsersModule />} />
-            <Route path="backups" element={<BackupModule />} />
-            <Route path="tarifas-traslados" element={<TransferTariffs />} />
-          </Route>
+          <Route
+            path="planes"
+            element={<AdminRoute permission="commercial_config.manage"><PlansModule /></AdminRoute>}
+          />
+          <Route
+            path="motivos"
+            element={<AdminRoute permission="commercial_config.manage"><MotivosModule /></AdminRoute>}
+          />
+          <Route
+            path="promociones"
+            element={<AdminRoute permission="commercial_config.manage"><PromotionsModule /></AdminRoute>}
+          />
+          <Route
+            path="usuarios"
+            element={<AdminRoute permission="users.manage"><UsersModule /></AdminRoute>}
+          />
+          <Route path="backups" element={<AdminRoute><BackupModule /></AdminRoute>} />
+          <Route
+            path="tarifas-traslados"
+            element={<AdminRoute permission="commercial_config.manage"><TransferTariffs /></AdminRoute>}
+          />
+          <Route
+            path="seguridad"
+            element={(
+              <AdminRoute permission="users.manage">
+                <Navigate to="/comercial/usuarios?seccion=seguridad" replace />
+              </AdminRoute>
+            )}
+          />
         </Route>
 
         <Route path="/nueva-venta" element={<LegacyRedirect to="/comercial/solicitudes/nueva" />} />

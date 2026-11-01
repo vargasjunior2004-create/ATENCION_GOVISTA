@@ -31,6 +31,112 @@ class User(models.Model):
         return f'{self.name} ({self.role})'
 
 
+class Role(models.Model):
+    """Rol permanente administrable del sistema."""
+    code = models.SlugField(max_length=40, unique=True)
+    name = models.CharField(max_length=120)
+    description = models.CharField(max_length=255, blank=True, default='')
+    active = models.BooleanField(default=True)
+    is_system_role = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name', 'id']
+
+
+class Permission(models.Model):
+    """Permiso granular expresado como módulo + acción."""
+    ACTION_CHOICES = [
+        ('view', 'Consultar'),
+        ('create', 'Crear'),
+        ('change', 'Modificar'),
+        ('delete', 'Eliminar'),
+        ('manage', 'Administrar'),
+        ('export', 'Exportar'),
+        ('assign', 'Asignar'),
+    ]
+
+    module = models.SlugField(max_length=60)
+    action = models.CharField(max_length=12, choices=ACTION_CHOICES)
+    name = models.CharField(max_length=120)
+    description = models.CharField(max_length=255, blank=True, default='')
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['module', 'action']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['module', 'action'], name='unique_permission_module_action')
+        ]
+
+    @property
+    def code(self):
+        return f'{self.module}.{self.action}'
+
+
+class RolePermission(models.Model):
+    role = models.ForeignKey(Role, on_delete=models.CASCADE, related_name='role_permissions')
+    permission = models.ForeignKey(Permission, on_delete=models.CASCADE, related_name='role_permissions')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['role', 'permission'], name='unique_role_permission')
+        ]
+
+
+class UserRole(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='role_assignments')
+    role = models.ForeignKey(Role, on_delete=models.PROTECT, related_name='user_assignments')
+    assigned_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='roles_assigned')
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['user', 'active'])]
+
+
+class TemporaryFunction(models.Model):
+    """Catálogo de funciones temporales, no cargos permanentes."""
+    code = models.SlugField(max_length=40, unique=True)
+    name = models.CharField(max_length=120)
+    description = models.CharField(max_length=255, blank=True, default='')
+    active = models.BooleanField(default=True)
+
+
+class TemporaryAssignment(models.Model):
+    STATUS_CHOICES = [
+        ('scheduled', 'Programada'),
+        ('active', 'Activa'),
+        ('finished', 'Finalizada'),
+        ('revoked', 'Revocada'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.PROTECT, related_name='temporary_assignments')
+    function = models.ForeignKey(
+        TemporaryFunction, on_delete=models.PROTECT, related_name='assignments')
+    assigned_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='temporary_assignments_created')
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField()
+    finished_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default='scheduled')
+    notes = models.CharField(max_length=500, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-starts_at', '-id']
+        indexes = [
+            models.Index(fields=['user', 'function', 'status']),
+            models.Index(fields=['starts_at', 'ends_at']),
+        ]
+
+
 class Plan(models.Model):
     """Plan de servicio. total = monthly + installation (regla de negocio)."""
     TYPE_CHOICES = [('internet', 'internet'), ('tv', 'tv'), ('combo', 'combo')]
@@ -209,13 +315,91 @@ class TarifaTrasladoHistorial(models.Model):
 
 class Customer(models.Model):
     """Cliente maestro (KARDEX). Clave natural: code."""
+    STATUS_CHOICES = [
+        ('activo', 'Activo'),
+        ('inactivo', 'Inactivo'),
+        ('observado', 'Observado'),
+    ]
+
     code = models.CharField(max_length=40, unique=True)
     name = models.CharField(max_length=160)
+    ci = models.CharField(
+        max_length=30, blank=True, default='', db_index=True,
+        help_text='Carnet de identidad; puede faltar en registros históricos')
+    phone = models.CharField(max_length=40, blank=True, default='')
+    status = models.CharField(
+        max_length=12, choices=STATUS_CHOICES, default='activo')
     active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f'{self.code} {self.name}'
+
+
+class Contract(models.Model):
+    """Contrato histórico de una contratación o recontratación.
+
+    Sale conserva el movimiento comercial; este modelo conserva la relación
+    estable entre cliente, servicio y medidor de luz.
+    """
+    STATUS_CHOICES = [
+        ('activo', 'Activo'),
+        ('retirado', 'Retirado'),
+        ('suspendido', 'Suspendido'),
+        ('inactivo', 'Inactivo'),
+    ]
+    ORIGIN_CHOICES = [
+        ('oficina', 'OFICINA'),
+        ('virtual', 'VIRTUAL'),
+        ('externo', 'EXTERNO'),
+    ]
+    METER_REVIEW_CHOICES = [
+        ('pendiente', 'Pendiente'),
+        ('verificado', 'Verificado'),
+        ('observado', 'Observado'),
+    ]
+
+    number = models.CharField(max_length=40, unique=True)
+    customer = models.ForeignKey(
+        Customer, on_delete=models.PROTECT, related_name='contracts')
+    sale = models.OneToOneField(
+        'Sale', null=True, blank=True, on_delete=models.PROTECT,
+        related_name='contract')
+    service_type = models.CharField(max_length=20)
+    plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='contracts')
+    plan_name = models.CharField(max_length=120, blank=True, default='')
+    contracted_on = models.DateField()
+    status = models.CharField(
+        max_length=12, choices=STATUS_CHOICES, null=True, blank=True,
+        default=None)
+    origin = models.CharField(
+        max_length=10, choices=ORIGIN_CHOICES, null=True, blank=True,
+        default=None)
+    external_seller = models.CharField(max_length=160, blank=True, default='')
+    seller_user = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='contracts_as_seller')
+    seller_name = models.CharField(max_length=160, blank=True, default='')
+    meter_number = models.CharField(
+        max_length=80, null=True, blank=True, default=None, db_index=True,
+        help_text='Número de medidor de luz')
+    meter_review_status = models.CharField(
+        max_length=12, choices=METER_REVIEW_CHOICES, default='pendiente')
+    meter_review_notes = models.CharField(max_length=500, blank=True, default='')
+    meter_reviewed_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='meter_reviews')
+    meter_reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='contracts_created')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-contracted_on', '-id']
+        indexes = [
+            models.Index(fields=['customer', 'status']),
+            models.Index(fields=['meter_number', 'status']),
+        ]
 
 
 class Sale(models.Model):
@@ -295,8 +479,20 @@ class Sale(models.Model):
     debt_amount = models.DecimalField(
         max_digits=12, decimal_places=2, default=0,
         help_text='Adeudo registrado al momento de la recontratacion')
+    equipment_delivered = models.BooleanField(
+        null=True, blank=True,
+        help_text='Si el cliente entrego equipo durante el retiro')
+    equipment_serial = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text='Serie del equipo declarado en el retiro')
     createdBy = models.ForeignKey(
         User, on_delete=models.PROTECT, related_name='sales_created')
+    seller_user = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='sales_as_seller')
+    seller_name = models.CharField(
+        max_length=160, blank=True, default='',
+        help_text='Snapshot histórico del vendedor responsable')
     lastEditedBy = models.ForeignKey(
         User, null=True, blank=True, on_delete=models.SET_NULL,
         related_name='sales_edited')
@@ -338,6 +534,29 @@ class SaleIdempotencyKey(models.Model):
                 fields=['user', 'key'], name='unique_sale_idempotency_user_key')
         ]
         indexes = [models.Index(fields=['expires_at'])]
+
+
+class InventarioMovimiento(models.Model):
+    """Cola de movimientos físicos vinculados a una solicitud comercial."""
+    TIPO_DEVOLUCION_DECLARADA = 'DEVOLUCION_DECLARADA'
+    ESTADO_PENDIENTE = 'PENDIENTE_RECEPCION'
+    ESTADO_CONFIRMADO = 'RECEPCION_CONFIRMADA'
+
+    sale = models.ForeignKey(
+        Sale, on_delete=models.PROTECT, related_name='inventario_movimientos')
+    serie = models.CharField(max_length=255)
+    tipo = models.CharField(max_length=40, default=TIPO_DEVOLUCION_DECLARADA)
+    estado = models.CharField(max_length=40, default=ESTADO_PENDIENTE)
+    created_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='inventario_movimientos_created')
+    created_at = models.DateTimeField(auto_now_add=True)
+    confirmed_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='inventario_movimientos_confirmed')
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['serie', 'estado'])]
 
 
 class AuditLog(models.Model):

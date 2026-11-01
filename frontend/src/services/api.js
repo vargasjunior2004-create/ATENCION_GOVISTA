@@ -102,12 +102,13 @@ const api = {
   deletePromotion: (id) => request(`/api/promotions/${id}`, { method: 'DELETE' }),
 
   // Ventas
-  getSales: (from, to, requestType, page = 1, pageSize = 25, serviceType = '') => {
+  getSales: (from, to, requestType, page = 1, pageSize = 25, serviceType = '', archived = false) => {
     const params = new URLSearchParams();
     if (from) params.set('from', from);
     if (to) params.set('to', to);
     if (requestType && requestType !== 'all') params.set('requestType', requestType);
     if (serviceType && serviceType !== 'all') params.set('serviceType', serviceType);
+    if (archived) params.set('archived', 'true');
     params.set('page', page);
     params.set('page_size', pageSize);
     return request(`/api/sales?${params.toString()}`);
@@ -115,12 +116,38 @@ const api = {
   createSale: (data) => request('/api/sales', { method: 'POST', body: JSON.stringify(data) }),
   updateSale: (id, data) => request(`/api/sales/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteSale: (id) => request(`/api/sales/${id}`, { method: 'DELETE' }),
+  restoreSale: (id) => request(`/api/sales/${id}/restore`, { method: 'POST' }),
+
+  // Clientes y contratos
+  searchCustomers: (q = '') => request(`/api/customers?q=${encodeURIComponent(q)}`),
+  getCustomer: (id) => request(`/api/customers/${id}`),
+  updateCustomer: (id, data) => request(`/api/customers/${id}`, {
+    method: 'PUT', body: JSON.stringify(data),
+  }),
+  reviewContractMeter: (id, data) => request(`/api/contracts/${id}/meter-review`, {
+    method: 'PATCH', body: JSON.stringify(data),
+  }),
+  getContract: (id) => request(`/api/contracts/${id}`),
+  updateContractMeter: (id, meter_number) => request(`/api/contracts/${id}/meter`, {
+    method: 'PATCH', body: JSON.stringify({ meter_number }),
+  }),
 
   // Usuarios
   getUsers: () => request('/api/users'),
+  getActiveExternalSellers: () => request('/api/external-sellers/active'),
   createUser: (data) => request('/api/users', { method: 'POST', body: JSON.stringify(data) }),
   updateUser: (id, data) => request(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  deleteUser: (id) => request(`/api/users/${id}`, { method: 'DELETE' }),
+  getRoles: () => request('/api/roles'),
+  getPermissions: () => request('/api/permissions'),
+  createRole: (data) => request('/api/roles', { method: 'POST', body: JSON.stringify(data) }),
+  updateRole: (id, data) => request(`/api/roles/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  getUserRoles: (id) => request(`/api/users/${id}/roles`),
+  assignUserRole: (id, role) => request(`/api/users/${id}/roles`, { method: 'POST', body: JSON.stringify({ role }) }),
+  revokeUserRole: (id) => request(`/api/user-roles/${id}`, { method: 'DELETE' }),
+  getTemporaryFunctions: () => request('/api/temporary-functions'),
+  getTemporaryAssignments: () => request('/api/temporary-assignments'),
+  createTemporaryAssignment: (data) => request('/api/temporary-assignments', { method: 'POST', body: JSON.stringify(data) }),
+  finishTemporaryAssignment: (id, status) => request(`/api/temporary-assignments/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
 
   // Clientes
   searchCustomers: (q) => {
@@ -132,6 +159,8 @@ const api = {
   // Inventario (fase 1: solo lectura)
   getEquipmentBySerial: (serie) =>
     request(`/api/inventario/equipos/serie/${encodeURIComponent(serie.trim())}`),
+  getPendingInventoryMovements: () => request('/api/inventario/movimientos/pendientes'),
+  confirmInventoryReception: (id) => request(`/api/inventario/movimientos/${id}/confirmar`, { method: 'POST' }),
 
   // Reportes
   getPDF: (from, to, requestType, serviceType = '', showMotivos = false) => {

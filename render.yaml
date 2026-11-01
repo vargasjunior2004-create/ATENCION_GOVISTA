@@ -4,7 +4,8 @@ services:
     runtime: python
     healthCheckPath: /api/health
     buildCommand: pip install -r requirements.txt && bash build.sh
-    startCommand: gunicorn salestracker.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 60
+    buildCommand: pip install -r requirements.txt && bash build.sh
+    startCommand: python manage.py collectstatic --clear --noinput && python manage.py migrate --noinput && gunicorn salestracker.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 60
     envVars:
       - key: PYTHON_VERSION
         value: "3.13.5"
@@ -12,6 +13,8 @@ services:
         generateValue: true
       - key: DJANGO_DEBUG
         value: "false"
+      - key: SERVE_FRONTEND
+        value: "true"
       # DATABASE_URL NO se define aqui a proposito: la credencial vive
       # unicamente en el panel de Render (Environment). Definirla en este
       # archivo haria que el Blueprint sobrescriba el valor del panel.

@@ -22,12 +22,16 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
 from .models import (
-    User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
-    TarifaTraslado, TarifaTrasladoHistorial, SaleIdempotencyKey,
+    User, Customer, Contract, Role, Permission, RolePermission, UserRole,
+    TemporaryFunction, TemporaryAssignment, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
+    TarifaTraslado, TarifaTrasladoHistorial, SaleIdempotencyKey, AuditLog,
+    InventarioMovimiento,
 )
 from .serializers import (
-    UserSerializer, UserWriteSerializer, PlanSerializer,
-    PlanPublicSerializer, CustomerSerializer, SaleSerializer,
+    UserSerializer, UserWriteSerializer, PermissionSerializer, RoleSerializer,
+    UserRoleSerializer, TemporaryFunctionSerializer, TemporaryAssignmentSerializer,
+    PlanSerializer,
+    PlanPublicSerializer, CustomerSerializer, ContractSerializer, SaleSerializer,
     SaleCreateSerializer, BackupSerializer,
     PromotionSerializer, PromotionWriteSerializer,
     TipoSolicitudPublicSerializer, MotivoSerializer, MotivoPublicSerializer,
@@ -39,6 +43,8 @@ from .domain import (
     MODO_SIMPLE, MODO_TRASLADO,
 )
 from .reports import build_sales_pdf, build_sales_xlsx
+from .rbac import has_permission, is_system_admin
+from .audit import record_audit
 
 # Evita que dos respaldos corran a la vez. Con gunicorn --workers 2 este
 # lock es por proceso, lo cual es suficiente para el caso de un unico
@@ -89,17 +95,279 @@ def _stream_backup_file(filepath, filename, checksum=''):
 
 
 def _user_payload(user):
+    assignments = list(user.role_assignments.filter(
+        active=True, role__active=True).select_related('role').prefetch_related(
+            'role__role_permissions__permission'))
+    roles = [{
+        'id': assignment.role_id,
+        'code': assignment.role.code,
+        'name': assignment.role.name,
+        'is_system_role': assignment.role.is_system_role,
+    } for assignment in assignments]
+    permissions = sorted({
+        f'{role_permission.permission.module}.{role_permission.permission.action}'
+        for assignment in assignments
+        for role_permission in assignment.role.role_permissions.all()
+        if role_permission.permission.active
+    })
     return {'id': user.id, 'name': user.name,
-            'role': user.role, 'active': user.active}
+            'role': user.role, 'active': user.active, 'roles': roles,
+            'permissions': permissions,
+            'isSystemAdmin': (
+                user.role == 'admin'
+                or any(role['is_system_role'] for role in roles))}
 
 
 class IsAdminMixin:
+    permission_code = None
+
     def check_admin(self, request):
         user = request.user
-        if not user or not getattr(user, 'active', True) or user.role != 'admin':
+        allowed = (
+            user and getattr(user, 'active', True)
+            and (has_permission(user, self.permission_code)
+                 if self.permission_code else getattr(user, 'role', None) == 'admin')
+        )
+        if not allowed:
             return Response({'error': 'Se requieren permisos de administrador'},
                             status=status.HTTP_403_FORBIDDEN)
         return None
+
+
+class PermissionMixin:
+    permission_code = None
+
+    def check_permission(self, request, code=None):
+        if not has_permission(request.user, code or self.permission_code):
+            return Response(
+                {'error': 'No tienes permiso para realizar esta operación'},
+                status=status.HTTP_403_FORBIDDEN)
+        return None
+
+
+class PermissionListView(PermissionMixin, APIView):
+    permission_code = 'roles.view'
+
+    def get(self, request):
+        error = self.check_permission(request)
+        if error:
+            return error
+        return Response(PermissionSerializer(
+            Permission.objects.filter(active=True).order_by('module', 'action'),
+            many=True).data)
+
+
+class AuditLogListView(PermissionMixin, APIView):
+    permission_code = 'audit.view'
+
+    def get(self, request):
+        error = self.check_permission(request)
+        if error:
+            return error
+        events = AuditLog.objects.select_related('actor').all()[:200]
+        return Response([{
+            'id': event.id,
+            'action': event.action,
+            'entity': event.entity,
+            'entityId': event.entity_id,
+            'actor': event.actor.name if event.actor else 'Sistema',
+            'before': event.before,
+            'after': event.after,
+            'ip': event.ip,
+            'createdAt': event.created_at,
+        } for event in events])
+
+
+class RoleListView(PermissionMixin, APIView):
+    def get(self, request):
+        error = self.check_permission(request, 'roles.view')
+        if error:
+            return error
+        return Response(RoleSerializer(
+            Role.objects.filter(active=True).prefetch_related(
+                'role_permissions__permission'), many=True).data)
+
+    def post(self, request):
+        error = self.check_permission(request, 'roles.manage')
+        if error:
+            return error
+        serializer = RoleSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({'error': serializer.errors}, status=400)
+        role = serializer.save()
+        self._set_permissions(role, request.data.get('permissionIds', []))
+        record_audit(request, 'created', 'role', role.id,
+                     after={'code': role.code, 'name': role.name})
+        return Response(RoleSerializer(role).data, status=201)
+
+    @staticmethod
+    def _set_permissions(role, permission_ids):
+        if permission_ids is None:
+            return
+        RolePermission.objects.filter(role=role).delete()
+        for permission in Permission.objects.filter(id__in=permission_ids, active=True):
+            RolePermission.objects.get_or_create(role=role, permission=permission)
+
+
+class RoleDetailView(PermissionMixin, APIView):
+    def get_object(self, pk):
+        return Role.objects.filter(pk=pk).first()
+
+    def get(self, request, pk):
+        error = self.check_permission(request, 'roles.view')
+        if error:
+            return error
+        role = self.get_object(pk)
+        if role is None:
+            return Response({'error': 'Rol no encontrado'}, status=404)
+        return Response(RoleSerializer(role).data)
+
+    def put(self, request, pk):
+        error = self.check_permission(request, 'roles.manage')
+        if error:
+            return error
+        role = self.get_object(pk)
+        if role is None:
+            return Response({'error': 'Rol no encontrado'}, status=404)
+        if role.is_system_role:
+            return Response({'error': 'El rol del sistema no puede modificarse'}, status=400)
+        serializer = RoleSerializer(role, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response({'error': serializer.errors}, status=400)
+        before = {'name': role.name, 'active': role.active}
+        role = serializer.save()
+        RoleListView._set_permissions(role, request.data.get('permissionIds'))
+        record_audit(request, 'updated', 'role', role.id,
+                     before=before, after={'name': role.name, 'active': role.active})
+        return Response(RoleSerializer(role).data)
+
+
+class TemporaryFunctionListView(PermissionMixin, APIView):
+    def get(self, request):
+        error = self.check_permission(request, 'temporary_assignments.view')
+        if error:
+            return error
+        return Response(TemporaryFunctionSerializer(
+            TemporaryFunction.objects.filter(active=True), many=True).data)
+
+
+class UserRoleListView(PermissionMixin, APIView):
+    def get(self, request, user_id):
+        error = self.check_permission(request, 'roles.view')
+        if error:
+            return error
+        if not User.objects.filter(pk=user_id).exists():
+            return Response({'error': 'Usuario no encontrado'}, status=404)
+        assignments = UserRole.objects.filter(user_id=user_id).select_related('user', 'role')
+        return Response(UserRoleSerializer(assignments, many=True).data)
+
+    def post(self, request, user_id):
+        error = self.check_permission(request, 'roles.manage')
+        if error:
+            return error
+        user = User.objects.filter(pk=user_id).first()
+        role = Role.objects.filter(pk=request.data.get('role'), active=True).first()
+        if user is None or role is None:
+            return Response({'error': 'Usuario o rol no encontrado'}, status=404)
+        assignment, created = UserRole.objects.get_or_create(
+            user=user, role=role, active=True,
+            defaults={'assigned_by': request.user})
+        if not created:
+            return Response({'error': 'El usuario ya tiene ese rol activo'}, status=409)
+        record_audit(request, 'assigned', 'user_role', assignment.id,
+                     after={'user_id': user.id, 'role': role.code})
+        return Response(UserRoleSerializer(assignment).data, status=201)
+
+
+class UserRoleDetailView(PermissionMixin, APIView):
+    def delete(self, request, pk):
+        error = self.check_permission(request, 'roles.manage')
+        if error:
+            return error
+        assignment = UserRole.objects.select_related('role', 'user').filter(pk=pk).first()
+        if assignment is None:
+            return Response({'error': 'Asignación de rol no encontrada'}, status=404)
+        assignment.active = False
+        assignment.revoked_at = timezone.now()
+        assignment.save(update_fields=['active', 'revoked_at'])
+        record_audit(request, 'revoked', 'user_role', assignment.id,
+                     after={'user_id': assignment.user_id, 'role': assignment.role.code})
+        return Response(status=204)
+
+
+class TemporaryAssignmentListView(PermissionMixin, APIView):
+    def get(self, request):
+        error = self.check_permission(request, 'temporary_assignments.view')
+        if error:
+            return error
+        assignments = TemporaryAssignment.objects.select_related(
+            'user', 'function', 'assigned_by').all()
+        return Response(TemporaryAssignmentSerializer(assignments, many=True).data)
+
+    def post(self, request):
+        error = self.check_permission(request, 'temporary_assignments.assign')
+        if error:
+            return error
+        serializer = TemporaryAssignmentSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({'error': serializer.errors}, status=400)
+        starts_at = serializer.validated_data['starts_at']
+        ends_at = serializer.validated_data['ends_at']
+        user = serializer.validated_data['user']
+        function = serializer.validated_data['function']
+        if starts_at >= ends_at:
+            return Response({'error': 'El inicio debe ser anterior al fin'}, status=400)
+        overlap = TemporaryAssignment.objects.filter(
+            user=user, function=function,
+            status__in=['scheduled', 'active'],
+            starts_at__lt=ends_at, ends_at__gt=starts_at).exists()
+        if overlap:
+            return Response({'error': 'Existe una asignación temporal superpuesta'}, status=409)
+        assignment = serializer.save(assigned_by=request.user)
+        record_audit(request, 'created', 'temporary_assignment', assignment.id,
+                     after={'user_id': user.id, 'function': function.code,
+                            'starts_at': starts_at.isoformat(),
+                            'ends_at': ends_at.isoformat()})
+        return Response(TemporaryAssignmentSerializer(assignment).data, status=201)
+
+
+class ExternalSellerListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        now = timezone.now()
+        users = User.objects.filter(
+            active=True,
+            temporary_assignments__function__code='external_seller',
+            temporary_assignments__function__active=True,
+            temporary_assignments__status='active',
+            temporary_assignments__starts_at__lte=now,
+            temporary_assignments__ends_at__gte=now,
+        ).distinct()
+        return Response([
+            {'id': user.id, 'name': user.name}
+            for user in users.order_by('name', 'id')
+        ])
+
+
+class TemporaryAssignmentDetailView(PermissionMixin, APIView):
+    def patch(self, request, pk):
+        error = self.check_permission(request, 'temporary_assignments.assign')
+        if error:
+            return error
+        assignment = TemporaryAssignment.objects.filter(pk=pk).first()
+        if assignment is None:
+            return Response({'error': 'Asignación no encontrada'}, status=404)
+        new_status = request.data.get('status')
+        if new_status not in {'finished', 'revoked'}:
+            return Response({'error': 'Solo se puede finalizar o revocar'}, status=400)
+        before = {'status': assignment.status}
+        assignment.status = new_status
+        assignment.finished_at = timezone.now()
+        assignment.save(update_fields=['status', 'finished_at'])
+        record_audit(request, new_status, 'temporary_assignment', assignment.id,
+                     before=before, after={'status': new_status})
+        return Response(TemporaryAssignmentSerializer(assignment).data)
 
 
 @extend_schema(responses={200: dict})
@@ -194,6 +462,7 @@ class ChangePasswordView(APIView):
     post=extend_schema(request=PlanSerializer, responses={201: PlanSerializer, 400: dict}),
 )
 class PlanListView(IsAdminMixin, APIView):
+    permission_code = 'commercial_config.manage'
     def get(self, request):
         error = self.check_admin(request)
         if error:
@@ -220,6 +489,7 @@ class PlanListView(IsAdminMixin, APIView):
     delete=extend_schema(responses={204: None, 400: dict, 404: dict}),
 )
 class PlanDetailView(IsAdminMixin, APIView):
+    permission_code = 'commercial_config.manage'
     def _get_plan(self, pk):
         try:
             return Plan.objects.get(id=pk)
@@ -285,6 +555,7 @@ class ActiveRequestTypesView(APIView):
     post=extend_schema(request=MotivoSerializer, responses={201: MotivoSerializer, 400: dict}),
 )
 class MotivoListView(IsAdminMixin, APIView):
+    permission_code = 'commercial_config.manage'
     """Catalogo administrable de motivos (solo administradores)."""
 
     def get(self, request):
@@ -334,6 +605,7 @@ class ActiveMotivosView(APIView):
     delete=extend_schema(responses={204: None, 400: dict, 404: dict}),
 )
 class MotivoDetailView(IsAdminMixin, APIView):
+    permission_code = 'commercial_config.manage'
     def _get_motivo(self, pk):
         try:
             return Motivo.objects.get(id=pk)
@@ -381,6 +653,7 @@ class MotivoDetailView(IsAdminMixin, APIView):
     post=extend_schema(request=PromotionWriteSerializer, responses={201: PromotionSerializer, 400: dict}),
 )
 class PromotionListView(IsAdminMixin, APIView):
+    permission_code = 'commercial_config.manage'
     def get(self, request):
         error = self.check_admin(request)
         if error:
@@ -435,6 +708,7 @@ class PromotionListView(IsAdminMixin, APIView):
     delete=extend_schema(responses={204: None, 400: dict, 404: dict}),
 )
 class PromotionDetailView(IsAdminMixin, APIView):
+    permission_code = 'commercial_config.manage'
     def _get_promo(self, pk):
         try:
             return Promotion.objects.get(id=pk)
@@ -563,6 +837,7 @@ class ActiveTransferTariffsView(APIView):
     post=extend_schema(request=dict, responses={201: TarifaTrasladoSerializer, 400: dict}),
 )
 class TransferTariffListView(IsAdminMixin, APIView):
+    permission_code = 'commercial_config.manage'
     def get(self, request):
         error = self.check_admin(request)
         if error:
@@ -608,6 +883,7 @@ class TransferTariffListView(IsAdminMixin, APIView):
     put=extend_schema(request=dict, responses={200: TarifaTrasladoSerializer, 400: dict, 404: dict}),
 )
 class TransferTariffDetailView(IsAdminMixin, APIView):
+    permission_code = 'commercial_config.manage'
     def _get(self, pk):
         try:
             return TarifaTraslado.objects.get(pk=pk)
@@ -663,6 +939,7 @@ class TransferTariffDetailView(IsAdminMixin, APIView):
 
 @extend_schema(responses={200: TarifaTrasladoHistorialSerializer(many=True), 404: dict})
 class TransferTariffHistoryView(IsAdminMixin, APIView):
+    permission_code = 'commercial_config.view'
     def get(self, request, pk):
         error = self.check_admin(request)
         if error:
@@ -678,10 +955,163 @@ class CustomerListView(APIView):
     """Busqueda de clientes por kardex o nombre (para autocompletar)."""
     def get(self, request):
         q = request.query_params.get('q', '').strip()
-        qs = Customer.objects.all().order_by('code')
+        qs = Customer.objects.all().order_by('name', 'code')
         if q:
-            qs = qs.filter(Q(code__icontains=q) | Q(name__icontains=q))
+            qs = qs.filter(
+                Q(code__icontains=q) | Q(name__icontains=q)
+                | Q(ci__icontains=q) | Q(phone__icontains=q)
+                | Q(contracts__meter_number__icontains=q)
+            ).distinct()
         return Response(CustomerSerializer(qs[:20], many=True).data)
+
+
+class CustomerDetailView(APIView):
+    """Ficha consolidada del cliente: contratos y movimientos reales."""
+
+    def get_customer(self, pk):
+        return Customer.objects.prefetch_related(
+            'contracts__plan', 'contracts__created_by',
+            'contracts__meter_reviewed_by',
+        ).filter(pk=pk).first()
+
+    def get(self, request, pk):
+        customer = self.get_customer(pk)
+        if customer is None:
+            return Response({'error': 'Cliente no encontrado'}, status=404)
+
+        contracts = list(customer.contracts.all())
+        meter_numbers = {c.meter_number for c in contracts if c.meter_number}
+        matching = Contract.objects.filter(
+            meter_number__in=meter_numbers
+        ).exclude(customer_id=customer.id).select_related(
+            'customer', 'plan')
+        matches_by_meter = {}
+        for contract in matching:
+            matches_by_meter.setdefault(contract.meter_number, []).append({
+                'id': contract.id,
+                'number': contract.number,
+                'customerId': contract.customer_id,
+                'customerName': contract.customer.name,
+                'status': contract.status,
+            })
+
+        contract_data = ContractSerializer(contracts, many=True).data
+        for item in contract_data:
+            item['meterMatches'] = matches_by_meter.get(item['meter_number'], [])
+
+        sales = Sale.objects.filter(customer=customer).select_related(
+            'plan', 'planFromId', 'createdBy').order_by('-date', '-id')
+        timeline = SaleSerializer(
+            sales, many=True, context={'catalog': request_type_catalog()}).data
+        return Response({
+            'customer': CustomerSerializer(customer).data,
+            'summary': {
+                'contracts': len(contracts),
+                'meters': len({c.meter_number for c in contracts if c.meter_number}),
+                'movements': sales.count(),
+            },
+            'contracts': contract_data,
+            'timeline': timeline,
+        })
+
+    def put(self, request, pk):
+        if not has_permission(request.user, 'customers.change'):
+            return Response(
+                {'error': 'Solo administradores pueden editar clientes'}, status=403)
+        customer = self.get_customer(pk)
+        if customer is None:
+            return Response({'error': 'Cliente no encontrado'}, status=404)
+        serializer = CustomerSerializer(customer, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response({'error': serializer.errors}, status=400)
+        before = CustomerSerializer(customer).data
+        customer = serializer.save()
+        from .audit import record_audit
+        record_audit(
+            request, 'updated', 'customer', customer.id,
+            before=before, after=CustomerSerializer(customer).data)
+        return Response(CustomerSerializer(customer).data)
+
+
+class ContractMeterReviewView(IsAdminMixin, APIView):
+    """Registra la comprobación manual del medidor en el otro sistema."""
+
+    def patch(self, request, pk):
+        error = self.check_admin(request)
+        if error:
+            return error
+        contract = Contract.objects.filter(pk=pk).first()
+        if contract is None:
+            return Response({'error': 'Contrato no encontrado'}, status=404)
+        review_status = request.data.get('meter_review_status')
+        if review_status not in {'pendiente', 'verificado', 'observado'}:
+            return Response(
+                {'error': 'Estado de revisión inválido'}, status=400)
+        notes = (request.data.get('meter_review_notes') or '').strip()
+        before = {
+            'meter_review_status': contract.meter_review_status,
+            'meter_review_notes': contract.meter_review_notes,
+        }
+        contract.meter_review_status = review_status
+        contract.meter_review_notes = notes
+        contract.meter_reviewed_by = request.user
+        contract.meter_reviewed_at = timezone.now()
+        contract.save(update_fields=[
+            'meter_review_status', 'meter_review_notes',
+            'meter_reviewed_by', 'meter_reviewed_at',
+        ])
+        from .audit import record_audit
+        record_audit(
+            request, 'reviewed', 'contract', contract.id,
+            before=before,
+            after={
+                'meter_review_status': contract.meter_review_status,
+                'meter_review_notes': contract.meter_review_notes,
+            })
+        return Response(ContractSerializer(contract).data)
+
+
+class ContractMeterUpdateView(APIView):
+    """Permite que cualquier operador autenticado registre el medidor."""
+
+    def patch(self, request, pk):
+        contract = Contract.objects.filter(pk=pk).first()
+        if contract is None:
+            return Response({'error': 'Contrato no encontrado'}, status=404)
+        meter_number = (request.data.get('meter_number') or '').strip() or None
+        before = {'meter_number': contract.meter_number}
+        contract.meter_number = meter_number
+        # Un cambio de medidor requiere volver a verificarlo manualmente.
+        contract.meter_review_status = 'pendiente'
+        contract.meter_review_notes = ''
+        contract.meter_reviewed_by = None
+        contract.meter_reviewed_at = None
+        contract.save(update_fields=[
+            'meter_number', 'meter_review_status', 'meter_review_notes',
+            'meter_reviewed_by', 'meter_reviewed_at',
+        ])
+        from .audit import record_audit
+        record_audit(
+            request, 'updated', 'contract', contract.id,
+            before=before, after={'meter_number': contract.meter_number})
+        return Response(ContractSerializer(contract).data)
+
+
+class ContractDetailView(APIView):
+    """Detalle de un contrato sin alterar el movimiento comercial original."""
+
+    def get(self, request, pk):
+        contract = Contract.objects.select_related(
+            'customer', 'plan', 'created_by', 'meter_reviewed_by', 'sale').filter(
+                pk=pk).first()
+        if contract is None:
+            return Response({'error': 'Contrato no encontrado'}, status=404)
+        payload = ContractSerializer(contract).data
+        payload['customer'] = CustomerSerializer(contract.customer).data
+        payload['sale'] = SaleSerializer(
+            contract.sale, context={'catalog': request_type_catalog()}).data \
+            if contract.sale else None
+        return Response(payload)
 
 
 class EquipmentBySerialView(APIView):
@@ -698,7 +1128,8 @@ class EquipmentBySerialView(APIView):
                 """
                 SELECT o.id_onu, o.serie,
                        c.codigo_item, c.descripcion, c.marca, c.modelo,
-                       t.id_tipo_onu, t.nombre
+                       t.id_tipo_onu, t.nombre,
+                       o.estado, o.ubicacion, o.actualizado_en
                 FROM public.onu AS o
                 INNER JOIN public.catalogo_item AS c
                     ON c.codigo_item = o.codigo_item
@@ -728,7 +1159,81 @@ class EquipmentBySerialView(APIView):
                     'nombre': row[7],
                 },
             },
+            'estado': row[8],
+            'ubicacion': row[9],
+            'actualizadoEn': row[10],
         })
+
+
+class InventoryPendingListView(IsAdminMixin, APIView):
+    permission_code = 'inventory.manage'
+    def get(self, request):
+        error = self.check_admin(request)
+        if error:
+            return error
+        movements = InventarioMovimiento.objects.filter(
+            estado=InventarioMovimiento.ESTADO_PENDIENTE
+        ).select_related('sale', 'created_by').order_by('-created_at')
+        return Response({
+            'items': [{
+                'id': movement.id,
+                'serie': movement.serie,
+                'tipo': movement.tipo,
+                'estado': movement.estado,
+                'saleId': movement.sale_id,
+                'clientCode': movement.sale.clientCode,
+                'clientName': movement.sale.clientName,
+                'requestDate': movement.sale.date,
+                'createdAt': movement.created_at,
+                'createdBy': movement.created_by.name,
+            } for movement in movements],
+        })
+
+
+class InventoryConfirmReceptionView(IsAdminMixin, APIView):
+    permission_code = 'inventory.manage'
+    def post(self, request, pk):
+        error = self.check_admin(request)
+        if error:
+            return error
+        try:
+            movement = InventarioMovimiento.objects.select_related('sale').get(
+                id=pk, estado=InventarioMovimiento.ESTADO_PENDIENTE)
+        except InventarioMovimiento.DoesNotExist:
+            return Response({'error': 'Recepción pendiente no encontrada'}, status=404)
+
+        now = timezone.now()
+        with transaction.atomic():
+            movement = InventarioMovimiento.objects.select_for_update().get(id=pk)
+            if movement.estado != InventarioMovimiento.ESTADO_PENDIENTE:
+                return Response({'error': 'La recepción ya fue confirmada'}, status=409)
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE public.onu
+                    SET estado = %s,
+                        ubicacion = %s,
+                        actualizado_en = now()
+                    WHERE LOWER(TRIM(serie)) = LOWER(TRIM(%s))
+                    """,
+                    ['DEVUELTO', 'ALMACEN', movement.serie],
+                )
+                if cursor.rowcount != 1:
+                    return Response(
+                        {'error': 'El equipo ya no existe en inventario'}, status=409)
+            movement.estado = InventarioMovimiento.ESTADO_CONFIRMADO
+            movement.confirmed_by = request.user
+            movement.confirmed_at = now
+            movement.save(update_fields=['estado', 'confirmed_by', 'confirmed_at'])
+        from .audit import record_audit
+        record_audit(
+            request, 'received', 'inventory_movement', movement.id,
+            before={'estado': InventarioMovimiento.ESTADO_PENDIENTE,
+                    'serie': movement.serie},
+            after={'estado': movement.estado,
+                   'sale_id': movement.sale_id},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 def _query_int(params, name, default, maximum=None):
@@ -756,6 +1261,9 @@ def _query_int(params, name, default, maximum=None):
 )
 class SaleListView(APIView):
     def get(self, request):
+        archived = request.query_params.get('archived', '').lower() == 'true'
+        if archived and getattr(request.user, 'role', None) != 'admin':
+            return Response({'error': 'Solo administradores pueden ver solicitudes archivadas'}, status=403)
         from_date = request.query_params.get('from')
         to_date = request.query_params.get('to')
         rtype = request.query_params.get('requestType')
@@ -800,7 +1308,7 @@ class SaleListView(APIView):
                 {'error': {'serviceTypeFrom': 'Tipo de servicio desconocido'}},
                 status=status.HTTP_400_BAD_REQUEST)
         qs = Sale.objects.select_related('plan', 'planFromId', 'createdBy').filter(
-            deleted_at__isnull=True).order_by('-date', '-id')
+            deleted_at__isnull=not archived).order_by('-date', '-id')
         if from_date:
             qs = qs.filter(date__gte=from_date)
         if to_date:
@@ -827,12 +1335,28 @@ class SaleListView(APIView):
         items = qs[start:end]
         total_pages = max(1, (total + page_size - 1) // page_size)
 
+        serialized = SaleSerializer(
+            items, many=True, context={'catalog': request_type_catalog()}).data
+        if archived:
+            ids = [str(item.id) for item in items]
+            audit_events = AuditLog.objects.filter(
+                entity='sale', entity_id__in=ids, action='deactivated'
+            ).select_related('actor').order_by('created_at')
+            archive_data = {}
+            for event in audit_events:
+                archive_data[event.entity_id] = {
+                    'at': event.created_at,
+                    'by': event.actor.name if event.actor else 'Sistema',
+                }
+            for item, sale in zip(serialized, items):
+                event = archive_data.get(str(sale.id))
+                item['archivedAt'] = event['at'] if event else sale.deleted_at
+                item['archivedBy'] = event['by'] if event else '—'
+
         return Response({
             # El catalogo va en el context: sin esto, get_previousService y
             # get_isServiceChange lo pedirian una vez por cada venta de la pagina.
-            'items': SaleSerializer(
-                items, many=True,
-                context={'catalog': request_type_catalog()}).data,
+            'items': serialized,
             'total': total,
             'page': page,
             'page_size': page_size,
@@ -922,6 +1446,7 @@ class SaleListView(APIView):
     delete=extend_schema(responses={204: None, 404: dict, 409: dict}),
 )
 class SaleDetailView(IsAdminMixin, APIView):
+    permission_code = 'comercial.change'
     def delete(self, request, pk):
         error = self.check_admin(request)
         if error:
@@ -936,12 +1461,8 @@ class SaleDetailView(IsAdminMixin, APIView):
             'total': str(sale.total),
             'version': sale.version,
         }
-        if (hasattr(sale, 'traslado_externo')
-                or sale.idempotency_keys.exists()):
-            return Response(
-                {'error': 'No se puede eliminar la solicitud porque tiene '
-                          'dependencias o forma parte del historial.'},
-                status=status.HTTP_409_CONFLICT)
+        # La baja es lógica: no elimina la venta ni sus relaciones. Por eso
+        # puede archivarse aunque tenga traslado o claves de idempotencia.
         sale.deleted_at = timezone.now()
         sale.save(update_fields=['deleted_at'])
         from .audit import record_audit
@@ -1241,12 +1762,69 @@ class SaleDetailView(IsAdminMixin, APIView):
     get=extend_schema(responses={200: UserSerializer(many=True)}),
     post=extend_schema(request=UserWriteSerializer, responses={201: UserSerializer, 400: dict}),
 )
+class SaleRestoreView(IsAdminMixin, APIView):
+    permission_code = 'comercial.change'
+    def post(self, request, pk):
+        error = self.check_admin(request)
+        if error:
+            return error
+        try:
+            sale = Sale.objects.get(id=pk, deleted_at__isnull=False)
+        except Sale.DoesNotExist:
+            return Response({'error': 'Solicitud archivada no encontrada'}, status=404)
+
+        archived_at = sale.deleted_at
+        sale.deleted_at = None
+        sale.save(update_fields=['deleted_at'])
+        from .audit import record_audit
+        record_audit(
+            request, 'restored', 'sale', pk,
+            before={'deleted_at': archived_at.isoformat()},
+            after={'deleted_at': None},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _resolve_assignable_roles(role_ids):
+    if len(role_ids) != len(set(role_ids)):
+        return None, Response(
+            {'error': {'roleIds': 'No repita roles'}},
+            status=status.HTTP_400_BAD_REQUEST)
+    roles = list(Role.objects.filter(
+        pk__in=role_ids, active=True, is_system_role=False))
+    if len(roles) != len(role_ids):
+        return None, Response(
+            {'error': {'roleIds': 'Uno o más roles no existen o no están disponibles'}},
+            status=status.HTTP_400_BAD_REQUEST)
+    return roles, None
+
+
+def _sync_user_roles(user, roles, assigned_by):
+    active_assignments = list(UserRole.objects.filter(
+        user=user, active=True, role__is_system_role=False))
+    role_ids = {role.id for role in roles}
+    assigned_role_ids = {assignment.role_id for assignment in active_assignments}
+    now = timezone.now()
+    for assignment in active_assignments:
+        if assignment.role_id not in role_ids:
+            assignment.active = False
+            assignment.revoked_at = now
+            assignment.save(update_fields=['active', 'revoked_at'])
+    for role in roles:
+        if role.id not in assigned_role_ids:
+            UserRole.objects.create(
+                user=user, role=role, assigned_by=assigned_by)
+
+
 class UserListView(IsAdminMixin, APIView):
+    permission_code = 'users.manage'
     def get(self, request):
         error = self.check_admin(request)
         if error:
             return error
-        return Response(UserSerializer(User.objects.all().order_by('id'), many=True).data)
+        users = User.objects.prefetch_related(
+            'role_assignments__role').order_by('id')
+        return Response(UserSerializer(users, many=True).data)
 
     def post(self, request):
         error = self.check_admin(request)
@@ -1258,10 +1836,24 @@ class UserListView(IsAdminMixin, APIView):
         if not request.data.get('password'):
             return Response({'error': 'La contraseña es requerida'},
                             status=status.HTTP_400_BAD_REQUEST)
-        user = serializer.save()
-        from .audit import record_audit
-        record_audit(request, 'created', 'user', user.id,
-                     after={'role': user.role, 'active': user.active})
+        role_ids = serializer.validated_data.get('roleIds')
+        if not role_ids:
+            return Response(
+                {'error': {'roleIds': 'Seleccione al menos un rol'}},
+                status=status.HTTP_400_BAD_REQUEST)
+        roles, error = _resolve_assignable_roles(role_ids)
+        if error:
+            return error
+        with transaction.atomic():
+            user = serializer.save()
+            _sync_user_roles(user, roles, request.user)
+            record_audit(
+                request, 'created', 'user', user.id,
+                after={
+                    'role': user.role,
+                    'active': user.active,
+                    'roles': [role.name for role in roles or []],
+                })
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
 
@@ -1270,6 +1862,7 @@ class UserListView(IsAdminMixin, APIView):
     delete=extend_schema(responses={204: None, 400: dict, 404: dict, 409: dict}),
 )
 class UserDetailView(IsAdminMixin, APIView):
+    permission_code = 'users.manage'
     def delete(self, request, pk):
         error = self.check_admin(request)
         if error:
@@ -1305,11 +1898,28 @@ class UserDetailView(IsAdminMixin, APIView):
         serializer = UserWriteSerializer(user, data=request.data, partial=True)
         if not serializer.is_valid():
             return Response({'error': _first_error(serializer)}, status=status.HTTP_400_BAD_REQUEST)
+        role_ids = serializer.validated_data.get('roleIds')
+        roles = None
+        if role_ids is not None:
+            if not role_ids:
+                return Response(
+                    {'error': {'roleIds': 'Seleccione al menos un rol'}},
+                    status=status.HTTP_400_BAD_REQUEST)
+            roles, error = _resolve_assignable_roles(role_ids)
+            if error:
+                return error
         before = {'role': user.role, 'active': user.active}
-        serializer.save()
-        from .audit import record_audit
-        record_audit(request, 'updated', 'user', user.id, before=before,
-                     after={'role': user.role, 'active': user.active})
+        with transaction.atomic():
+            serializer.save()
+            if roles is not None:
+                _sync_user_roles(user, roles, request.user)
+            record_audit(
+                request, 'updated', 'user', user.id, before=before,
+                after={
+                    'role': user.role,
+                    'active': user.active,
+                    'roles': [role.name for role in roles or []],
+                })
         return Response(UserSerializer(user).data)
 
 
@@ -1599,6 +2209,7 @@ def _first_error(serializer):
 
 @extend_schema(exclude=True)
 class BackupListView(IsAdminMixin, APIView):
+    permission_code = 'roles.manage'
     """Historial de respaldos. Solo metadatos: el archivo nunca se conserva."""
 
     def get(self, request):
@@ -1673,6 +2284,7 @@ class BackupListView(IsAdminMixin, APIView):
 
 @extend_schema(responses={204: None, 404: dict})
 class BackupDeleteView(IsAdminMixin, APIView):
+    permission_code = 'roles.manage'
     def delete(self, request, pk):
         error = self.check_admin(request)
         if error:

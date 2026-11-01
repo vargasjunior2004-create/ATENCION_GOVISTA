@@ -9,6 +9,7 @@ import {
   Tag,
   SlidersHorizontal,
   Users,
+  UserRoundSearch,
 } from 'lucide-react';
 
 export const moduleReturnItem = {
@@ -36,6 +37,12 @@ export const commercialNavigation = [
     icon: History,
     end: true,
   },
+  {
+    to: '/comercial/clientes',
+    label: 'Clientes',
+    icon: UserRoundSearch,
+    end: true,
+  },
 ];
 
 export const commercialAdminNavigation = [
@@ -43,21 +50,25 @@ export const commercialAdminNavigation = [
     to: '/comercial/planes',
     label: 'Planes',
     icon: Package,
+    permission: 'commercial_config.manage',
   },
   {
     to: '/comercial/motivos',
     label: 'Motivos',
     icon: Tag,
+    permission: 'commercial_config.manage',
   },
   {
     to: '/comercial/promociones',
     label: 'Promociones',
     icon: Percent,
+    permission: 'commercial_config.manage',
   },
   {
     to: '/comercial/usuarios',
     label: 'Usuarios',
     icon: Users,
+    permission: 'users.manage',
   },
   {
     to: '/comercial/backups',
@@ -68,5 +79,6 @@ export const commercialAdminNavigation = [
     to: '/comercial/tarifas-traslados',
     label: 'Tarifas de traslados',
     icon: SlidersHorizontal,
+    permission: 'commercial_config.manage',
   },
 ];

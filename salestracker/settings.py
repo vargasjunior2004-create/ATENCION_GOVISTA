@@ -17,6 +17,7 @@ _debug_value = os.environ.get('DJANGO_DEBUG')
 if _environment in ('prod', 'production') and _debug_value is None:
     raise ImproperlyConfigured('DJANGO_DEBUG debe definirse explícitamente en producción.')
 DEBUG = (_debug_value or 'true').lower() in ('1', 'true', 'yes')
+SERVE_FRONTEND = os.environ.get('SERVE_FRONTEND', 'true').lower() in ('1', 'true', 'yes')
 
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 if not SECRET_KEY:
@@ -135,7 +136,7 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
-STATICFILES_DIRS = [BASE_DIR / 'frontend_build' / 'static']
+STATICFILES_DIRS = [BASE_DIR / 'frontend_build' / 'static'] if SERVE_FRONTEND else []
 
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
