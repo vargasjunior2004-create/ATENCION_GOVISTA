@@ -49,12 +49,16 @@ const PERIOD_OPTIONS = [
 ];
 
 const CHART_COLORS = ['#12894d', '#7c3aed', '#e56b5d', '#3b82f6', '#d69e2e', '#64748b'];
+const COMPARISON_COLORS = {
+  altas: '#1d4ed8',
+  retiros: '#f97316',
+};
 const SERVICE_COLORS = {
-  internet: '#0e7490',
-  tv: '#2563eb',
-  tv_digital: '#ca8a04',
-  combo_analog: '#ea580c',
-  combo_digital: '#475569',
+  internet: '#7c3aed',
+  tv: '#db2777',
+  tv_digital: '#0891b2',
+  combo_analog: '#65a30d',
+  combo_digital: '#a16207',
 };
 
 function todayInBolivia() {
@@ -378,8 +382,8 @@ export default function Dashboard() {
                         <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                         <Tooltip content={<ChartTooltip />} />
                         <Legend iconType="circle" wrapperStyle={{ fontSize: 11, paddingTop: 12 }} />
-                        <Bar name="Altas comerciales" dataKey="altas_comerciales" fill="#12894d" radius={[5, 5, 0, 0]} />
-                        <Bar name="Retiros" dataKey="retiros" fill="#e56b5d" radius={[5, 5, 0, 0]} />
+                        <Bar name="Altas comerciales" dataKey="altas_comerciales" fill={COMPARISON_COLORS.altas} radius={[5, 5, 0, 0]} />
+                        <Bar name="Retiros" dataKey="retiros" fill={COMPARISON_COLORS.retiros} radius={[5, 5, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
