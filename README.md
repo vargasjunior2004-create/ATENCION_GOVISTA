@@ -297,10 +297,12 @@ Los filtros del historial se guardan en la URL (`from`, `to`, `requestType`, `se
 | DELETE | /api/sales/:id | Admin | Eliminar solicitud |
 | GET | /api/dashboard/stats | Si | Estadisticas del dashboard |
 | GET | /api/users | Admin | Listar usuarios con roles activos |
-| POST | /api/users | Admin | Crear usuario; acepta `roleIds` para asignar roles en la misma operacion |
+| POST | /api/users | Admin | Crear usuario; requiere `roleIds` para asignar roles en la misma operacion |
 | PUT | /api/users/:id | Admin | Editar usuario; acepta `roleIds` para sincronizar roles |
 | DELETE | /api/users/:id | Admin | Desactivar usuario (ruta heredada; no elimina datos) |
 | GET | /api/external-sellers/active | Si | Vendedores con asignacion externa activa |
+
+Las cuentas se autorizan por los roles RBAC. El campo heredado `role` (`admin`/`ventas`) no se acepta para escritura; el backend conserva su valor por compatibilidad con operaciones antiguas.
 | GET | /api/reports/dashboard/pdf | Si | PDF del dia (dashboard) |
 | GET | /api/reports/dashboard/xlsx | Si | XLSX del dia (dashboard) |
 | GET | /api/reports/dashboard/png | Si | PNG del dia (dashboard) |

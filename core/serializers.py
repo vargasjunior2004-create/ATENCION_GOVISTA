@@ -158,7 +158,14 @@ class UserWriteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'name', 'password', 'role', 'active', 'roleIds']
+        fields = ['id', 'name', 'password', 'active', 'roleIds']
+
+    def validate(self, attrs):
+        if 'role' in self.initial_data:
+            raise serializers.ValidationError({
+                'role': 'El rol heredado ya no se registra; asigne roleIds.'
+            })
+        return attrs
 
     def create(self, validated_data):
         password = validated_data.pop('password', None)
