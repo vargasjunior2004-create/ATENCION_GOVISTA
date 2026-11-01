@@ -49,6 +49,13 @@ const PERIOD_OPTIONS = [
 ];
 
 const CHART_COLORS = ['#12894d', '#7c3aed', '#e56b5d', '#3b82f6', '#d69e2e', '#64748b'];
+const SERVICE_COLORS = {
+  internet: '#12894d',
+  tv: '#3b82f6',
+  tv_digital: '#7c3aed',
+  combo_analog: '#d69e2e',
+  combo_digital: '#e56b5d',
+};
 
 function todayInBolivia() {
   return new Intl.DateTimeFormat('en-CA', {
@@ -119,7 +126,7 @@ function ChartTooltip({ active, payload, label }) {
   );
 }
 
-function EmptyChart({ message = 'No hay solicitudes en este período' }) {
+function EmptyChart({ message = 'No hay solicitudes comerciales en este período' }) {
   return (
     <div className="flex h-[280px] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-6 text-center">
       <div>
@@ -271,7 +278,7 @@ export default function Dashboard() {
             </div>
             <h1 className="max-w-xl text-3xl font-black tracking-tight sm:text-4xl">Solicitudes de clientes</h1>
             <p className="mt-2 max-w-lg text-sm leading-6 text-green-100/65">
-              Una lectura clara de las solicitudes, retiros y cambios registrados por GO VISTA.
+              Una lectura clara de las solicitudes comerciales, retiros y cambios registrados por GO VISTA.
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
@@ -340,7 +347,7 @@ export default function Dashboard() {
         <Card className="flex min-h-[320px] items-center justify-center p-8">
           <div className="text-center">
             <RefreshCw className="mx-auto mb-3 h-8 w-8 animate-spin text-brand-600" />
-            <p className="text-sm font-semibold text-slate-500">Consultando solicitudes reales...</p>
+            <p className="text-sm font-semibold text-slate-500">Consultando solicitudes comerciales ...</p>
           </div>
         </Card>
       ) : stats && (
@@ -354,7 +361,7 @@ export default function Dashboard() {
           </section>
 
           {!hasData ? (
-            <Card className="p-5 sm:p-6"><EmptyChart message="No hay solicitudes para analizar" /></Card>
+            <Card className="p-5 sm:p-6"><EmptyChart message="No hay solicitudes comerciales para analizar" /></Card>
           ) : (
             <>
               <section className="grid gap-5 xl:grid-cols-[1.35fr_1fr]">
@@ -374,7 +381,7 @@ export default function Dashboard() {
                     </ResponsiveContainer>
                   </div>
                 </ChartCard>
-                <ChartCard eyebrow="Ritmo de actividad" title="Evolución de solicitudes">
+                <ChartCard eyebrow="Ritmo de actividad" title="Evolución de solicitudes comerciales">
                   <div className="h-[300px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={series} margin={{ top: 4, right: 4, left: -18, bottom: 4 }}>
@@ -397,7 +404,7 @@ export default function Dashboard() {
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                           <Pie data={services} dataKey="count" nameKey="label" cx="50%" cy="46%" innerRadius={62} outerRadius={96} paddingAngle={3}>
-                            {services.map((entry, index) => <Cell key={entry.serviceType} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}
+                            {services.map((entry) => <Cell key={entry.serviceType} fill={SERVICE_COLORS[entry.serviceType] || '#64748b'} />)}
                           </Pie>
                           <Tooltip content={<ChartTooltip />} />
                           <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
