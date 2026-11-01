@@ -54,11 +54,11 @@ const COMPARISON_COLORS = {
   retiros: '#f97316',
 };
 const SERVICE_COLORS = {
-  internet: '#7c3aed',
-  tv: '#db2777',
-  tv_digital: '#0891b2',
-  combo_analog: '#65a30d',
-  combo_digital: '#a16207',
+  internet: '#6d28d9',
+  tv: '#be123c',
+  tv_digital: '#0f766e',
+  combo_analog: '#4d7c0f',
+  combo_digital: '#a21caf',
 };
 
 function todayInBolivia() {
