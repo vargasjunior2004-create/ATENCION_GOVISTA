@@ -321,21 +321,20 @@ Las cuentas se autorizan por los roles RBAC. El campo heredado `role` (`admin`/`
 - **Hosting:** Render free tier (512MB RAM, 0.1 CPU, 750 hrs/mes)
 - **Database:** Supabase PostgreSQL 17.6
 - **Estaticos:** WhiteNoise sirve archivos desde `staticfiles/`
-- **Frontend:** Vercel publica `frontend/`; configura el directorio raíz `frontend`, `npm ci` como instalación, `npm run build` como build y `build` como salida
-- **API:** Render sirve Django y la base de datos; `frontend/vercel.json` reenvía `/api/*` a la URL pública del backend de Render
+- **Frontend y API:** Vercel publica los servicios `frontend` y `salestracker` desde el `vercel.json` de la raíz; `/api/*` llega a Django y las demás rutas a React
 - **Paquetes del sistema:** Render instala `postgresql-client-17` desde `apt.txt`; el build no ejecuta `apt-get`
-- **Build del backend:** Render ejecuta `pip install -r requirements.txt && bash build.sh`; `SERVE_FRONTEND=false` evita servir un build React antiguo desde Render
+- **API de respaldo:** Render conserva el servicio Django existente mientras se valida el despliegue de servicios en Vercel
 - **Inicio:** `gunicorn salestracker.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 60`
 
 ### Configurar Vercel
 
-1. Importa el mismo repositorio y selecciona `frontend` como **Root Directory**.
-2. Usa Create React App, `npm ci` como Install Command, `npm run build` como Build Command y `build` como Output Directory.
-3. Conserva `frontend/vercel.json`: primero reenvía `/api/*` a Render y luego resuelve las rutas de React a `index.html`.
-4. No hace falta configurar una variable de API ni CORS en el navegador; el rewrite mantiene las llamadas bajo el mismo origen de Vercel.
-5. Prueba inicio de sesión y operaciones con la URL Preview antes de asignar el dominio final.
+1. Importa el repositorio completo en Vercel y deja vacía la opción **Root Directory** para que se use `vercel.json` en la raíz.
+2. El `vercel.json` define Django en `.` y Create React App en `frontend`, con `/api/*` público para Django y el resto de rutas para React.
+3. Configura en Vercel las variables de entorno que necesita Django (`DJANGO_SECRET_KEY`, `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_CSRF_TRUSTED_ORIGINS` y `DATABASE_URL`; además `BACKUP_DATABASE_URL` para respaldos).
+4. No se requiere binding entre los servicios: el navegador llama a `/api/*` en el mismo dominio y Vercel enruta esas peticiones al servicio Django.
+5. Valida el login y operaciones desde una Preview antes de dirigir usuarios al proyecto.
 
-En Render, conserva la API y configura `SERVE_FRONTEND=false` en Environment. En el próximo deploy el dominio de Render deja de servir el React; el frontend se abre desde Vercel.
+Mantén Render disponible como backend de respaldo hasta verificar que Vercel puede conectar a la base de datos y atender la API.
 
 ### Variables de entorno en Render
 
