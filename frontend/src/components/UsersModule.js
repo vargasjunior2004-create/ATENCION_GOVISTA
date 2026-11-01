@@ -102,7 +102,7 @@ export default function UsersModule() {
         await api.updateUser(editingId, payload);
         setSuccess('Usuario y roles actualizados correctamente.');
       } else {
-        await api.createUser({ ...payload, role: 'ventas' });
+        await api.createUser(payload);
         setSuccess('Usuario creado con sus roles correctamente.');
       }
       setShowForm(false);

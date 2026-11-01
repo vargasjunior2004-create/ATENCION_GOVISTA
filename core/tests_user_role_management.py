@@ -34,7 +34,6 @@ class UserRoleManagementTests(TestCase):
             {
                 'name': 'nuevo-usuario',
                 'password': 'password',
-                'role': 'ventas',
                 'roleIds': [self.jefa.id],
             },
             content_type='application/json',
@@ -86,7 +85,6 @@ class UserRoleManagementTests(TestCase):
             {
                 'name': 'invalid-user',
                 'password': 'password',
-                'role': 'ventas',
                 'roleIds': [system_role.id],
             },
             content_type='application/json',
@@ -102,7 +100,6 @@ class UserRoleManagementTests(TestCase):
             {
                 'name': 'no-role-user',
                 'password': 'password',
-                'role': 'ventas',
                 'roleIds': [],
             },
             content_type='application/json',
@@ -111,6 +108,33 @@ class UserRoleManagementTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertFalse(User.objects.filter(name='no-role-user').exists())
+
+    def test_create_user_requires_rbac_roles(self):
+        response = self.client.post(
+            '/api/users',
+            {'name': 'missing-role-user', 'password': 'password'},
+            content_type='application/json',
+            **self.auth,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(User.objects.filter(name='missing-role-user').exists())
+
+    def test_legacy_role_cannot_be_submitted(self):
+        response = self.client.post(
+            '/api/users',
+            {
+                'name': 'legacy-role-user',
+                'password': 'password',
+                'role': 'admin',
+                'roleIds': [self.jefa.id],
+            },
+            content_type='application/json',
+            **self.auth,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(User.objects.filter(name='legacy-role-user').exists())
 
     def test_login_payload_exposes_assigned_role_permissions(self):
         permission = Permission.objects.get(

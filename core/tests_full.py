@@ -3,7 +3,7 @@ from django.utils import timezone
 from decimal import Decimal
 from datetime import timedelta
 
-from .models import User, Plan, Sale, Motivo
+from .models import User, Plan, Sale, Motivo, Role
 
 
 def _json(response):
@@ -601,7 +601,8 @@ class UserManagementTests(TestCase):
         token = self._token(self.admin, 'pass1')
         r = self.c.post('/api/users', {
             'name': 'newuser',
-            'password': 'newpass', 'role': 'ventas'
+            'password': 'newpass',
+            'roleIds': [Role.objects.get(code='caja').id]
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r.status_code, 201)
 
@@ -609,14 +610,15 @@ class UserManagementTests(TestCase):
         token = self._token(self.ventas_user, 'pass2')
         r = self.c.post('/api/users', {
             'name': 'hack',
-            'password': 'hack', 'role': 'admin'
+            'password': 'hack',
+            'roleIds': [Role.objects.get(code='caja').id]
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r.status_code, 403)
 
     def test_edit_user_admin(self):
         token = self._token(self.admin, 'pass1')
         r = self.c.put(f'/api/users/{self.ventas_user.id}', {
-            'name': 'ventas_updated', 'role': 'ventas'
+            'name': 'ventas_updated'
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r.status_code, 200)
         self.assertEqual(_json(r)['name'], 'ventas_updated')

@@ -1836,19 +1836,16 @@ class UserListView(IsAdminMixin, APIView):
             return Response({'error': 'La contraseña es requerida'},
                             status=status.HTTP_400_BAD_REQUEST)
         role_ids = serializer.validated_data.get('roleIds')
-        roles = None
-        if role_ids is not None:
-            if not role_ids:
-                return Response(
-                    {'error': {'roleIds': 'Seleccione al menos un rol'}},
-                    status=status.HTTP_400_BAD_REQUEST)
-            roles, error = _resolve_assignable_roles(role_ids)
-            if error:
-                return error
+        if not role_ids:
+            return Response(
+                {'error': {'roleIds': 'Seleccione al menos un rol'}},
+                status=status.HTTP_400_BAD_REQUEST)
+        roles, error = _resolve_assignable_roles(role_ids)
+        if error:
+            return error
         with transaction.atomic():
             user = serializer.save()
-            if roles is not None:
-                _sync_user_roles(user, roles, request.user)
+            _sync_user_roles(user, roles, request.user)
             record_audit(
                 request, 'created', 'user', user.id,
                 after={
