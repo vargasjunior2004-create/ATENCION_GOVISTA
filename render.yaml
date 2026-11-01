@@ -12,6 +12,8 @@ services:
         generateValue: true
       - key: DJANGO_DEBUG
         value: "false"
+      - key: SERVE_FRONTEND
+        value: "false"
       # DATABASE_URL NO se define aqui a proposito: la credencial vive
       # unicamente en el panel de Render (Environment). Definirla en este
       # archivo haria que el Blueprint sobrescriba el valor del panel.
