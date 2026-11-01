@@ -33,7 +33,7 @@ try:
         return response
 
     build_dir = Path(settings.FRONTEND_BUILD_DIR)
-    if build_dir.exists():
+    if settings.SERVE_FRONTEND and build_dir.exists():
         urlpatterns += [
             path('', index_view),
             re_path(r'^(?!api/|static/|admin/).*', index_view),

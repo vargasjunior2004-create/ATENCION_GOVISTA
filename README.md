@@ -321,10 +321,18 @@ Las cuentas se autorizan por los roles RBAC. El campo heredado `role` (`admin`/`
 - **Hosting:** Render free tier (512MB RAM, 0.1 CPU, 750 hrs/mes)
 - **Database:** Supabase PostgreSQL 17.6
 - **Estaticos:** WhiteNoise sirve archivos desde `staticfiles/`
-- **Paquetes del sistema:** Render instala Node.js, npm y `postgresql-client-17` desde `apt.txt`; el build no ejecuta `apt-get`
-- **Frontend:** `build.sh` compila React en `frontend_build/` antes de recopilar los archivos estáticos
-- **Build:** Render ejecuta `pip install -r requirements.txt && bash build.sh`; el script compila React, aplica migraciones y ejecuta `collectstatic`
+- **Frontend:** cada deploy ejecuta `npm ci` y `npm run build`; React genera `frontend_build/` y Django recopila sus archivos en `staticfiles/`
+- **Build:** Render ejecuta `pip install -r requirements.txt && bash build.sh`. El script valida `pg_dump` 17 o superior y verifica los assets compilados
 - **Inicio:** `gunicorn salestracker.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 60`
+### Configurar Vercel
+
+1. Importa el mismo repositorio y selecciona `frontend` como **Root Directory**.
+2. Usa Create React App, `npm ci` como Install Command, `npm run build` como Build Command y `build` como Output Directory.
+3. Conserva `frontend/vercel.json`: primero reenvía `/api/*` a Render y luego resuelve las rutas de React a `index.html`.
+4. No hace falta configurar una variable de API ni CORS en el navegador; el rewrite mantiene las llamadas bajo el mismo origen de Vercel.
+5. Prueba inicio de sesión y operaciones con la URL Preview antes de asignar el dominio final.
+
+En Render, conserva la API y configura `SERVE_FRONTEND=false` en Environment. En el próximo deploy el dominio de Render deja de servir el React; el frontend se abre desde Vercel.
 
 ### Variables de entorno en Render
 
@@ -367,7 +375,7 @@ Y comparalo con el campo `checksum` del historial en la app.
 
 ### Notas
 
-- `frontend_build/` y `staticfiles/` se generan durante el deploy; WhiteNoise sirve los archivos de `staticfiles/`
+- `staticfiles/` se genera durante el deploy; WhiteNoise sirve los archivos del backend. Vercel sirve el build React
 - El selector de modulos es solo navegacion; la autorizacion real sigue siendo por rol en el backend. Aun no existen permisos por modulo
 - Atencion al Cliente y Gestion de Equipos estan deshabilitados hasta implementar su backend y permisos
 - `wsgi.py` ejecuta migraciones + seed automaticamente si no hay datos
