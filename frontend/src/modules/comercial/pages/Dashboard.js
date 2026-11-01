@@ -50,11 +50,11 @@ const PERIOD_OPTIONS = [
 
 const CHART_COLORS = ['#12894d', '#7c3aed', '#e56b5d', '#3b82f6', '#d69e2e', '#64748b'];
 const SERVICE_COLORS = {
-  internet: '#12894d',
-  tv: '#3b82f6',
-  tv_digital: '#7c3aed',
-  combo_analog: '#d69e2e',
-  combo_digital: '#e56b5d',
+  internet: '#0e7490',
+  tv: '#2563eb',
+  tv_digital: '#ca8a04',
+  combo_analog: '#ea580c',
+  combo_digital: '#475569',
 };
 
 function todayInBolivia() {
@@ -223,6 +223,10 @@ export default function Dashboard() {
 
   const analytics = stats?.analytics;
   const series = analytics?.series || [];
+  const commercialSeries = series.map((item) => ({
+    ...item,
+    altas_comerciales: item.nuevo_contrato + item.recontrataciones,
+  }));
   const services = analytics?.servicios || [];
   const categories = analytics?.categorias || [];
   const hasData = series.some((item) => item.movimientos > 0);
@@ -357,7 +361,7 @@ export default function Dashboard() {
             <MetricCard label="Recontrataciones" count={analytics?.recontrataciones?.count} total={analytics?.recontrataciones?.total} icon={RefreshCw} tone="blue" />
             <MetricCard label="Retiros" count={analytics?.retiros?.count} total={analytics?.retiros?.total} icon={ArrowDownRight} tone="red" />
             <MetricCard label="Cambios de plan" count={analytics?.cambios_plan?.count} total={analytics?.cambios_plan?.total} icon={RefreshCw} tone="blue" />
-            <MetricCard label="Balance neto" count={analytics?.balance_neto} icon={Activity} tone="slate" detail="Altas comerciales menos retiros" />
+            <MetricCard label="Balance neto" count={analytics?.balance_neto} icon={Activity} tone="slate" detail="Nuevos + recontrataciones - retiros" />
           </section>
 
           {!hasData ? (
@@ -368,14 +372,13 @@ export default function Dashboard() {
                 <ChartCard eyebrow="Comparativa diaria" title="Altas comerciales frente a retiros">
                   <div className="h-[300px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={series} margin={{ top: 4, right: 4, left: -18, bottom: 4 }}>
+                      <BarChart data={commercialSeries} margin={{ top: 4, right: 4, left: -18, bottom: 4 }}>
                         <CartesianGrid stroke="#e8eee9" vertical={false} />
                         <XAxis dataKey="date" tickFormatter={readableShortDate} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                         <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                         <Tooltip content={<ChartTooltip />} />
                         <Legend iconType="circle" wrapperStyle={{ fontSize: 11, paddingTop: 12 }} />
-                        <Bar name="Nuevos contratos" dataKey="nuevo_contrato" fill="#12894d" radius={[5, 5, 0, 0]} />
-                        <Bar name="Recontrataciones" dataKey="recontrataciones" fill="#7c3aed" radius={[5, 5, 0, 0]} />
+                        <Bar name="Altas comerciales" dataKey="altas_comerciales" fill="#12894d" radius={[5, 5, 0, 0]} />
                         <Bar name="Retiros" dataKey="retiros" fill="#e56b5d" radius={[5, 5, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
