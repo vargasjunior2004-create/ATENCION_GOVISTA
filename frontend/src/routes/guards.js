@@ -27,7 +27,10 @@ export function ProtectedRoute() {
   return token ? <Outlet /> : <Navigate to="/login" replace />;
 }
 
-export function AdminRoute() {
-  const { isAdmin } = useAuth();
-  return isAdmin ? <Outlet /> : <Navigate to="/comercial/dashboard" replace />;
+export function AdminRoute({ permission, children }) {
+  const { isAdmin, hasPermission } = useAuth();
+  const allowed = permission ? hasPermission(permission) : isAdmin;
+  return allowed
+    ? (children || <Outlet />)
+    : <Navigate to="/comercial/dashboard" replace />;
 }

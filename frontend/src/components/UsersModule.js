@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
-import { Button, Input, Select, Card, Alert, Badge } from './ui';
+import { Alert, Badge, Button, Card, Input } from './ui';
 import SecurityModule from '../modules/comercial/pages/SecurityModule';
 
-const emptyUser = { name: '', password: '', role: 'ventas' };
+const emptyUser = { name: '', password: '', roleIds: [] };
 
 export default function UsersModule() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -12,102 +12,129 @@ export default function UsersModule() {
     ? 'seguridad'
     : 'usuarios';
   const [users, setUsers] = useState([]);
+  const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ ...emptyUser });
   const [editingId, setEditingId] = useState(null);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [deletingUser, setDeletingUser] = useState(null);
-  const [roleUser, setRoleUser] = useState(null);
-  const [roleAssignments, setRoleAssignments] = useState([]);
-  const [roles, setRoles] = useState([]);
-  const [selectedRole, setSelectedRole] = useState('');
 
   const loadUsers = useCallback(async () => {
-    try { setUsers(await api.getUsers()); } catch (err) { console.error(err); } finally { setLoading(false); }
+    try {
+      const [userData, roleData] = await Promise.all([
+        api.getUsers(),
+        api.getRoles(),
+      ]);
+      setUsers(userData);
+      setRoles(roleData);
+      setError('');
+    } catch (err) {
+      setError(err.error || 'No fue posible cargar usuarios y roles.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
 
-  const openRoles = async (user) => {
-    setRoleUser(user); setSelectedRole(''); setError('');
-    try {
-      const [assigned, available] = await Promise.all([
-        api.getUserRoles(user.id), api.getRoles(),
-      ]);
-      setRoleAssignments(assigned); setRoles(available);
-    } catch (err) { setError(err.error || 'No fue posible cargar los roles.'); }
+  const handleChange = (event) => {
+    const { name, value } = event.target;
+    setForm((current) => ({
+      ...current,
+      [name]: name === 'name' ? value.toUpperCase() : value,
+    }));
   };
 
-  const assignRole = async () => {
-    if (!selectedRole || !roleUser) return;
-    try {
-      await api.assignUserRole(roleUser.id, Number(selectedRole));
-      setRoleAssignments(await api.getUserRoles(roleUser.id));
-      setSelectedRole(''); setSuccess('Rol asignado correctamente.');
-    } catch (err) { setError(err.error || 'No fue posible asignar el rol.'); }
+  const openNew = () => {
+    setForm({ ...emptyUser });
+    setEditingId(null);
+    setShowForm(true);
+    setError('');
+    setSuccess('');
   };
 
-  const revokeRole = async (assignment) => {
-    try {
-      await api.revokeUserRole(assignment.id);
-      setRoleAssignments(await api.getUserRoles(roleUser.id));
-      setSuccess('Rol revocado correctamente.');
-    } catch (err) { setError(err.error || 'No fue posible revocar el rol.'); }
-  };
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    const UPPERCASE_FIELDS = ['name'];
-    const finalValue = UPPERCASE_FIELDS.includes(name) ? value.toUpperCase() : value;
-    setForm((p) => ({ ...p, [name]: finalValue }));
-  };
-
-  const openNew = () => { setForm({ ...emptyUser }); setEditingId(null); setShowForm(true); setError(''); setSuccess(''); };
   const openEdit = (user) => {
-    setForm({ name: user.name, password: '', role: user.role });
-    setEditingId(user.id); setShowForm(true); setError(''); setSuccess('');
+    setForm({
+      name: user.name,
+      password: '',
+      roleIds: (user.roles || [])
+        .filter((role) => !role.is_system_role)
+        .map((role) => role.id),
+    });
+    setEditingId(user.id);
+    setShowForm(true);
+    setError('');
+    setSuccess('');
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault(); setError(''); setSuccess('');
+  const toggleRole = (roleId) => {
+    setForm((current) => ({
+      ...current,
+      roleIds: current.roleIds.includes(roleId)
+        ? current.roleIds.filter((id) => id !== roleId)
+        : [...current.roleIds, roleId],
+    }));
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+    if (!form.roleIds.length) {
+      setError('Seleccione al menos un rol para la cuenta.');
+      return;
+    }
+    if (!editingId && !form.password) {
+      setError('La contraseña es requerida para nuevos usuarios.');
+      return;
+    }
+
+    setSaving(true);
     try {
-      const payload = { name: form.name, role: form.role };
+      const payload = {
+        name: form.name,
+        roleIds: form.roleIds,
+      };
       if (form.password) payload.password = form.password;
       if (editingId) {
         await api.updateUser(editingId, payload);
-        setSuccess('Usuario actualizado correctamente');
+        setSuccess('Usuario y roles actualizados correctamente.');
       } else {
-        if (!form.password) { setError('La contrasena es requerida para nuevos usuarios'); return; }
-        await api.createUser({ ...payload, password: form.password });
-        setSuccess('Usuario creado correctamente');
+        await api.createUser({ ...payload, role: 'ventas' });
+        setSuccess('Usuario creado con sus roles correctamente.');
       }
-      setShowForm(false); loadUsers();
-    } catch (err) { setError(err.error || 'Error al guardar usuario'); }
-  };
-
-  const toggleActive = async (user) => {
-    try { await api.updateUser(user.id, { active: !user.active }); loadUsers(); } catch (err) { alert(err.error || 'Error'); }
-  };
-
-  const handleDeleteUser = async () => {
-    if (!deletingUser) return;
-    try {
-      await api.deleteUser(deletingUser.id);
-      setDeletingUser(null);
-      loadUsers();
+      setShowForm(false);
+      await loadUsers();
     } catch (err) {
-      alert(err.error || 'Error al eliminar usuario');
-      setDeletingUser(null);
+      setError(err.error || 'No fue posible guardar el usuario.');
+    } finally {
+      setSaving(false);
     }
   };
 
-  if (loading) return <p className="text-center text-slate-400 py-20">Cargando...</p>;
+  const toggleActive = async (user) => {
+    setError('');
+    setSuccess('');
+    try {
+      await api.updateUser(user.id, { active: !user.active });
+      setSuccess(user.active ? 'Usuario desactivado.' : 'Usuario activado.');
+      await loadUsers();
+    } catch (err) {
+      setError(err.error || 'No fue posible actualizar el usuario.');
+    }
+  };
+
+  const editableRoles = roles.filter((role) => !role.is_system_role);
+
+  if (loading) {
+    return <p className="py-20 text-center text-slate-400">Cargando...</p>;
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-600">
             Administración comercial
@@ -119,10 +146,16 @@ export default function UsersModule() {
             Cuentas, roles y asignaciones temporales en un solo lugar.
           </p>
         </div>
-        {section === 'usuarios' && <Button onClick={openNew}>+ Agregar Usuario</Button>}
-      </div>
+        {section === 'usuarios' && (
+          <Button onClick={openNew}>+ Agregar Usuario</Button>
+        )}
+      </header>
 
-      <div className="flex gap-2 border-b border-slate-200" role="tablist" aria-label="Administración de usuarios">
+      <div
+        className="flex gap-2 border-b border-slate-200"
+        role="tablist"
+        aria-label="Administración de usuarios"
+      >
         {[
           { id: 'usuarios', label: 'Cuentas y roles' },
           { id: 'seguridad', label: 'Permisos y asignaciones' },
@@ -134,7 +167,9 @@ export default function UsersModule() {
             role="tab"
             aria-selected={section === tab.id}
             aria-controls={`users-panel-${tab.id}`}
-            onClick={() => setSearchParams(tab.id === 'usuarios' ? {} : { seccion: 'seguridad' })}
+            onClick={() => setSearchParams(
+              tab.id === 'usuarios' ? {} : { seccion: 'seguridad' },
+            )}
             className={`-mb-px border-b-2 px-4 py-3 text-sm font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 ${
               section === tab.id
                 ? 'border-brand-600 text-brand-700'
@@ -147,134 +182,229 @@ export default function UsersModule() {
       </div>
 
       {section === 'seguridad' ? (
-        <div id="users-panel-seguridad" role="tabpanel" aria-labelledby="users-tab-seguridad">
+        <div
+          id="users-panel-seguridad"
+          role="tabpanel"
+          aria-labelledby="users-tab-seguridad"
+        >
           <SecurityModule />
         </div>
       ) : (
-      <div id="users-panel-usuarios" role="tabpanel" aria-labelledby="users-tab-usuarios" className="space-y-6">
-      {success && <Alert type="success">{success}</Alert>}
-      {/* Delete confirmation modal */}
-      {deletingUser && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setDeletingUser(null)}>
-          <Card className="w-full max-w-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-                <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-900">Eliminar usuario</h3>
-                <p className="text-sm text-slate-500">Esta accion no se puede deshacer</p>
-              </div>
+        <section
+          id="users-panel-usuarios"
+          role="tabpanel"
+          aria-labelledby="users-tab-usuarios"
+          className="space-y-6"
+        >
+          {success && <Alert type="success">{success}</Alert>}
+          {error && <Alert type="error">{error}</Alert>}
+
+          {showForm && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm"
+              onClick={() => setShowForm(false)}
+            >
+              <Card
+                className="w-full max-w-lg space-y-4 p-6"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div>
+                  <h2 className="text-lg font-black text-slate-900">
+                    {editingId
+                      ? 'Editar usuario y roles'
+                      : 'Crear usuario y asignar roles'}
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Los permisos de acceso se determinan por los roles seleccionados.
+                  </p>
+                </div>
+                {error && <Alert type="error">{error}</Alert>}
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <Input
+                    label="Nombre"
+                    name="name"
+                    value={form.name}
+                    onChange={handleChange}
+                    required
+                  />
+                  <Input
+                    label={editingId
+                      ? 'Nueva contraseña (dejar vacía para no cambiar)'
+                      : 'Contraseña'}
+                    name="password"
+                    type="password"
+                    value={form.password}
+                    onChange={handleChange}
+                    autoComplete="new-password"
+                    {...(!editingId && { required: true })}
+                  />
+                  <fieldset className="space-y-2">
+                    <legend className="text-sm font-semibold text-slate-700">
+                      Roles de acceso
+                    </legend>
+                    {editableRoles.length === 0 ? (
+                      <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+                        No hay roles disponibles. Revise la sección Permisos y asignaciones.
+                      </p>
+                    ) : (
+                      <div className="max-h-56 space-y-1 overflow-y-auto rounded-xl border border-slate-200 p-3">
+                        {editableRoles.map((role) => (
+                          <label
+                            key={role.id}
+                            className="flex cursor-pointer items-start gap-3 rounded-lg px-2 py-2 hover:bg-slate-50"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={form.roleIds.includes(role.id)}
+                              onChange={() => toggleRole(role.id)}
+                              className="mt-1 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                            />
+                            <span>
+                              <span className="block text-sm font-bold text-slate-800">
+                                {role.name}
+                              </span>
+                              <span className="block text-xs text-slate-500">
+                                {role.description || role.code}
+                              </span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-slate-500">
+                      Seleccione uno o varios roles. Las asignaciones se guardan junto con la cuenta.
+                    </p>
+                  </fieldset>
+                  <div className="flex gap-3 pt-2">
+                    <Button type="submit" disabled={saving || !editableRoles.length}>
+                      {saving ? 'Guardando...' : 'Guardar'}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      type="button"
+                      disabled={saving}
+                      onClick={() => setShowForm(false)}
+                    >
+                      Cancelar
+                    </Button>
+                  </div>
+                </form>
+              </Card>
             </div>
-            <p className="text-sm text-slate-600">
-              Seguro que deseas eliminar al usuario <strong>{deletingUser.name}</strong>?
-            </p>
-            <div className="flex gap-3 pt-2">
-              <Button variant="danger" onClick={handleDeleteUser}>Si, eliminar</Button>
-              <Button variant="secondary" onClick={() => setDeletingUser(null)}>Cancelar</Button>
-            </div>
-          </Card>
-        </div>
-      )}
+          )}
 
-      {roleUser && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setRoleUser(null)}>
-          <Card className="w-full max-w-lg p-6 space-y-5" onClick={(e) => e.stopPropagation()}>
-            <div><h3 className="text-lg font-black text-slate-900">Roles de {roleUser.name}</h3><p className="text-sm text-slate-500 mt-1">El rol permanente no reemplaza una función temporal.</p></div>
-            {error && <Alert type="error">{error}</Alert>}
-            <div className="space-y-2"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Roles asignados</p>{roleAssignments.length === 0 ? <p className="text-sm text-slate-500">No tiene roles RBAC asignados.</p> : roleAssignments.filter((assignment) => assignment.active).map((assignment) => <div key={assignment.id} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2"><span className="text-sm font-semibold text-slate-700">{assignment.roleName}</span><Button variant="danger" size="sm" onClick={() => revokeRole(assignment)}>Revocar</Button></div>)}</div>
-            <div className="flex gap-2"><Select label="Agregar rol" value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)}><option value="">Seleccionar...</option>{roles.filter((role) => !role.is_system_role && !roleAssignments.some((assignment) => assignment.active && assignment.role === role.id)).map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</Select><Button className="mt-6" onClick={assignRole} disabled={!selectedRole}>Asignar</Button></div>
-            <Button variant="secondary" onClick={() => setRoleUser(null)}>Cerrar</Button>
+          <Card className="hidden overflow-x-auto md:block">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  {['Nombre', 'Roles de acceso', 'Estado', ''].map((heading) => (
+                    <th
+                      key={heading}
+                      className="px-5 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400"
+                    >
+                      {heading}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {users.map((user) => (
+                  <tr
+                    key={user.id}
+                    className={`transition-colors hover:bg-brand-50/30 ${!user.active ? 'opacity-50' : ''}`}
+                  >
+                    <td className="px-5 py-3.5 font-medium text-slate-900">
+                      {user.name}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {(user.roles || []).length === 0 ? (
+                          <Badge color="slate">Sin rol</Badge>
+                        ) : user.roles.map((role) => (
+                          <Badge
+                            key={role.id}
+                            color={role.is_system_role ? 'amber' : 'blue'}
+                          >
+                            {role.name}
+                          </Badge>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge color={user.active ? 'green' : 'red'}>
+                        {user.active ? 'Activo' : 'Inactivo'}
+                      </Badge>
+                    </td>
+                    <td className="space-x-1 px-4 py-3">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEdit(user)}
+                      >
+                        Editar
+                      </Button>
+                      <Button
+                        variant={user.active ? 'danger' : 'success'}
+                        size="sm"
+                        onClick={() => toggleActive(user)}
+                      >
+                        {user.active ? 'Desactivar' : 'Activar'}
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </Card>
-        </div>
-      )}
 
-      {/* Modal */}
-      {showForm && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowForm(false)}>
-          <Card className="w-full max-w-lg p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-black text-slate-900">{editingId ? 'Editar Usuario' : 'Nuevo Usuario'}</h3>
-            {error && <Alert type="error">{error}</Alert>}
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <Input label="Nombre" name="name" value={form.name} onChange={handleChange} required />
-              <Input
-                label={editingId ? 'Nueva contrasena (dejar vacio para no cambiar)' : 'Contrasena (unica por usuario)'}
-                name="password" type="password" value={form.password} onChange={handleChange}
-                placeholder="Debe ser unica para cada usuario"
-                {...(!editingId && { required: true })}
-              />
-              <Select label="Rol" name="role" value={form.role} onChange={handleChange}>
-                <option value="ventas">OPERADOR</option>
-                <option value="admin">ADMINISTRADOR</option>
-              </Select>
-              <div className="flex gap-3 pt-2">
-                <Button type="submit">Guardar</Button>
-                <Button variant="secondary" type="button" onClick={() => setShowForm(false)}>Cancelar</Button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
-
-      {/* Desktop table */}
-      <Card className="hidden md:block overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-100">
-              {['Nombre', 'Rol', 'Estado', ''].map((h) => (
-                <th key={h} className="text-left px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50">
-            {users.map((u) => (
-              <tr key={u.id} className={`hover:bg-brand-50/30 transition-colors ${!u.active ? 'opacity-50' : ''}`}>
-                <td className="px-5 py-3.5 font-medium text-slate-900">{u.name}</td>
-                <td className="px-4 py-3"><Badge color={u.role === 'admin' ? 'amber' : 'blue'}>{u.role === 'admin' ? 'ADMINISTRADOR' : 'OPERADOR'}</Badge></td>
-                <td className="px-4 py-3">
-                  <Badge color={u.active ? 'green' : 'red'}>{u.active ? 'Activo' : 'Inactivo'}</Badge>
-                </td>
-                <td className="px-4 py-3 space-x-1">
-                   <Button variant="ghost" size="sm" onClick={() => openEdit(u)}>Editar</Button>
-                   <Button variant="ghost" size="sm" onClick={() => openRoles(u)}>Roles</Button>
-                  <Button variant="danger" size="sm" onClick={() => setDeletingUser(u)}>Eliminar</Button>
-                  <Button variant={u.active ? 'danger' : 'success'} size="sm" onClick={() => toggleActive(u)}>
-                    {u.active ? 'Desactivar' : 'Activar'}
+          <div className="space-y-3 md:hidden">
+            {users.map((user) => (
+              <Card
+                key={user.id}
+                className={`space-y-3 p-4 ${!user.active ? 'opacity-50' : ''}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-slate-900">{user.name}</p>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {(user.roles || []).length === 0 ? (
+                        <Badge color="slate">Sin rol</Badge>
+                      ) : user.roles.map((role) => (
+                        <Badge
+                          key={role.id}
+                          color={role.is_system_role ? 'amber' : 'blue'}
+                        >
+                          {role.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                  <Badge color={user.active ? 'green' : 'red'}>
+                    {user.active ? 'Activo' : 'Inactivo'}
+                  </Badge>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openEdit(user)}
+                    className="flex-1"
+                  >
+                    Editar
                   </Button>
-                </td>
-              </tr>
+                  <Button
+                    variant={user.active ? 'danger' : 'success'}
+                    size="sm"
+                    onClick={() => toggleActive(user)}
+                    className="flex-1"
+                  >
+                    {user.active ? 'Desactivar' : 'Activar'}
+                  </Button>
+                </div>
+              </Card>
             ))}
-          </tbody>
-        </table>
-      </Card>
-
-      {/* Mobile cards */}
-      <div className="md:hidden space-y-3">
-        {users.map((u) => (
-          <Card key={u.id} className={`p-4 space-y-2 ${!u.active ? 'opacity-50' : ''}`}>
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="font-semibold text-slate-900">{u.name}</p>
-              </div>
-              <div className="flex gap-1.5">
-                <Badge color={u.role === 'admin' ? 'amber' : 'blue'}>{u.role === 'admin' ? 'ADMINISTRADOR' : 'OPERADOR'}</Badge>
-                <Badge color={u.active ? 'green' : 'red'}>{u.active ? 'Activo' : 'Inactivo'}</Badge>
-              </div>
-            </div>
-            <div className="flex gap-2 pt-1">
-              <Button variant="ghost" size="sm" onClick={() => openEdit(u)} className="flex-1">Editar</Button>
-               <Button variant="ghost" size="sm" onClick={() => openRoles(u)} className="flex-1">Roles</Button>
-              <Button variant="danger" size="sm" onClick={() => setDeletingUser(u)} className="flex-1">Eliminar</Button>
-              <Button variant={u.active ? 'danger' : 'success'} size="sm" onClick={() => toggleActive(u)} className="flex-1">
-                {u.active ? 'Desactivar' : 'Activar'}
-              </Button>
-            </div>
-          </Card>
-        ))}
-      </div>
-      </div>
+          </div>
+        </section>
       )}
     </div>
   );

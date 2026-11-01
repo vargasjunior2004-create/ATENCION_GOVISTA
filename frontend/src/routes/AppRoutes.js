@@ -39,15 +39,35 @@ export default function AppRoutes() {
           <Route path="clientes/:id" element={<CustomerDetail />} />
           <Route path="clientes/:id/contratos/:contractId" element={<ContractDetail />} />
 
-          <Route element={<AdminRoute />}>
-            <Route path="planes" element={<PlansModule />} />
-            <Route path="motivos" element={<MotivosModule />} />
-            <Route path="promociones" element={<PromotionsModule />} />
-            <Route path="usuarios" element={<UsersModule />} />
-            <Route path="backups" element={<BackupModule />} />
-            <Route path="tarifas-traslados" element={<TransferTariffs />} />
-            <Route path="seguridad" element={<Navigate to="/comercial/usuarios?seccion=seguridad" replace />} />
-          </Route>
+          <Route
+            path="planes"
+            element={<AdminRoute permission="commercial_config.manage"><PlansModule /></AdminRoute>}
+          />
+          <Route
+            path="motivos"
+            element={<AdminRoute permission="commercial_config.manage"><MotivosModule /></AdminRoute>}
+          />
+          <Route
+            path="promociones"
+            element={<AdminRoute permission="commercial_config.manage"><PromotionsModule /></AdminRoute>}
+          />
+          <Route
+            path="usuarios"
+            element={<AdminRoute permission="users.manage"><UsersModule /></AdminRoute>}
+          />
+          <Route path="backups" element={<AdminRoute><BackupModule /></AdminRoute>} />
+          <Route
+            path="tarifas-traslados"
+            element={<AdminRoute permission="commercial_config.manage"><TransferTariffs /></AdminRoute>}
+          />
+          <Route
+            path="seguridad"
+            element={(
+              <AdminRoute permission="users.manage">
+                <Navigate to="/comercial/usuarios?seccion=seguridad" replace />
+              </AdminRoute>
+            )}
+          />
         </Route>
 
         <Route path="/nueva-venta" element={<LegacyRedirect to="/comercial/solicitudes/nueva" />} />
