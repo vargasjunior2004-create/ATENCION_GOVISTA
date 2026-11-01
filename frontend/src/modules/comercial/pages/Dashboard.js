@@ -49,6 +49,13 @@ const PERIOD_OPTIONS = [
 ];
 
 const CHART_COLORS = ['#12894d', '#7c3aed', '#e56b5d', '#3b82f6', '#d69e2e', '#64748b'];
+const SERVICE_COLORS = {
+  internet: '#0e7490',
+  tv: '#ca8a04',
+  tv_digital: '#2563eb',
+  combo_analog: '#be123c',
+  combo_digital: '#a16207',
+};
 
 function todayInBolivia() {
   return new Intl.DateTimeFormat('en-CA', {
@@ -397,7 +404,7 @@ export default function Dashboard() {
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                           <Pie data={services} dataKey="count" nameKey="label" cx="50%" cy="46%" innerRadius={62} outerRadius={96} paddingAngle={3}>
-                            {services.map((entry, index) => <Cell key={entry.serviceType} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}
+                            {services.map((entry) => <Cell key={entry.serviceType} fill={SERVICE_COLORS[entry.serviceType] || '#64748b'} />)}
                           </Pie>
                           <Tooltip content={<ChartTooltip />} />
                           <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />

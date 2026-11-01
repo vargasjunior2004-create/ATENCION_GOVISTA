@@ -313,8 +313,8 @@ Los filtros del historial se guardan en la URL (`from`, `to`, `requestType`, `se
 - **Hosting:** Render free tier (512MB RAM, 0.1 CPU, 750 hrs/mes)
 - **Database:** Supabase PostgreSQL 17.6
 - **Estaticos:** WhiteNoise sirve archivos desde `staticfiles/`
-- **Frontend:** se compila con `cd frontend && npm run build` y el resultado se copia a `frontend_build/` antes del deploy (`cp -r build/. ../frontend_build/`). Ese directorio va committeado
-- **Build:** `build.sh` instala `postgresql-client-17` (PGDG), aplica migraciones y ejecuta `collectstatic`. No compila React
+- **Frontend:** cada deploy ejecuta `npm ci` y `npm run build`; React genera `frontend_build/` y Django recopila sus assets en `staticfiles/`
+- **Build:** Render ejecuta `pip install -r requirements.txt && bash build.sh`. El script valida que `pg_dump` sea versión 17 o superior y falla si faltan assets del frontend
 - **Inicio:** `gunicorn salestracker.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 60`
 
 ### Variables de entorno en Render
