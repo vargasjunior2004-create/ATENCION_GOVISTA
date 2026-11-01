@@ -321,12 +321,9 @@ Las cuentas se autorizan por los roles RBAC. El campo heredado `role` (`admin`/`
 - **Hosting:** Render free tier (512MB RAM, 0.1 CPU, 750 hrs/mes)
 - **Database:** Supabase PostgreSQL 17.6
 - **Estaticos:** WhiteNoise sirve archivos desde `staticfiles/`
-- **Frontend:** Vercel publica `frontend/`; configura el directorio raíz `frontend`, `npm ci` como instalación, `npm run build` como build y `build` como salida
-- **API:** Render sirve Django y la base de datos; `frontend/vercel.json` reenvía `/api/*` a la URL pública del backend de Render
-- **Paquetes del sistema:** Render instala `postgresql-client-17` desde `apt.txt`; el build no ejecuta `apt-get`
-- **Build del backend:** Render ejecuta `pip install -r requirements.txt && bash build.sh`; `SERVE_FRONTEND=false` evita servir un build React antiguo desde Render
+- **Frontend:** cada deploy ejecuta `npm ci` y `npm run build`; React genera `frontend_build/` y Django recopila sus archivos en `staticfiles/`
+- **Build:** Render ejecuta `pip install -r requirements.txt && bash build.sh`. El script valida `pg_dump` 17 o superior y verifica los assets compilados
 - **Inicio:** `gunicorn salestracker.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 60`
-
 ### Configurar Vercel
 
 1. Importa el mismo repositorio y selecciona `frontend` como **Root Directory**.
