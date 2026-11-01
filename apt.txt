@@ -1,0 +1,3 @@
+nodejs
+npm
+postgresql-client-17

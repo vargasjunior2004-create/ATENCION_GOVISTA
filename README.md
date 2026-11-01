@@ -321,8 +321,9 @@ Las cuentas se autorizan por los roles RBAC. El campo heredado `role` (`admin`/`
 - **Hosting:** Render free tier (512MB RAM, 0.1 CPU, 750 hrs/mes)
 - **Database:** Supabase PostgreSQL 17.6
 - **Estaticos:** WhiteNoise sirve archivos desde `staticfiles/`
-- **Frontend:** se compila con `cd frontend && npm run build` y el resultado se copia a `frontend_build/` antes del deploy (`cp -r build/. ../frontend_build/`). Ese directorio va committeado
-- **Build:** `build.sh` instala `postgresql-client-17` (PGDG), aplica migraciones y ejecuta `collectstatic`. No compila React
+- **Paquetes del sistema:** Render instala Node.js, npm y `postgresql-client-17` desde `apt.txt`; el build no ejecuta `apt-get`
+- **Frontend:** `build.sh` compila React en `frontend_build/` antes de recopilar los archivos estáticos
+- **Build:** Render ejecuta `pip install -r requirements.txt && bash build.sh`; el script compila React, aplica migraciones y ejecuta `collectstatic`
 - **Inicio:** `gunicorn salestracker.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 60`
 
 ### Variables de entorno en Render
@@ -366,7 +367,7 @@ Y comparalo con el campo `checksum` del historial en la app.
 
 ### Notas
 
-- `frontend_build/` y `staticfiles/` van committeados (archivos servidos por WhiteNoise)
+- `frontend_build/` y `staticfiles/` se generan durante el deploy; WhiteNoise sirve los archivos de `staticfiles/`
 - El selector de modulos es solo navegacion; la autorizacion real sigue siendo por rol en el backend. Aun no existen permisos por modulo
 - Atencion al Cliente y Gestion de Equipos estan deshabilitados hasta implementar su backend y permisos
 - `wsgi.py` ejecuta migraciones + seed automaticamente si no hay datos
@@ -383,6 +384,6 @@ Y comparalo con el campo `checksum` del historial en la app.
 - Los respaldos son manuales: no hay scheduler automatico
 - El `.dump` no va cifrado; en produccion solo existe en el servidor mientras se descarga
 - Un respaldo pendiente de un proceso que muere queda en estado `running`: se puede borrar desde el historial
-- `pg_dump` debe ser igual o mas nuevo que el servidor; `build.sh` instala la version 17 y el comando verifica la compatibilidad antes de respaldar
+- `pg_dump` debe ser igual o mas nuevo que el servidor; Render instala la version 17 declarada en `apt.txt` y el comando verifica la compatibilidad antes de respaldar
 - El historial guarda metadata, nunca el archivo
 - `core/tests.py`, `core/tests_full.py`, `core/tests_cambio_plan.py` y `core/tests_motivos.py` cubren permisos, generacion, streaming, integridad, concurrencia, cobro por tipo de cambio y ciclo `pg_dump` → `pg_restore`
