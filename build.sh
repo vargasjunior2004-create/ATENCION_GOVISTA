@@ -15,7 +15,7 @@ echo "Instalando postgresql-client-17..."
 export DEBIAN_FRONTEND=noninteractive
 
 apt-get update -qq
-apt-get install -y -qq --no-install-recommends ca-certificates curl gnupg
+apt-get install -y -qq --no-install-recommends ca-certificates curl gnupg nodejs npm
 
 install -d /usr/share/postgresql-common/pgdg
 curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
@@ -37,6 +37,14 @@ fi
 echo "--- Version de pg_dump instalada ---"
 /usr/lib/postgresql/17/bin/pg_dump --version || pg_dump --version
 # -------------------------------------------------------------------------
+
+echo "Compilando frontend..."
+node --version
+npm --version
+cd frontend
+npm ci
+BUILD_PATH=../frontend_build npm run build
+cd ..
 
 echo "Running collectstatic..."
 python manage.py collectstatic --clear --noinput --verbosity 2
