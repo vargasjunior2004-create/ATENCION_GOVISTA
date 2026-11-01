@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import api from '../../../services/api';
 import { Button, Input, Select, RadioChoiceGroup, Card, Alert, TotalDisplay } from '../../../components/ui';
 import { Check, MapPin, Route, Wrench, Package, ReceiptText } from 'lucide-react';
+import { useAuth } from '../../../context/AuthContext';
 import useRequestTypes from '../../../hooks/useRequestTypes';
 import useMotivos from '../../../hooks/useMotivos';
 import SalePreviewModal from '../../../components/SalePreview';
@@ -61,12 +62,13 @@ export default function SaleForm() {
     planId: '',
     equipmentRetained: null, requiresTechnicalVisit: null,
     equipmentDelivered: null, equipmentSerial: '',
-    meterNumber: '', contractOrigin: 'oficina', externalSeller: '',
+    meterNumber: '', sellerUserId: '',
     debtApplies: false, debtAmount: '',
     transferCurrentAddress: '', transferNewAddress: '', transferZone: '',
     transferReferences: '', transferHasSketch: null,
   });
   const { tipos: requestTypes, modoOf, nombreOf } = useRequestTypes();
+  const { user } = useAuth();
   const { porCategoria, nombreOf: motivoNombreOf } = useMotivos();
   const modo = modoOf(form.requestType);
   const [selectedPlan, setSelectedPlan] = useState(null);
@@ -86,12 +88,18 @@ export default function SaleForm() {
   const [selectedPromotion, setSelectedPromotion] = useState(null);
   const [priceMode, setPriceMode] = useState('normal');
   const [transferTariffs, setTransferTariffs] = useState([]);
+  const [externalSellers, setExternalSellers] = useState([]);
   const [equipmentLookup, setEquipmentLookup] = useState(null);
   const [equipmentLookupError, setEquipmentLookupError] = useState('');
 
   useEffect(() => {
     api.getActivePlans().then(setPlans).catch(() => {});
     api.getActiveTransferTariffs().then(setTransferTariffs).catch(() => {});
+    api.getActiveExternalSellers()
+      .then(setExternalSellers)
+      .catch((err) => setError(
+        err.error || 'No se pudieron cargar los vendedores externos activos.',
+      ));
   }, []);
 
   // El tipo por defecto viene sembrado, pero si un administrador lo
@@ -134,6 +142,17 @@ export default function SaleForm() {
   const isRecontratacion = form.requestType === 'recontratacion';
   const isContract = modo === 'nuevo' || isRecontratacion;
   const isTransfer = form.requestType === 'traslado_externo';
+  const isCallCenter = (user?.roles || []).some(
+    (role) => role.code === 'call-center',
+  );
+  const contractOrigin = form.sellerUserId
+    ? 'externo'
+    : isCallCenter ? 'virtual' : 'oficina';
+  const contractOriginLabel = {
+    oficina: 'OFICINA',
+    virtual: 'VIRTUAL',
+    externo: 'EXTERNO',
+  }[contractOrigin];
 
   // Motivos del catalogo segun el formulario que corresponde.
   const motivosCambio = porCategoria('cambio');
@@ -326,8 +345,9 @@ export default function SaleForm() {
         payload.clientCi = form.clientCi;
         payload.clientPhone = form.clientPhone;
         payload.meterNumber = form.meterNumber;
-        payload.contractOrigin = form.contractOrigin;
-        payload.externalSeller = form.contractOrigin === 'externo' ? form.externalSeller : '';
+        if (form.sellerUserId) {
+          payload.sellerUserId = Number(form.sellerUserId);
+        }
       }
       if (isRecontratacion) {
         payload.equipmentRetained = form.equipmentRetained;
@@ -354,7 +374,7 @@ export default function SaleForm() {
       }
       await api.createSale(payload);
       setSuccess('Registro guardado correctamente');
-       setForm({ date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', equipmentRetained: null, requiresTechnicalVisit: null, equipmentDelivered: null, equipmentSerial: '', meterNumber: '', contractOrigin: 'oficina', externalSeller: '', debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferZone: '', transferReferences: '', transferHasSketch: null });
+       setForm({ date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', equipmentRetained: null, requiresTechnicalVisit: null, equipmentDelivered: null, equipmentSerial: '', meterNumber: '', sellerUserId: '', debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferZone: '', transferReferences: '', transferHasSketch: null });
        setEquipmentLookup(null); setEquipmentLookupError('');
       setSelectedPlan(null); setSelectedCustomer(null); setQuery(''); setCustomers([]);
       setPromotions([]); setSelectedPromotion(null); setPriceMode('normal');
@@ -501,11 +521,26 @@ export default function SaleForm() {
               <div><p className="text-sm font-black text-slate-800">Datos del contrato</p><p className="mt-1 text-xs text-slate-500">El medidor de luz se conserva en el contrato para detectar coincidencias posteriores.</p></div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Input label="Número de medidor de luz" name="meterNumber" value={form.meterNumber} onChange={handleChange} placeholder="Opcional si aún no está disponible" />
-                <Select label="Origen" name="contractOrigin" value={form.contractOrigin} onChange={handleChange}>
-                  <option value="oficina">OFICINA</option><option value="virtual">VIRTUAL</option><option value="externo">EXTERNO</option>
+                <Select
+                  label="Vendedor externo responsable (opcional)"
+                  name="sellerUserId"
+                  value={form.sellerUserId}
+                  onChange={handleChange}
+                >
+                  <option value="">Sin vendedor externo</option>
+                  {externalSellers.map((seller) => (
+                    <option key={seller.id} value={seller.id}>{seller.name}</option>
+                  ))}
                 </Select>
               </div>
-              {form.contractOrigin === 'externo' && <Input label="Vendedor externo *" name="externalSeller" value={form.externalSeller} onChange={handleChange} placeholder="Nombre del vendedor" required />}
+              <div className="rounded-xl border border-sky-100 bg-white/80 px-4 py-3">
+                <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Origen automático
+                </span>
+                <span className="mt-1 block text-sm font-bold text-slate-800">
+                  {contractOriginLabel}
+                </span>
+              </div>
             </div>
           )}
 

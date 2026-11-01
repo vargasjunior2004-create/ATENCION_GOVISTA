@@ -134,6 +134,7 @@ const api = {
 
   // Usuarios
   getUsers: () => request('/api/users'),
+  getActiveExternalSellers: () => request('/api/external-sellers/active'),
   createUser: (data) => request('/api/users', { method: 'POST', body: JSON.stringify(data) }),
   updateUser: (id, data) => request(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   getRoles: () => request('/api/roles'),

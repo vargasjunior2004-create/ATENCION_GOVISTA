@@ -100,6 +100,7 @@ def _user_payload(user):
             'role__role_permissions__permission'))
     roles = [{
         'id': assignment.role_id,
+        'code': assignment.role.code,
         'name': assignment.role.name,
         'is_system_role': assignment.role.is_system_role,
     } for assignment in assignments]
