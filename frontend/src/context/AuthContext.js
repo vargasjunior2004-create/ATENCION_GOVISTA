@@ -85,13 +85,19 @@ export function AuthProvider({ children }) {
     return data;
   };
 
+  const isAdmin = user?.isSystemAdmin || user?.role === 'admin';
+  const hasPermission = (code) => (
+    isAdmin || (user?.permissions || []).includes(code)
+  );
+
   const value = {
     user,
     token: localStorage.getItem('token'),
     sessionReady,
     login,
     logout,
-    isAdmin: user?.role === 'admin',
+    isAdmin,
+    hasPermission,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

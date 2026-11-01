@@ -14,8 +14,9 @@ export default function AccountMenu({ variant = 'sidebar' }) {
 
   const closePassword = useCallback(() => setPasswordOpen(false), []);
   const isSidebar = variant === 'sidebar';
-  const roleLabel = user?.role === 'admin' ? 'ADMINISTRADOR' : 'OPERADOR';
-  const roleColor = user?.role === 'admin' ? 'amber' : 'blue';
+  const roleLabel = user?.roles?.map((role) => role.name).join(' · ')
+    || (user?.role === 'admin' ? 'ADMINISTRADOR' : 'OPERADOR');
+  const roleColor = user?.isSystemAdmin || user?.role === 'admin' ? 'amber' : 'blue';
 
   const handleLogout = () => {
     setMenuOpen(false);

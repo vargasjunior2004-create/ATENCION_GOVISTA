@@ -136,7 +136,6 @@ const api = {
   getUsers: () => request('/api/users'),
   createUser: (data) => request('/api/users', { method: 'POST', body: JSON.stringify(data) }),
   updateUser: (id, data) => request(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  deleteUser: (id) => request(`/api/users/${id}`, { method: 'DELETE' }),
   getRoles: () => request('/api/roles'),
   getPermissions: () => request('/api/permissions'),
   createRole: (data) => request('/api/roles', { method: 'POST', body: JSON.stringify(data) }),

@@ -130,20 +130,39 @@ def resolve_motivo(motivo_id, mode, errors):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    roles = serializers.SerializerMethodField()
+
     class Meta:
         model = User
-        fields = ['id', 'name', 'role', 'active']
+        fields = ['id', 'name', 'role', 'active', 'roles']
+
+    def get_roles(self, obj):
+        return [
+            {
+                'id': assignment.role_id,
+                'name': assignment.role.name,
+                'is_system_role': assignment.role.is_system_role,
+            }
+            for assignment in obj.role_assignments.all()
+            if assignment.active and assignment.role.active
+        ]
 
 
 class UserWriteSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False)
+    roleIds = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=False,
+        write_only=True,
+    )
 
     class Meta:
         model = User
-        fields = ['id', 'name', 'password', 'role', 'active']
+        fields = ['id', 'name', 'password', 'role', 'active', 'roleIds']
 
     def create(self, validated_data):
         password = validated_data.pop('password', None)
+        validated_data.pop('roleIds', None)
         user = User(**validated_data)
         if password:
             user.set_password(password)
@@ -152,6 +171,7 @@ class UserWriteSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         password = validated_data.pop('password', None)
+        validated_data.pop('roleIds', None)
         if password:
             instance.set_password(password)
         return super().update(instance, validated_data)

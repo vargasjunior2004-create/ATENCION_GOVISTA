@@ -95,8 +95,26 @@ def _stream_backup_file(filepath, filename, checksum=''):
 
 
 def _user_payload(user):
+    assignments = list(user.role_assignments.filter(
+        active=True, role__active=True).select_related('role').prefetch_related(
+            'role__role_permissions__permission'))
+    roles = [{
+        'id': assignment.role_id,
+        'name': assignment.role.name,
+        'is_system_role': assignment.role.is_system_role,
+    } for assignment in assignments]
+    permissions = sorted({
+        f'{role_permission.permission.module}.{role_permission.permission.action}'
+        for assignment in assignments
+        for role_permission in assignment.role.role_permissions.all()
+        if role_permission.permission.active
+    })
     return {'id': user.id, 'name': user.name,
-            'role': user.role, 'active': user.active}
+            'role': user.role, 'active': user.active, 'roles': roles,
+            'permissions': permissions,
+            'isSystemAdmin': (
+                user.role == 'admin'
+                or any(role['is_system_role'] for role in roles))}
 
 
 class IsAdminMixin:
@@ -1766,13 +1784,46 @@ class SaleRestoreView(IsAdminMixin, APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+def _resolve_assignable_roles(role_ids):
+    if len(role_ids) != len(set(role_ids)):
+        return None, Response(
+            {'error': {'roleIds': 'No repita roles'}},
+            status=status.HTTP_400_BAD_REQUEST)
+    roles = list(Role.objects.filter(
+        pk__in=role_ids, active=True, is_system_role=False))
+    if len(roles) != len(role_ids):
+        return None, Response(
+            {'error': {'roleIds': 'Uno o más roles no existen o no están disponibles'}},
+            status=status.HTTP_400_BAD_REQUEST)
+    return roles, None
+
+
+def _sync_user_roles(user, roles, assigned_by):
+    active_assignments = list(UserRole.objects.filter(
+        user=user, active=True, role__is_system_role=False))
+    role_ids = {role.id for role in roles}
+    assigned_role_ids = {assignment.role_id for assignment in active_assignments}
+    now = timezone.now()
+    for assignment in active_assignments:
+        if assignment.role_id not in role_ids:
+            assignment.active = False
+            assignment.revoked_at = now
+            assignment.save(update_fields=['active', 'revoked_at'])
+    for role in roles:
+        if role.id not in assigned_role_ids:
+            UserRole.objects.create(
+                user=user, role=role, assigned_by=assigned_by)
+
+
 class UserListView(IsAdminMixin, APIView):
     permission_code = 'users.manage'
     def get(self, request):
         error = self.check_admin(request)
         if error:
             return error
-        return Response(UserSerializer(User.objects.all().order_by('id'), many=True).data)
+        users = User.objects.prefetch_related(
+            'role_assignments__role').order_by('id')
+        return Response(UserSerializer(users, many=True).data)
 
     def post(self, request):
         error = self.check_admin(request)
@@ -1784,10 +1835,27 @@ class UserListView(IsAdminMixin, APIView):
         if not request.data.get('password'):
             return Response({'error': 'La contraseña es requerida'},
                             status=status.HTTP_400_BAD_REQUEST)
-        user = serializer.save()
-        from .audit import record_audit
-        record_audit(request, 'created', 'user', user.id,
-                     after={'role': user.role, 'active': user.active})
+        role_ids = serializer.validated_data.get('roleIds')
+        roles = None
+        if role_ids is not None:
+            if not role_ids:
+                return Response(
+                    {'error': {'roleIds': 'Seleccione al menos un rol'}},
+                    status=status.HTTP_400_BAD_REQUEST)
+            roles, error = _resolve_assignable_roles(role_ids)
+            if error:
+                return error
+        with transaction.atomic():
+            user = serializer.save()
+            if roles is not None:
+                _sync_user_roles(user, roles, request.user)
+            record_audit(
+                request, 'created', 'user', user.id,
+                after={
+                    'role': user.role,
+                    'active': user.active,
+                    'roles': [role.name for role in roles or []],
+                })
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
 
@@ -1832,11 +1900,28 @@ class UserDetailView(IsAdminMixin, APIView):
         serializer = UserWriteSerializer(user, data=request.data, partial=True)
         if not serializer.is_valid():
             return Response({'error': _first_error(serializer)}, status=status.HTTP_400_BAD_REQUEST)
+        role_ids = serializer.validated_data.get('roleIds')
+        roles = None
+        if role_ids is not None:
+            if not role_ids:
+                return Response(
+                    {'error': {'roleIds': 'Seleccione al menos un rol'}},
+                    status=status.HTTP_400_BAD_REQUEST)
+            roles, error = _resolve_assignable_roles(role_ids)
+            if error:
+                return error
         before = {'role': user.role, 'active': user.active}
-        serializer.save()
-        from .audit import record_audit
-        record_audit(request, 'updated', 'user', user.id, before=before,
-                     after={'role': user.role, 'active': user.active})
+        with transaction.atomic():
+            serializer.save()
+            if roles is not None:
+                _sync_user_roles(user, roles, request.user)
+            record_audit(
+                request, 'updated', 'user', user.id, before=before,
+                after={
+                    'role': user.role,
+                    'active': user.active,
+                    'roles': [role.name for role in roles or []],
+                })
         return Response(UserSerializer(user).data)
 
 

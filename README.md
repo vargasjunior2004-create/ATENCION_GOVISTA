@@ -174,9 +174,10 @@ Catalogo administrable de motivos para cambios de plan y retiros (solo admin). R
 
 ### Usuarios
 
-- Crear, editar, activar/desactivar, eliminar
+- Crear y editar usuarios, asignando uno o varios roles permanentes desde el mismo formulario
+- La lista muestra los nombres de los roles; los roles RBAC definen los permisos de acceso
+- Las cuentas se desactivan en lugar de eliminarlas desde la interfaz, para conservar los registros historicos
 - Notificaciones de exito al crear o editar usuario
-- Admin no puede eliminarse a si mismo
 - Roles permanentes, permisos y asignaciones temporales se administran dentro de `/comercial/usuarios`, en la seccion **Permisos y asignaciones**
 - La ruta anterior `/comercial/seguridad` redirige a esa seccion para conservar enlaces guardados
 
@@ -295,10 +296,10 @@ Los filtros del historial se guardan en la URL (`from`, `to`, `requestType`, `se
 | PUT | /api/sales/:id | Admin | Editar solicitud |
 | DELETE | /api/sales/:id | Admin | Eliminar solicitud |
 | GET | /api/dashboard/stats | Si | Estadisticas del dashboard |
-| GET | /api/users | Admin | Listar usuarios |
-| POST | /api/users | Admin | Crear usuario |
-| PUT | /api/users/:id | Admin | Editar usuario |
-| DELETE | /api/users/:id | Admin | Eliminar usuario |
+| GET | /api/users | Admin | Listar usuarios con roles activos |
+| POST | /api/users | Admin | Crear usuario; acepta `roleIds` para asignar roles en la misma operacion |
+| PUT | /api/users/:id | Admin | Editar usuario; acepta `roleIds` para sincronizar roles |
+| DELETE | /api/users/:id | Admin | Desactivar usuario (ruta heredada; no elimina datos) |
 | GET | /api/external-sellers/active | Si | Vendedores con asignacion externa activa |
 | GET | /api/reports/dashboard/pdf | Si | PDF del dia (dashboard) |
 | GET | /api/reports/dashboard/xlsx | Si | XLSX del dia (dashboard) |
