@@ -313,6 +313,7 @@ class DashboardTests(TestCase):
         self._sale('A002', 'retiro', today, total=80)
         self._sale('A003', 'cambio_plan', today, service='tv_digital')
         self._sale('A004', 'adicion', today, service='combo_digital')
+        self._sale('A005', 'recontratacion', today)
 
         token = self._token()
         r = self.c.get(
@@ -325,13 +326,14 @@ class DashboardTests(TestCase):
         self.assertEqual(analytics['period']['from'], yesterday.isoformat())
         self.assertEqual(analytics['period']['to'], today.isoformat())
         self.assertEqual(analytics['nuevo_contrato']['count'], 1)
-        self.assertEqual(analytics['recontrataciones']['count'], 0)
+        self.assertEqual(analytics['recontrataciones']['count'], 1)
         self.assertEqual(analytics['retiros']['count'], 1)
         self.assertEqual(analytics['cambios_plan']['count'], 1)
-        self.assertEqual(analytics['balance_neto'], 0)
+        self.assertEqual(analytics['balance_neto'], 1)
         self.assertEqual(len(analytics['series']), 2)
         self.assertEqual(analytics['series'][0]['nuevo_contrato'], 1)
         self.assertEqual(analytics['series'][0]['recontrataciones'], 0)
+        self.assertEqual(analytics['series'][1]['recontrataciones'], 1)
         self.assertEqual(analytics['series'][1]['retiros'], 1)
         self.assertEqual(
             {item['serviceType'] for item in analytics['servicios']},
@@ -339,7 +341,7 @@ class DashboardTests(TestCase):
         )
         self.assertEqual(
             sum(item['count'] for item in analytics['categorias']),
-            4,
+            5,
         )
 
     def test_dashboard_analytics_movement_filter_excludes_other_categories(self):
