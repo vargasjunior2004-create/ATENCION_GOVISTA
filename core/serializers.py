@@ -565,11 +565,6 @@ class SaleCreateSerializer(serializers.Serializer):
     planId = serializers.IntegerField()
     meterNumber = serializers.CharField(
         required=False, allow_blank=True, max_length=80)
-    contractOrigin = serializers.ChoiceField(
-        choices=[choice[0] for choice in Contract.ORIGIN_CHOICES],
-        required=False, default='oficina')
-    externalSeller = serializers.CharField(
-        required=False, allow_blank=True, max_length=160)
     sellerUserId = serializers.IntegerField(required=False, allow_null=True)
     promotionId = serializers.IntegerField(required=False, allow_null=True)
     additionType = serializers.ChoiceField(
@@ -598,6 +593,11 @@ class SaleCreateSerializer(serializers.Serializer):
         source='equipment_serial', required=False, allow_blank=True, max_length=255)
 
     def validate(self, attrs):
+        editable_origin_fields = {'contractOrigin', 'externalSeller'}
+        if editable_origin_fields.intersection(self.initial_data):
+            raise serializers.ValidationError(
+                'El origen del contrato se determina automáticamente.')
+
         catalog = request_type_catalog()
         request_type = attrs.get('requestType', 'nuevo_contrato')
         tipo = catalog.get(request_type)
@@ -619,11 +619,10 @@ class SaleCreateSerializer(serializers.Serializer):
         equipment_serial = (attrs.get('equipment_serial') or '').strip().upper()
         contract_mode = mode == 'nuevo' or is_rehire
         meter_number = (attrs.get('meterNumber') or '').strip()
-        origin = attrs.get('contractOrigin', 'oficina')
         seller_user_id = attrs.get('sellerUserId')
 
         if contract_mode:
-            if origin == 'externo':
+            if seller_user_id is not None:
                 seller = User.objects.filter(
                     id=seller_user_id, active=True).first()
                 if seller is None or not can_register_external_sale(seller):
@@ -633,10 +632,18 @@ class SaleCreateSerializer(serializers.Serializer):
                 attrs['sellerUser'] = seller
                 attrs['sellerName'] = seller.name
                 attrs['externalSeller'] = seller.name
+                attrs['contractOrigin'] = 'externo'
             else:
                 attrs['sellerUser'] = None
                 attrs['sellerName'] = ''
                 attrs['externalSeller'] = ''
+                registrar = self.context.get('user')
+                is_call_center = bool(
+                    registrar
+                    and registrar.role_assignments.filter(
+                        active=True, role__active=True,
+                        role__code='call-center').exists())
+                attrs['contractOrigin'] = 'virtual' if is_call_center else 'oficina'
         else:
             attrs['clientCi'] = ''
             attrs['clientPhone'] = ''

@@ -4,7 +4,8 @@ from django.test import Client, TestCase
 from django.utils import timezone
 
 from .models import (
-    Plan, Sale, TemporaryAssignment, TemporaryFunction, User, Contract,
+    Plan, Role, Sale, TemporaryAssignment, TemporaryFunction, User, UserRole,
+    Contract,
 )
 
 
@@ -13,6 +14,9 @@ class ExternalSellerTests(TestCase):
         self.client = Client()
         self.registrar = self.create_user('registrar')
         self.seller = self.create_user('seller')
+        caja_role = Role.objects.get(code='caja')
+        UserRole.objects.create(
+            user=self.registrar, role=caja_role, assigned_by=self.registrar)
         self.plan = Plan.objects.create(
             type='internet', code='EXT01', label='Plan externo',
             monthly=100, installation=0, active=True)
@@ -53,7 +57,6 @@ class ExternalSellerTests(TestCase):
             'serviceType': 'internet',
             'requestType': 'nuevo_contrato',
             'planId': self.plan.id,
-            'contractOrigin': 'externo',
         }
         payload.update(extra)
         return self.client.post(
@@ -102,6 +105,7 @@ class ExternalSellerTests(TestCase):
         self.assertEqual(contract.created_by, self.registrar)
         self.assertEqual(contract.seller_user, self.seller)
         self.assertEqual(contract.seller_name, self.seller.name)
+        self.assertEqual(contract.origin, 'externo')
         self.assertEqual(data['creator']['id'], self.registrar.id)
         self.assertEqual(data['sellerUserId'], self.seller.id)
         self.assertEqual(data['sellerName'], self.seller.name)
@@ -119,6 +123,31 @@ class ExternalSellerTests(TestCase):
         self.assertEqual(contract_data['sellerUserId'], self.seller.id)
         self.assertEqual(contract_data['sellerName'], 'seller')
         self.assertEqual(contract_data['createdBy']['id'], self.registrar.id)
+
+    def test_contract_origin_uses_registrar_role_without_external_seller(self):
+        office_response = self.post_external_sale()
+        self.assertEqual(office_response.status_code, 201, office_response.content)
+        office_contract = Contract.objects.get(
+            sale_id=office_response.json()['id'])
+        self.assertEqual(office_contract.origin, 'oficina')
+
+        call_center = self.create_user('call-center-registrar')
+        call_center_role = Role.objects.get(code='call-center')
+        UserRole.objects.create(
+            user=call_center, role=call_center_role, assigned_by=self.registrar)
+        self.login(call_center)
+
+        response = self.post_external_sale()
+
+        self.assertEqual(response.status_code, 201, response.content)
+        contract = Contract.objects.get(sale_id=response.json()['id'])
+        self.assertEqual(contract.origin, 'virtual')
+        self.assertIsNone(contract.seller_user)
+
+    def test_client_cannot_override_contract_origin(self):
+        response = self.post_external_sale(contractOrigin='externo')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('automáticamente', str(response.json()['error']))
 
     def test_active_seller_list_only_returns_current_eligible_users(self):
         self.assign(self.seller)

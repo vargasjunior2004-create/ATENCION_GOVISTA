@@ -77,7 +77,7 @@ Despues del login se muestra un selector de modulos:
 | Adicion | 0 | solo mensualidad |
 
 - **Promociones:** modalidad de precio (normal o promocional) al registrar o editar una solicitud
-- **Vendedor externo:** el usuario que registra la solicitud queda separado del vendedor responsable. Para solicitudes de origen externo se debe elegir un usuario con asignacion temporal activa; la venta y el contrato guardan su identificador y nombre historico
+- **Origen del contrato:** se determina automaticamente y no se puede editar. Caja registra `OFICINA`, Call Center registra `VIRTUAL` y elegir un vendedor externo con asignacion temporal activa registra `EXTERNO`; la venta y el contrato conservan el vendedor responsable en su historial
 - **Vista previa:** confirmacion antes de guardar
 - **Edicion:** admin puede editar cualquier solicitud (incluye plan anterior, tipo de adicion)
 - **Eliminacion:** admin puede eliminar con confirmacion ("Solicitud eliminada correctamente.")
