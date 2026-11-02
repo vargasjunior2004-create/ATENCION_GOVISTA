@@ -1,5 +1,6 @@
 import React from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
+import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import AccountMenu from '../../components/layout/AccountMenu';
 import Brand from '../../components/layout/Brand';
@@ -19,8 +20,23 @@ export default function CoverageLayout() {
     <div className="min-h-screen bg-slate-50">
       <header className="gradient-sidebar border-b border-white/5">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-8">
-          <Brand subtitle="Gestión de cobertura" />
-          <AccountMenu variant="header" />
+          <Link
+            to="/"
+            aria-label="Volver al inicio de módulos"
+            className="rounded-xl focus:outline-none focus:ring-2 focus:ring-vista-accent/50"
+          >
+            <Brand subtitle="Gestión de cobertura" />
+          </Link>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Link
+              to="/"
+              className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-white/80 transition-colors hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-vista-accent/50 sm:px-4 sm:text-sm"
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              <span>Volver a módulos</span>
+            </Link>
+            <AccountMenu variant="header" />
+          </div>
         </div>
       </header>
       <nav
