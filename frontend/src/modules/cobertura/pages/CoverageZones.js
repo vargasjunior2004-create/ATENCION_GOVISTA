@@ -24,13 +24,13 @@ export default function CoverageZones() {
   useEffect(() => { loadZones(); }, [loadZones]);
 
   const activeCount = zones.filter((zone) => zone.is_active).length;
+  const normalizedQuery = query.trim().toLocaleLowerCase('es');
   const filteredZones = useMemo(() => {
-    const normalizedQuery = query.trim().toLocaleLowerCase('es');
     if (!normalizedQuery) return zones;
     return zones.filter(
       (zone) => zone.name.toLocaleLowerCase('es').includes(normalizedQuery),
     );
-  }, [query, zones]);
+  }, [normalizedQuery, zones]);
 
   return (
     <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
@@ -74,6 +74,13 @@ export default function CoverageZones() {
         {loading ? (
           <div className="py-16 text-center text-sm font-medium text-slate-400" role="status">
             Cargando zonas...
+          </div>
+        ) : !normalizedQuery ? (
+          <div className="px-5 py-14 text-center">
+            <Search className="mx-auto h-8 w-8 text-slate-300" />
+            <p className="mt-3 text-sm font-semibold text-slate-600">
+              Escribe el nombre o parte del nombre de un barrio para buscar.
+            </p>
           </div>
         ) : filteredZones.length ? (
           <div className="overflow-x-auto">
@@ -125,9 +132,7 @@ export default function CoverageZones() {
           <div className="px-5 py-14 text-center">
             <MapPinned className="mx-auto h-8 w-8 text-slate-300" />
             <p className="mt-3 text-sm font-semibold text-slate-600">
-              {query
-                ? 'No hay zonas que coincidan con la búsqueda.'
-                : 'No hay zonas registradas.'}
+              No hay zonas que coincidan con la búsqueda.
             </p>
           </div>
         )}
