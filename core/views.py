@@ -2059,6 +2059,32 @@ class DashboardStatsView(APIView):
             for row in service_rows
         ]
 
+        demand_codes = (
+            categories['nuevo_contrato'] + categories['recontrataciones'])
+        plan_rows = queryset.filter(
+            requestType__in=demand_codes
+        ).values(
+            'planName', 'plan__label', 'plan__type'
+        ).annotate(
+            count=Count('id'), total=Sum('total')
+        ).order_by('-count', 'planName', 'plan__label')
+        plan_type_labels = {
+            'internet': 'Internet',
+            'tv': 'TV',
+            'combo': 'Combo',
+        }
+        plans = [
+            {
+                'label': row['planName'] or row['plan__label'],
+                'type': row['plan__type'],
+                'type_label': plan_type_labels.get(
+                    row['plan__type'], row['plan__type']),
+                'count': row['count'],
+                'total': cls._amount(row['total']),
+            }
+            for row in plan_rows
+        ]
+
         movement_breakdown = [
             {
                 'type': name,
@@ -2095,6 +2121,7 @@ class DashboardStatsView(APIView):
             'series': series,
             'comparativa': series,
             'servicios': services,
+            'planes': plans,
             'categorias': movement_breakdown,
         }
 
