@@ -1,4 +1,4 @@
-import { Briefcase, Headphones, Router } from 'lucide-react';
+import { Briefcase, Headphones, MapPinned, Router } from 'lucide-react';
 
 export const MODULES = [
   {
@@ -7,6 +7,15 @@ export const MODULES = [
     description: 'Solicitudes comerciales, contratos, cambios de plan y reportes.',
     icon: Briefcase,
     to: '/comercial',
+    status: 'available',
+  },
+  {
+    id: 'cobertura',
+    name: 'Gestión de cobertura',
+    description: 'Administra las zonas y barrios disponibles para los servicios.',
+    icon: MapPinned,
+    to: '/cobertura/zonas',
+    permission: 'coverage.manage',
     status: 'available',
   },
   {

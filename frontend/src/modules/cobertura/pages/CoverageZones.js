@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { MapPinned, Pencil, Plus, Search, ShieldCheck, ToggleLeft, ToggleRight, X } from 'lucide-react';
+import { ArrowLeft, MapPinned, Pencil, Plus, Search, ShieldCheck, ToggleLeft, ToggleRight, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import api from '../../../services/api';
 import { Alert, Badge, Button, Card, Input } from '../../../components/ui';
+import Brand from '../../../components/layout/Brand';
+import AccountMenu from '../../../components/layout/AccountMenu';
 
 const EMPTY_FORM = { name: '', description: '' };
 
@@ -98,7 +101,24 @@ export default function CoverageZones() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-slate-50">
+      <header className="gradient-sidebar border-b border-white/5">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-8">
+          <Brand subtitle="Gestión de cobertura" />
+          <div className="flex items-center gap-3">
+            <AccountMenu variant="header" />
+            <Link
+              to="/"
+              className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-white/80 transition-colors hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-vista-accent/50"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Módulos
+            </Link>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-600">
@@ -284,6 +304,7 @@ export default function CoverageZones() {
           </Card>
         </div>
       )}
+      </main>
     </div>
   );
 }

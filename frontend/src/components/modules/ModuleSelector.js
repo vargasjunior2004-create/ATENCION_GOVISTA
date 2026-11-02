@@ -6,7 +6,10 @@ import AccountMenu from '../layout/AccountMenu';
 import ModuleCard from './ModuleCard';
 
 export default function ModuleSelector() {
-  const { user } = useAuth();
+  const { user, isAdmin, hasPermission } = useAuth();
+  const availableModules = MODULES.filter(
+    (module) => !module.permission || isAdmin || hasPermission(module.permission),
+  );
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -32,7 +35,7 @@ export default function ModuleSelector() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mt-10">
-          {MODULES.map((module) => (
+          {availableModules.map((module) => (
             <ModuleCard key={module.id} module={module} />
           ))}
         </div>
