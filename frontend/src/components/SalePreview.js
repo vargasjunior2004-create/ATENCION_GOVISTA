@@ -19,6 +19,9 @@ export function SalePreviewDetails({ sale }) {
   const isChange = Boolean(sale.previousPlanLabel);
   const isRehire = sale.requestType === 'recontratacion';
   const isTransfer = sale.requestType === 'traslado_externo';
+  const showsCoverageZone = (
+    sale.requestType === 'nuevo_contrato' || isRehire || isTransfer
+  );
 
   return (
     <div className="bg-slate-50 rounded-2xl p-4 space-y-2 text-sm">
@@ -36,7 +39,7 @@ export function SalePreviewDetails({ sale }) {
         <PreviewRow label="Servicio" value={sale.serviceLabel} />
       )}
       <PreviewRow label="Plan" value={sale.planLabel} />
-      {sale.coverageZoneName && (
+      {showsCoverageZone && sale.coverageZoneName && (
         <PreviewRow label="Zona de cobertura / Barrio" value={sale.coverageZoneName} />
       )}
       {isTransfer && (
