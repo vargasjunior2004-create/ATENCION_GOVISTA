@@ -344,6 +344,41 @@ class DashboardTests(TestCase):
             5,
         )
 
+    def test_dashboard_plan_demand_is_ordered_within_selected_range(self):
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+        two_days_ago = today - timedelta(days=2)
+        self._sale('PLAN001', 'nuevo_contrato', yesterday)
+        self._sale('PLAN002', 'recontratacion', today)
+        self._sale('PLAN003', 'retiro', today)
+
+        less_demanded_plan = Plan.objects.create(
+            type='tv', code='TEST02', label='Plan TV 50',
+            monthly=80, speed=None, active=True,
+            installation=Decimal('0'))
+        Sale.objects.create(
+            date=today, clientCode='PLAN004', clientName='DASH_PLAN004',
+            serviceType='tv', requestType='nuevo_contrato',
+            plan=less_demanded_plan, planName=less_demanded_plan.label,
+            total=Decimal('80'), createdBy=self.admin)
+        Sale.objects.create(
+            date=two_days_ago, clientCode='PLAN005', clientName='DASH_PLAN005',
+            serviceType='tv', requestType='nuevo_contrato',
+            plan=less_demanded_plan, planName=less_demanded_plan.label,
+            total=Decimal('80'), createdBy=self.admin)
+
+        token = self._token()
+        response = self.c.get(
+            f'/api/dashboard/stats?from={yesterday.isoformat()}&to={today.isoformat()}',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        self.assertEqual(response.status_code, 200)
+        plans = _json(response)['analytics']['planes']
+        self.assertEqual(
+            [(item['label'], item['type_label'], item['count']) for item in plans],
+            [('Plan 200', 'Internet', 2), ('Plan TV 50', 'TV', 1)],
+        )
+
     def test_dashboard_analytics_movement_filter_excludes_other_categories(self):
         today = timezone.localdate()
         self._sale('B001', 'nuevo_contrato', today)

@@ -48,11 +48,7 @@ const PERIOD_OPTIONS = [
   ['custom', 'Rango personalizado'],
 ];
 
-const CHART_COLORS = ['#12894d', '#7c3aed', '#e56b5d', '#3b82f6', '#d69e2e', '#64748b'];
-const COMPARISON_COLORS = {
-  altas: '#1d4ed8',
-  retiros: '#f97316',
-};
+const PLAN_COLORS = ['#fb923c', '#06b6d4', '#84cc16', '#f472b6', '#a78bfa'];
 const SERVICE_COLORS = {
   internet: '#0e7490',
   tv: '#ca8a04',
@@ -232,7 +228,9 @@ export default function Dashboard() {
     altas_comerciales: item.nuevo_contrato + item.recontrataciones,
   }));
   const services = analytics?.servicios || [];
-  const categories = analytics?.categorias || [];
+  const plans = analytics?.planes || [];
+  const topPlans = plans.slice(0, 5);
+  const planDemandCount = plans.reduce((sum, item) => sum + item.count, 0);
   const hasData = series.some((item) => item.movimientos > 0);
   const hasTodaySales = (stats?.movimientos?.today?.count || 0) > 0;
   const selectedMovementLabel = MOVEMENT_OPTIONS.find(
@@ -423,18 +421,25 @@ export default function Dashboard() {
                     </div>
                   ) : <EmptyChart />}
                 </ChartCard>
-                <ChartCard eyebrow="Lectura operativa" title="Desglose por tipo de plan">
-                  <div className="space-y-4 pt-2">
-                    {categories.map((item, index) => (
-                      <div key={item.type}>
-                        <div className="mb-1.5 flex items-center justify-between gap-3 text-sm">
-                          <span className="flex items-center gap-2 font-semibold text-slate-600"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: CHART_COLORS[index] }} />{item.label}</span>
-                          <span className="font-black tabular-nums text-slate-800">{number(item.count)}</span>
+                <ChartCard eyebrow="Altas comerciales del período" title="Planes más solicitados">
+                  {topPlans.length ? (
+                    <div className="space-y-4 pt-2">
+                      {topPlans.map((item, index) => (
+                        <div key={`${item.label}-${item.type}`}>
+                          <div className="mb-1.5 flex items-center justify-between gap-3 text-sm">
+                            <span className="flex min-w-0 items-center gap-2 font-semibold text-slate-600">
+                              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: PLAN_COLORS[index % PLAN_COLORS.length] }} />
+                              <span className="truncate">{item.label}<span className="ml-2 text-xs font-medium text-slate-400">{item.type_label}</span></span>
+                            </span>
+                            <span className="shrink-0 font-black tabular-nums text-slate-800">{number(item.count)}</span>
+                          </div>
+                          <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                            <div className="h-full rounded-full" style={{ width: `${(item.count / planDemandCount) * 100}%`, backgroundColor: PLAN_COLORS[index % PLAN_COLORS.length] }} />
+                          </div>
                         </div>
-                        <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full" style={{ width: `${Math.min((item.count / Math.max(analytics?.series?.reduce((sum, row) => sum + row.movimientos, 0), 1)) * 100, 100)}%`, backgroundColor: CHART_COLORS[index] }} /></div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  ) : <EmptyChart message="No hay altas comerciales con planes en este período" />}
                 </ChartCard>
               </section>
             </>
