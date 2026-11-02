@@ -2070,6 +2070,7 @@ class DashboardStatsView(APIView):
             ('retiros', MODO_RETIRO),
             ('cambios_plan', MODO_CAMBIO_PLAN),
             ('adiciones', MODO_ADICION),
+            ('traslados', MODO_TRASLADO),
         ):
             categories[name] = [
                 code for code, tipo in catalog.items()
@@ -2188,6 +2189,38 @@ class DashboardStatsView(APIView):
             for row in plan_rows
         ]
 
+        zone_request_codes = (
+            categories['nuevo_contrato']
+            + categories['recontrataciones']
+            + categories['traslados'])
+        zone_rows = list(
+            queryset.filter(
+                requestType__in=zone_request_codes,
+                coverage_zone__isnull=False,
+            ).values(
+                'coverage_zone_id', 'coverage_zone__name'
+            ).annotate(
+                count=Count('id')
+            ).order_by('-count', 'coverage_zone__name')
+        )
+        zone_request_total = sum(row['count'] for row in zone_rows)
+        top_zone_rows = zone_rows[:5]
+        zones = [
+            {
+                'name': row['coverage_zone__name'],
+                'count': row['count'],
+                'percentage': round(row['count'] * 100 / zone_request_total, 1),
+            }
+            for row in top_zone_rows
+        ] if zone_request_total else []
+        other_zone_count = sum(row['count'] for row in zone_rows[5:])
+        if other_zone_count:
+            zones.append({
+                'name': 'Otros barrios',
+                'count': other_zone_count,
+                'percentage': round(other_zone_count * 100 / zone_request_total, 1),
+            })
+
         movement_breakdown = [
             {
                 'type': name,
@@ -2225,6 +2258,7 @@ class DashboardStatsView(APIView):
             'comparativa': series,
             'servicios': services,
             'planes': plans,
+            'zonas': zones,
             'categorias': movement_breakdown,
         }
 

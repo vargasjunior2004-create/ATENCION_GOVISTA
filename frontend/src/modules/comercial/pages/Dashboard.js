@@ -18,8 +18,6 @@ import {
   CartesianGrid,
   Cell,
   Legend,
-  Line,
-  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -229,6 +227,7 @@ export default function Dashboard() {
   }));
   const services = analytics?.servicios || [];
   const plans = analytics?.planes || [];
+  const zones = analytics?.zonas || [];
   const topPlans = plans.slice(0, 5);
   const planDemandCount = plans.reduce((sum, item) => sum + item.count, 0);
   const hasData = series.some((item) => item.movimientos > 0);
@@ -389,19 +388,48 @@ export default function Dashboard() {
                     </ResponsiveContainer>
                   </div>
                 </ChartCard>
-                <ChartCard eyebrow="Ritmo de actividad" title="Evolución de solicitudes comerciales">
-                  <div className="h-[300px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={series} margin={{ top: 4, right: 4, left: -18, bottom: 4 }}>
-                        <CartesianGrid stroke="#e8eee9" vertical={false} />
-                        <XAxis dataKey="date" tickFormatter={readableShortDate} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                        <Tooltip content={<ChartTooltip />} />
-                        <Legend iconType="circle" wrapperStyle={{ fontSize: 11, paddingTop: 12 }} />
-                        <Line name="Movimientos" type="monotone" dataKey="movimientos" stroke="#0d2b1b" strokeWidth={3} dot={{ r: 3, fill: '#00d67b', strokeWidth: 0 }} activeDot={{ r: 5 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
+                <ChartCard eyebrow="Solicitudes por zona" title="Zonas de donde más se generaron solicitudes">
+                  {zones.length ? (
+                    <div className="space-y-4">
+                      {zones.map((zone, index) => {
+                        const width = Math.max(zone.percentage, zone.count ? 2 : 0);
+                        return (
+                          <div key={zone.name}>
+                            <div className="mb-1.5 flex items-center justify-between gap-3 text-sm">
+                              <span className="flex min-w-0 items-center gap-2 font-semibold text-slate-600">
+                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-[11px] font-black text-brand-700">
+                                  {zone.name === 'Otros barrios' ? '…' : index + 1}
+                                </span>
+                                <span className="truncate">{zone.name}</span>
+                              </span>
+                              <span className="shrink-0 text-right">
+                                <strong className="font-black tabular-nums text-slate-800">{number(zone.count)}</strong>
+                                <span className="ml-2 text-xs font-medium tabular-nums text-slate-400">{zone.percentage}%</span>
+                              </span>
+                            </div>
+                            <div
+                              className="h-2 overflow-hidden rounded-full bg-slate-100"
+                              aria-label={`${zone.percentage}%`}
+                              role="progressbar"
+                              aria-valuenow={zone.percentage}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                            >
+                              <div
+                                className="h-full rounded-full bg-brand-600 transition-all"
+                                style={{ width: `${width}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <p className="border-t border-slate-100 pt-3 text-xs text-slate-400">
+                        Incluye contratos nuevos, recontrataciones y traslados con zona registrada.
+                      </p>
+                    </div>
+                  ) : (
+                    <EmptyChart message="No hay solicitudes con zona para estos filtros" />
+                  )}
                 </ChartCard>
               </section>
 

@@ -297,7 +297,8 @@ class DashboardTests(TestCase):
         r = self.c.get('/api/dashboard/stats')
         self.assertEqual(r.status_code, 401)
 
-    def _sale(self, code, request_type, movement_date, service='internet', total=100):
+    def _sale(self, code, request_type, movement_date, service='internet',
+              total=100, coverage_zone=None):
         return Sale.objects.create(
             date=movement_date,
             clientCode=code,
@@ -307,6 +308,7 @@ class DashboardTests(TestCase):
             plan=self.plan,
             planName=self.plan.label,
             total=Decimal(str(total)),
+            coverage_zone=coverage_zone,
             createdBy=self.admin,
         )
 
@@ -347,6 +349,83 @@ class DashboardTests(TestCase):
             sum(item['count'] for item in analytics['categorias']),
             5,
         )
+
+    def test_dashboard_zones_rank_contracts_rehires_and_transfers(self):
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+        token = self._token()
+        villa_busch = CoverageZone.objects.get(normalized_name='villa busch')
+        terminal = CoverageZone.objects.get(normalized_name='terminal')
+        self._sale(
+            'ZONE001', 'nuevo_contrato', today,
+            coverage_zone=villa_busch)
+        self._sale(
+            'ZONE002', 'recontratacion', today,
+            coverage_zone=villa_busch)
+        self._sale(
+            'ZONE003', 'traslado_externo', today,
+            coverage_zone=terminal)
+        self._sale(
+            'ZONE004', 'retiro', today,
+            coverage_zone=terminal)
+        self._sale(
+            'ZONE005', 'nuevo_contrato', yesterday,
+            coverage_zone=terminal)
+
+        headers = {'HTTP_AUTHORIZATION': f'Bearer {token}'}
+        response = self.c.get(
+            f'/api/dashboard/stats?from={today.isoformat()}&to={today.isoformat()}',
+            **headers)
+
+        self.assertEqual(response.status_code, 200)
+        zones = _json(response)['analytics']['zonas']
+        self.assertEqual(
+            zones,
+            [
+                {'name': villa_busch.name, 'count': 2, 'percentage': 66.7},
+                {'name': terminal.name, 'count': 1, 'percentage': 33.3},
+            ],
+        )
+
+        filtered = self.c.get(
+            f'/api/dashboard/stats?from={today.isoformat()}&to={today.isoformat()}'
+            '&movement_type=nuevo_contrato',
+            **headers)
+        self.assertEqual(filtered.status_code, 200)
+        self.assertEqual(
+            _json(filtered)['analytics']['zonas'],
+            [{'name': villa_busch.name, 'count': 1, 'percentage': 100.0}],
+        )
+
+    def test_dashboard_zone_ranking_groups_remaining_zones_as_others(self):
+        today = timezone.localdate()
+        token = self._token()
+        zones = list(CoverageZone.objects.order_by('name')[:7])
+        for index, zone in enumerate(zones):
+            self._sale(
+                f'ZONE-TOP-{index}',
+                'nuevo_contrato',
+                today,
+                coverage_zone=zone,
+            )
+        self._sale(
+            'ZONE-TOP-EXTRA',
+            'recontratacion',
+            today,
+            coverage_zone=zones[0],
+        )
+
+        response = self.c.get(
+            '/api/dashboard/stats',
+            HTTP_AUTHORIZATION=f'Bearer {token}',
+        )
+        self.assertEqual(response.status_code, 200)
+        ranking = _json(response)['analytics']['zonas']
+        self.assertEqual(len(ranking), 6)
+        self.assertEqual(ranking[0]['name'], zones[0].name)
+        self.assertEqual(ranking[0]['count'], 2)
+        self.assertEqual(ranking[-1]['name'], 'Otros barrios')
+        self.assertEqual(ranking[-1]['count'], 2)
 
     def test_dashboard_plan_demand_is_ordered_within_selected_range(self):
         today = timezone.localdate()
