@@ -1,10 +1,13 @@
 from decimal import Decimal
+from django.db import connection
 
 from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_field
 from .models import (
-    User, Customer, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
+    User, Customer, Contract, Role, Permission, RolePermission, UserRole,
+    TemporaryFunction, TemporaryAssignment, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
     TarifaTraslado, TarifaTrasladoHistorial, TrasladoExterno,
+    InventarioMovimiento,
 )
 from .domain import (
     SERVICE_TYPE_LABELS, SERVICE_TYPE_FAMILY, SERVICE_TYPE_TO_PLAN_TYPE,
@@ -15,6 +18,7 @@ from .domain import (
     plan_is_selectable,
     motivo_categoria_de_modo, MOTIVO_CAMBIO,
 )
+from .rbac import can_register_external_sale
 
 
 def sale_catalog(serializer_or_context=None):
@@ -126,20 +130,46 @@ def resolve_motivo(motivo_id, mode, errors):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    roles = serializers.SerializerMethodField()
+
     class Meta:
         model = User
-        fields = ['id', 'name', 'role', 'active']
+        fields = ['id', 'name', 'role', 'active', 'roles']
+
+    def get_roles(self, obj):
+        return [
+            {
+                'id': assignment.role_id,
+                'name': assignment.role.name,
+                'is_system_role': assignment.role.is_system_role,
+            }
+            for assignment in obj.role_assignments.all()
+            if assignment.active and assignment.role.active
+        ]
 
 
 class UserWriteSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False)
+    roleIds = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=False,
+        write_only=True,
+    )
 
     class Meta:
         model = User
-        fields = ['id', 'name', 'password', 'role', 'active']
+        fields = ['id', 'name', 'password', 'active', 'roleIds']
+
+    def validate(self, attrs):
+        if 'role' in self.initial_data:
+            raise serializers.ValidationError({
+                'role': 'El rol heredado ya no se registra; asigne roleIds.'
+            })
+        return attrs
 
     def create(self, validated_data):
         password = validated_data.pop('password', None)
+        validated_data.pop('roleIds', None)
         user = User(**validated_data)
         if password:
             user.set_password(password)
@@ -148,15 +178,113 @@ class UserWriteSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         password = validated_data.pop('password', None)
+        validated_data.pop('roleIds', None)
         if password:
             instance.set_password(password)
         return super().update(instance, validated_data)
 
 
+class PermissionSerializer(serializers.ModelSerializer):
+    code = serializers.ReadOnlyField()
+
+    class Meta:
+        model = Permission
+        fields = ['id', 'code', 'module', 'action', 'name', 'description', 'active']
+
+
+class RoleSerializer(serializers.ModelSerializer):
+    permissions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Role
+        fields = [
+            'id', 'code', 'name', 'description', 'active',
+            'is_system_role', 'permissions', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['is_system_role', 'permissions', 'created_at', 'updated_at']
+
+    def get_permissions(self, obj):
+        permissions = Permission.objects.filter(
+            role_permissions__role=obj, active=True).order_by('module', 'action')
+        return PermissionSerializer(permissions, many=True).data
+
+
+class UserRoleSerializer(serializers.ModelSerializer):
+    roleName = serializers.CharField(source='role.name', read_only=True)
+    userName = serializers.CharField(source='user.name', read_only=True)
+
+    class Meta:
+        model = UserRole
+        fields = [
+            'id', 'user', 'userName', 'role', 'roleName', 'assigned_by',
+            'assigned_at', 'revoked_at', 'active',
+        ]
+        read_only_fields = ['assigned_by', 'assigned_at', 'revoked_at']
+
+
+class TemporaryFunctionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TemporaryFunction
+        fields = ['id', 'code', 'name', 'description', 'active']
+
+
+class TemporaryAssignmentSerializer(serializers.ModelSerializer):
+    userName = serializers.CharField(source='user.name', read_only=True)
+    functionName = serializers.CharField(source='function.name', read_only=True)
+    assignedByName = serializers.CharField(source='assigned_by.name', read_only=True)
+
+    class Meta:
+        model = TemporaryAssignment
+        fields = [
+            'id', 'user', 'userName', 'function', 'functionName',
+            'assigned_by', 'assignedByName', 'starts_at', 'ends_at',
+            'finished_at', 'status', 'notes', 'created_at',
+        ]
+        read_only_fields = ['assigned_by', 'finished_at', 'created_at']
+
+
 class CustomerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
-        fields = ['id', 'code', 'name', 'active']
+        fields = ['id', 'code', 'name', 'ci', 'phone', 'status', 'active']
+
+
+class ContractSerializer(serializers.ModelSerializer):
+    customerId = serializers.IntegerField(source='customer_id', read_only=True)
+    saleId = serializers.IntegerField(source='sale_id', read_only=True)
+    sellerUserId = serializers.IntegerField(
+        source='seller_user_id', read_only=True)
+    sellerName = serializers.CharField(source='seller_name', read_only=True)
+    planLabel = serializers.SerializerMethodField()
+    createdBy = serializers.SerializerMethodField()
+    reviewedBy = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Contract
+        fields = [
+            'id', 'number', 'customerId', 'saleId', 'service_type',
+            'plan', 'planLabel', 'contracted_on', 'status', 'origin',
+            'external_seller', 'meter_number', 'meter_review_status',
+            'sellerUserId', 'sellerName', 'meter_review_notes', 'reviewedBy',
+            'meter_reviewed_at',
+            'createdBy', 'created_at',
+        ]
+        read_only_fields = [
+            'id', 'customerId', 'saleId', 'sellerUserId', 'sellerName',
+            'planLabel', 'reviewedBy', 'meter_reviewed_at', 'createdBy',
+            'created_at',
+        ]
+
+    def get_planLabel(self, obj):
+        return obj.plan_name or obj.plan.label
+
+    def get_createdBy(self, obj):
+        return {'id': obj.created_by_id, 'name': obj.created_by.name}
+
+    def get_reviewedBy(self, obj):
+        if not obj.meter_reviewed_by:
+            return None
+        return {'id': obj.meter_reviewed_by_id, 'name': obj.meter_reviewed_by.name}
 
 
 class PlanSerializer(serializers.ModelSerializer):
@@ -320,6 +448,9 @@ class SaleSerializer(serializers.ModelSerializer):
     """Respuesta de venta con las claves exactas que consume el frontend:
     sale.Plan.label y sale.creator.name."""
     planId = serializers.IntegerField(source='plan_id', read_only=True)
+    sellerUserId = serializers.IntegerField(
+        source='seller_user_id', read_only=True)
+    sellerName = serializers.CharField(source='seller_name', read_only=True)
     Plan = serializers.SerializerMethodField()
     creator = serializers.SerializerMethodField()
     previousPlan = serializers.SerializerMethodField()
@@ -343,7 +474,7 @@ class SaleSerializer(serializers.ModelSerializer):
                   'motivoNombre', 'planFrom',
                   'serviceTypeFrom', 'previousService', 'isServiceChange',
                    'totalFrom', 'notes', 'planId', 'total', 'Plan', 'creator',
-                   'promotion', 'promotion_name',
+                   'sellerUserId', 'sellerName', 'promotion', 'promotion_name',
                    'applied_installation', 'applied_monthly', 'previousPlan']
         fields = fields + [
             'equipmentRetained', 'requiresTechnicalVisit', 'debtApplies',
@@ -418,6 +549,8 @@ class SaleCreateSerializer(serializers.Serializer):
     date = serializers.DateField()
     clientCode = serializers.CharField(max_length=40)
     clientName = serializers.CharField(max_length=160)
+    clientCi = serializers.CharField(required=False, allow_blank=True, max_length=30)
+    clientPhone = serializers.CharField(required=False, allow_blank=True, max_length=40)
     serviceType = serializers.ChoiceField(
         choices=[c[0] for c in Sale.TYPE_CHOICES])
     requestType = serializers.CharField(
@@ -430,6 +563,9 @@ class SaleCreateSerializer(serializers.Serializer):
         max_digits=12, decimal_places=2, required=False, allow_null=True)
     notes = serializers.CharField(required=False, allow_blank=True)
     planId = serializers.IntegerField()
+    meterNumber = serializers.CharField(
+        required=False, allow_blank=True, max_length=80)
+    sellerUserId = serializers.IntegerField(required=False, allow_null=True)
     promotionId = serializers.IntegerField(required=False, allow_null=True)
     additionType = serializers.ChoiceField(
         choices=[c[0] for c in Sale.ADDITION_TYPE_CHOICES],
@@ -451,8 +587,17 @@ class SaleCreateSerializer(serializers.Serializer):
     transferZone = serializers.CharField(required=False, allow_blank=True, max_length=120)
     transferReferences = serializers.CharField(required=False, allow_blank=True, max_length=500)
     transferHasSketch = serializers.BooleanField(required=False, allow_null=True)
+    equipmentDelivered = serializers.BooleanField(
+        source='equipment_delivered', required=False, allow_null=True)
+    equipmentSerial = serializers.CharField(
+        source='equipment_serial', required=False, allow_blank=True, max_length=255)
 
     def validate(self, attrs):
+        editable_origin_fields = {'contractOrigin', 'externalSeller'}
+        if editable_origin_fields.intersection(self.initial_data):
+            raise serializers.ValidationError(
+                'El origen del contrato se determina automáticamente.')
+
         catalog = request_type_catalog()
         request_type = attrs.get('requestType', 'nuevo_contrato')
         tipo = catalog.get(request_type)
@@ -470,6 +615,79 @@ class SaleCreateSerializer(serializers.Serializer):
         requires_technical_visit = attrs.get('requires_technical_visit')
         debt_applies = attrs.get('debt_applies', False)
         debt_amount = attrs.get('debt_amount')
+        equipment_delivered = attrs.get('equipment_delivered')
+        equipment_serial = (attrs.get('equipment_serial') or '').strip().upper()
+        contract_mode = mode == 'nuevo' or is_rehire
+        meter_number = (attrs.get('meterNumber') or '').strip()
+        seller_user_id = attrs.get('sellerUserId')
+
+        if contract_mode:
+            if seller_user_id is not None:
+                seller = User.objects.filter(
+                    id=seller_user_id, active=True).first()
+                if seller is None or not can_register_external_sale(seller):
+                    raise serializers.ValidationError(
+                        {'sellerUserId':
+                         'Seleccione un usuario con asignación externa activa'})
+                attrs['sellerUser'] = seller
+                attrs['sellerName'] = seller.name
+                attrs['externalSeller'] = seller.name
+                attrs['contractOrigin'] = 'externo'
+            else:
+                attrs['sellerUser'] = None
+                attrs['sellerName'] = ''
+                attrs['externalSeller'] = ''
+                registrar = self.context.get('user')
+                is_call_center = bool(
+                    registrar
+                    and registrar.role_assignments.filter(
+                        active=True, role__active=True,
+                        role__code='call-center').exists())
+                attrs['contractOrigin'] = 'virtual' if is_call_center else 'oficina'
+        else:
+            attrs['clientCi'] = ''
+            attrs['clientPhone'] = ''
+            attrs['meterNumber'] = ''
+            attrs['contractOrigin'] = 'oficina'
+            attrs['externalSeller'] = ''
+            attrs['sellerUser'] = None
+            attrs['sellerName'] = ''
+
+        if mode == MODO_RETIRO:
+            if equipment_delivered is None:
+                # Compatibilidad con solicitudes antiguas que no enviaban este
+                # campo; el formulario actual siempre lo solicita explícitamente.
+                equipment_delivered = False
+                attrs['equipment_delivered'] = False
+            if equipment_delivered:
+                if not equipment_serial:
+                    raise serializers.ValidationError(
+                        {'equipmentSerial': 'Ingrese la serie del equipo entregado'})
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT o.serie
+                        FROM public.onu AS o
+                        WHERE LOWER(TRIM(o.serie)) = LOWER(TRIM(%s))
+                        LIMIT 1
+                        """,
+                        [equipment_serial],
+                    )
+                    registered = cursor.fetchone()
+                if registered is None:
+                    raise serializers.ValidationError(
+                        {'equipmentSerial': 'La serie no está registrada en inventario'})
+                if InventarioMovimiento.objects.filter(
+                        serie__iexact=registered[0],
+                        estado=InventarioMovimiento.ESTADO_PENDIENTE).exists():
+                    raise serializers.ValidationError(
+                        {'equipmentSerial': 'La serie ya tiene una recepción pendiente'})
+                attrs['equipment_serial'] = registered[0]
+            else:
+                attrs['equipment_serial'] = ''
+        else:
+            attrs['equipment_delivered'] = None
+            attrs['equipment_serial'] = ''
 
         if is_rehire:
             if equipment_retained is None:
@@ -606,6 +824,7 @@ class SaleCreateSerializer(serializers.Serializer):
                     {'promotionId': 'Promocion no valida, vencida o no pertenece al plan'})
         attrs['plan'] = plan
         attrs['promotion'] = promotion
+        attrs['meterNumber'] = meter_number
         return attrs
 
     def create(self, validated_data):
@@ -618,11 +837,30 @@ class SaleCreateSerializer(serializers.Serializer):
         motivo = validated_data.pop('motivoValue', None)
         request_type = validated_data.get('requestType', 'nuevo_contrato')
 
-        code = validated_data.get('clientCode', '')
-        customer = Customer.objects.filter(code=code).first()
+        code = validated_data.get('clientCode', '').strip()
+        ci = validated_data.get('clientCi', '').strip()
+        customer = Customer.objects.filter(ci=ci).first() if ci else None
+        by_code = Customer.objects.filter(code=code).first()
+        if customer and by_code and customer.id != by_code.id:
+            raise serializers.ValidationError(
+                {'clientCi': 'El CI y el código corresponden a clientes distintos'})
+        customer = customer or by_code
         if customer is None and code:
-            customer = Customer(code=code, name=validated_data['clientName'])
+            customer = Customer(
+                code=code, name=validated_data['clientName'], ci=ci,
+                phone=validated_data.get('clientPhone', '').strip())
             customer.save()
+        elif customer:
+            updates = []
+            if ci and not customer.ci:
+                customer.ci = ci
+                updates.append('ci')
+            phone = validated_data.get('clientPhone', '').strip()
+            if phone and not customer.phone:
+                customer.phone = phone
+                updates.append('phone')
+            if updates:
+                customer.save(update_fields=updates)
 
         installation, monthly, sale_total = resolve_sale_prices(
             plan, promotion, request_type)
@@ -660,6 +898,10 @@ class SaleCreateSerializer(serializers.Serializer):
             requires_technical_visit=validated_data.get('requires_technical_visit'),
             debt_applies=validated_data.get('debt_applies', False),
             debt_amount=validated_data.get('debt_amount', Decimal('0')),
+            equipment_delivered=validated_data.get('equipment_delivered'),
+            equipment_serial=validated_data.get('equipment_serial', ''),
+            seller_user=validated_data.get('sellerUser'),
+            seller_name=validated_data.get('sellerName', ''),
             createdBy=user,
         )
         if transfer_tariff is not None:
@@ -675,6 +917,31 @@ class SaleCreateSerializer(serializers.Serializer):
                 has_physical_sketch=validated_data.get('transferHasSketch'),
                 status=('recibido' if validated_data.get('transferHasSketch')
                         else 'pendiente_ubicacion'),
+                created_by=user,
+            )
+        if request_type == 'recontratacion' or request_type_mode(
+                request_type, request_type_catalog()) == 'nuevo':
+            Contract.objects.create(
+                number=f'GV-{sale.date:%Y%m%d}-{sale.id}',
+                customer=customer,
+                sale=sale,
+                service_type=sale.serviceType,
+                plan=plan,
+                plan_name=plan.label,
+                contracted_on=sale.date,
+                origin=validated_data.get('contractOrigin', 'oficina'),
+                external_seller=validated_data.get('externalSeller', ''),
+                seller_user=validated_data.get('sellerUser'),
+                seller_name=validated_data.get('sellerName', ''),
+                meter_number=validated_data.get('meterNumber') or None,
+                created_by=user,
+            )
+        if validated_data.get('equipment_delivered'):
+            InventarioMovimiento.objects.create(
+                sale=sale,
+                serie=validated_data['equipment_serial'],
+                tipo=InventarioMovimiento.TIPO_DEVOLUCION_DECLARADA,
+                estado=InventarioMovimiento.ESTADO_PENDIENTE,
                 created_by=user,
             )
         return sale

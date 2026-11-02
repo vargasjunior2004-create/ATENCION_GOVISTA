@@ -49,6 +49,11 @@ const PERIOD_OPTIONS = [
 ];
 
 const CHART_COLORS = ['#12894d', '#7c3aed', '#e56b5d', '#3b82f6', '#d69e2e', '#64748b'];
+const COMPARISON_COLORS = {
+  altas: '#1d4ed8',
+  retiros: '#f97316',
+};
+const SERVICE_COLORS = {
 const SERVICE_COLORS = {
   internet: '#0e7490',
   tv: '#ca8a04',
@@ -126,7 +131,7 @@ function ChartTooltip({ active, payload, label }) {
   );
 }
 
-function EmptyChart({ message = 'No hay solicitudes en este período' }) {
+function EmptyChart({ message = 'No hay solicitudes comerciales en este período' }) {
   return (
     <div className="flex h-[280px] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-6 text-center">
       <div>
@@ -223,6 +228,10 @@ export default function Dashboard() {
 
   const analytics = stats?.analytics;
   const series = analytics?.series || [];
+  const commercialSeries = series.map((item) => ({
+    ...item,
+    altas_comerciales: item.nuevo_contrato + item.recontrataciones,
+  }));
   const services = analytics?.servicios || [];
   const categories = analytics?.categorias || [];
   const hasData = series.some((item) => item.movimientos > 0);
@@ -278,7 +287,9 @@ export default function Dashboard() {
             </div>
             <h1 className="max-w-xl text-3xl font-black tracking-tight sm:text-4xl">Solicitudes de clientes</h1>
             <p className="mt-2 max-w-lg text-sm leading-6 text-green-100/65">
-              Una lectura clara de las solicitudes comerciales, retiros y cambios registrados por cada usuario.
+
+              Una lectura clara de las solicitudes comerciales, retiros y cambios registrados por GO VISTA.
+
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
@@ -347,7 +358,7 @@ export default function Dashboard() {
         <Card className="flex min-h-[320px] items-center justify-center p-8">
           <div className="text-center">
             <RefreshCw className="mx-auto mb-3 h-8 w-8 animate-spin text-brand-600" />
-            <p className="text-sm font-semibold text-slate-500">Consultando solicitudes reales...</p>
+            <p className="text-sm font-semibold text-slate-500">Consultando solicitudes comerciales ...</p>
           </div>
         </Card>
       ) : stats && (
@@ -357,7 +368,7 @@ export default function Dashboard() {
             <MetricCard label="Recontrataciones" count={analytics?.recontrataciones?.count} total={analytics?.recontrataciones?.total} icon={RefreshCw} tone="blue" />
             <MetricCard label="Retiros" count={analytics?.retiros?.count} total={analytics?.retiros?.total} icon={ArrowDownRight} tone="red" />
             <MetricCard label="Cambios de plan" count={analytics?.cambios_plan?.count} total={analytics?.cambios_plan?.total} icon={RefreshCw} tone="blue" />
-            <MetricCard label="Balance neto" count={analytics?.balance_neto} icon={Activity} tone="slate" detail="Nuevos contratos + recontrataciones - retiros" />
+            <MetricCard label="Balance neto" count={analytics?.balance_neto} icon={Activity} tone="slate" detaiAltas comerciales frente a retiros" />
           </section>
 
           {!hasData ? (
@@ -368,7 +379,7 @@ export default function Dashboard() {
                 <ChartCard eyebrow="Comparativa diaria" title="Nuevos contratos, recontrataciones y retiros">
                   <div className="h-[300px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={series} margin={{ top: 4, right: 4, left: -18, bottom: 4 }}>
+                      <BarChart data={commercialSeries} margin={{ top: 4, right: 4, left: -18, bottom: 4 }}>
                         <CartesianGrid stroke="#e8eee9" vertical={false} />
                         <XAxis dataKey="date" tickFormatter={readableShortDate} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                         <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
@@ -381,7 +392,7 @@ export default function Dashboard() {
                     </ResponsiveContainer>
                   </div>
                 </ChartCard>
-                <ChartCard eyebrow="Ritmo de actividad" title="Evolución de solicitudes">
+                <ChartCard eyebrow="Ritmo de actividad" title="Evolución de solicitudes comerciales">
                   <div className="h-[300px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={series} margin={{ top: 4, right: 4, left: -18, bottom: 4 }}>

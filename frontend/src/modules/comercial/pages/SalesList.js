@@ -60,6 +60,8 @@ const formatDate = (date) => {
   return `${day}/${month}/${year}`;
 };
 
+const formatDateTime = (value) => value ? new Date(value).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+
 function EyeButton({ onClick }) {
   return (
     <button
@@ -77,13 +79,14 @@ function EyeButton({ onClick }) {
   );
 }
 
-function SaleCard({ sale, isAdmin, onPreview, onEdit, onDelete, requestMode, requestLabel, showMotivos }) {
+function SaleCard({ sale, isAdmin, archived, onPreview, onEdit, onDelete, onRestore, requestMode, requestLabel, showMotivos }) {
   return (
     <Card className="p-4 space-y-3">
       <div className="flex items-start justify-between">
         <div>
           <p className="font-semibold text-slate-900">{sale.clientName}</p>
           <p className="text-sm text-slate-400">{sale.clientCode} &middot; {sale.date}</p>
+          {archived && <p className="mt-1 text-xs text-amber-700">Archivada: {formatDateTime(sale.archivedAt)} · {sale.archivedBy}</p>}
         </div>
         <Badge color={MODO_COLOR[requestMode(sale.requestType)]}>{requestLabel(sale)}</Badge>
       </div>
@@ -123,8 +126,10 @@ function SaleCard({ sale, isAdmin, onPreview, onEdit, onDelete, requestMode, req
               <EyeButton onClick={() => onPreview(sale)} />
               {isAdmin && (
                 <>
-                  <Button variant="ghost" size="sm" onClick={() => onEdit(sale)}>Editar</Button>
-                  <Button variant="danger" size="sm" onClick={() => onDelete(sale)}>Eliminar</Button>
+                  {!archived && <Button variant="ghost" size="sm" onClick={() => onEdit(sale)}>Editar</Button>}
+                  {archived
+                    ? <Button variant="success" size="sm" onClick={() => onRestore(sale)}>Restaurar</Button>
+                    : <Button variant="danger" size="sm" onClick={() => onDelete(sale)}>Archivar</Button>}
                 </>
               )}
             </div>
@@ -142,10 +147,10 @@ export default function SalesList() {
   const initialPage = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
   const [from, setFrom] = useState(searchParams.get('from') || today);
   const [to, setTo] = useState(searchParams.get('to') || today);
-  const [requestType, setRequestType] = useState(searchParams.get('requestType') || '');
-  const [serviceType, setServiceType] = useState(searchParams.get('serviceType') || '');
+  const [requestType, setRequestType] = useState(searchParams.get('requestType') || 'all');
+  const [serviceType, setServiceType] = useState(searchParams.get('serviceType') || 'all');
   const [reportFormat, setReportFormat] = useState(searchParams.get('format') || '');
-  const [showMotivos, setShowMotivos] = useState(searchParams.get('motivos') || '');
+  const [showMotivos, setShowMotivos] = useState(searchParams.get('motivos') || 'no');
   const [sales, setSales] = useState([]);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -157,6 +162,7 @@ export default function SalesList() {
   const [generatingReport, setGeneratingReport] = useState(false);
   const [msg, setMsg] = useState('');
   const [deletingSale, setDeletingSale] = useState(null);
+  const [archived, setArchived] = useState(searchParams.get('archived') === 'true');
   const [previewSale, setPreviewSale] = useState(null);
 
   // El catalogo es administrable: etiqueta y color del movimiento salen de
@@ -198,10 +204,11 @@ export default function SalesList() {
   });
 
   const showMotivosColumn = showMotivos === 'si';
-  const hasSelection = requestType !== '' && serviceType !== '' && reportFormat !== '' && showMotivos !== '';
+  const listReady = requestType !== '' && serviceType !== '';
+  const reportReady = listReady && reportFormat !== '' && showMotivos !== '';
 
   const loadSales = useCallback(async (p = 1, commitFilters = true) => {
-    if (!hasSelection) {
+    if (!listReady) {
       setSales([]);
       setPagination({ total: 0, total_pages: 1, page: 1 });
       if (searchParams.toString()) setSearchParams({}, { replace: true });
@@ -209,7 +216,7 @@ export default function SalesList() {
     }
     setLoading(true);
     try {
-      const res = await api.getSales(from, to, requestType, p, 25, serviceType);
+      const res = await api.getSales(from, to, requestType, p, 25, serviceType, archived);
       setSales(res.items);
       setPagination({ total: res.total, total_pages: res.total_pages, page: res.page });
       setPage(res.page);
@@ -229,13 +236,13 @@ export default function SalesList() {
     } finally {
       setLoading(false);
     }
-  }, [from, to, requestType, serviceType, reportFormat, showMotivos, hasSelection, searchParams, setSearchParams]);
+  }, [from, to, requestType, serviceType, reportFormat, showMotivos, archived, listReady, searchParams, setSearchParams]);
 
   const filtersMounted = useRef(false);
   useEffect(() => {
     loadSales(filtersMounted.current ? 1 : initialPage);
     filtersMounted.current = true;
-  }, [hasSelection]);
+  }, [listReady, archived]);
   useEffect(() => {
     if (isAdmin) api.getPlans().then(setPlans).catch(() => {});
   }, [isAdmin]);
@@ -313,11 +320,27 @@ export default function SalesList() {
       await api.deleteSale(deletingSale.id);
       setDeletingSale(null);
       loadSales(page);
-      setMsg('Solicitud eliminada correctamente.');
+       setMsg('Solicitud archivada correctamente.');
     } catch (err) {
-      setMsg(err.error || 'Error al eliminar');
+      setMsg(err.error || 'Error al archivar la solicitud');
       setDeletingSale(null);
     }
+  };
+
+  const handleRestore = async (sale) => {
+    try {
+      await api.restoreSale(sale.id);
+      setMsg('Solicitud restaurada correctamente.');
+      loadSales(page);
+    } catch (err) {
+      setMsg(err.error || 'Error al restaurar la solicitud');
+    }
+  };
+
+  const changeArchiveView = (value) => {
+    setArchived(value);
+    setPage(1);
+    setMsg('');
   };
 
   const handleGenerateReport = async () => {
@@ -357,6 +380,12 @@ export default function SalesList() {
       <div>
         <h1 className="text-2xl font-black text-slate-900 tracking-tight">Historial de Solicitudes</h1>
         <p className="text-sm text-slate-400 mt-1">Consulta y gestion de solicitudes registradas</p>
+        {isAdmin && (
+          <div className="mt-4 inline-flex rounded-xl bg-slate-100 p-1">
+            <button type="button" onClick={() => changeArchiveView(false)} className={`rounded-lg px-4 py-2 text-xs font-bold ${!archived ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500'}`}>Activas</button>
+            <button type="button" onClick={() => changeArchiveView(true)} className={`rounded-lg px-4 py-2 text-xs font-bold ${archived ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500'}`}>Archivadas</button>
+          </div>
+        )}
       </div>
 
       {/* Filters */}
@@ -402,16 +431,16 @@ export default function SalesList() {
           <Button
             variant="primary"
             onClick={handleGenerateReport}
-            disabled={!isAdmin || !hasSelection || generatingReport}
-            className={(!isAdmin || !hasSelection) ? 'opacity-50 cursor-not-allowed' : ''}
+             disabled={!isAdmin || !reportReady || generatingReport}
+             className={(!isAdmin || !reportReady) ? 'opacity-50 cursor-not-allowed' : ''}
           >
             {generatingReport ? 'Generando...' : 'Reporte'}
           </Button>
           {!isAdmin && (
             <p className="text-xs text-slate-400">Solo los administradores pueden generar reportes desde el historial</p>
           )}
-          {isAdmin && !hasSelection && (
-            <p className="text-xs text-slate-400">Selecciona todos los filtros para habilitar el reporte</p>
+          {isAdmin && !reportReady && (
+            <p className="text-xs text-slate-400">Selecciona solicitud, servicio, mostrar motivos y formato para habilitar el reporte</p>
           )}
         </div>
       </Card>
@@ -429,15 +458,15 @@ export default function SalesList() {
                 </svg>
               </div>
               <div>
-                <h3 className="text-lg font-bold text-slate-900">Eliminar solicitud</h3>
-                <p className="text-sm text-slate-500">Esta accion no se puede deshacer</p>
+                <h3 className="text-lg font-bold text-slate-900">Archivar solicitud</h3>
+                <p className="text-sm text-slate-500">Se ocultará de las solicitudes activas, pero conservará su historial.</p>
               </div>
             </div>
             <p className="text-sm text-slate-600">
-              Seguro que deseas eliminar la solicitud de <strong>{deletingSale.clientName}</strong> ({deletingSale.clientCode})?
+              ¿Deseas archivar la solicitud de <strong>{deletingSale.clientName}</strong> ({deletingSale.clientCode})? Sus relaciones e historial se conservarán.
             </p>
             <div className="flex gap-3 pt-2">
-              <Button variant="danger" onClick={handleDelete}>Si, eliminar</Button>
+              <Button variant="danger" onClick={handleDelete}>Sí, archivar</Button>
               <Button variant="secondary" onClick={() => setDeletingSale(null)}>Cancelar</Button>
             </div>
           </Card>
@@ -560,13 +589,13 @@ export default function SalesList() {
       />
 
       {/* Sales */}
-      {!hasSelection ? (
+      {!listReady ? (
         <Card className="p-16 text-center">
           <svg className="w-12 h-12 text-slate-200 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
           </svg>
           <p className="text-slate-500 font-medium">Selecciona filtros para mostrar informacion</p>
-          <p className="text-xs text-slate-400 mt-1">Elige tipo de solicitud, tipo de servicio y formato, luego presiona Buscar</p>
+           <p className="text-xs text-slate-400 mt-1">Elige tipo de solicitud y tipo de servicio, luego presiona Buscar</p>
         </Card>
       ) : loading ? (
         <div className="flex items-center justify-center py-20">
@@ -597,7 +626,7 @@ export default function SalesList() {
               <tbody className="divide-y divide-slate-50">
                 {sales.map((s) => (
                   <tr key={s.id} className="hover:bg-brand-50/30 transition-colors">
-                    <td className="px-5 py-3.5 text-slate-500">{s.date}</td>
+                    <td className="px-5 py-3.5 text-slate-500">{s.date}{archived && <div className="mt-1 text-[11px] text-amber-700">{formatDateTime(s.archivedAt)} · {s.archivedBy}</div>}</td>
                     <td className="px-5 py-3.5 text-slate-500 font-mono text-xs">{s.clientCode}</td>
                     <td className="px-5 py-3.5 font-medium text-slate-900">{s.clientName}</td>
                     <td className="px-5 py-3.5"><Badge color={MODO_COLOR[requestMode(s.requestType)]}>{requestLabel(s)}</Badge></td>
@@ -616,8 +645,10 @@ export default function SalesList() {
                         <EyeButton onClick={() => setPreviewSale(s)} />
                         {isAdmin && (
                           <>
-                            <Button variant="ghost" size="sm" onClick={() => startEdit(s)}>Editar</Button>
-                            <Button variant="danger" size="sm" onClick={() => setDeletingSale(s)}>Eliminar</Button>
+                            {!archived && <Button variant="ghost" size="sm" onClick={() => startEdit(s)}>Editar</Button>}
+                            {archived
+                              ? <Button variant="success" size="sm" onClick={() => handleRestore(s)}>Restaurar</Button>
+                              : <Button variant="danger" size="sm" onClick={() => setDeletingSale(s)}>Archivar</Button>}
                           </>
                         )}
                       </div>
@@ -631,7 +662,7 @@ export default function SalesList() {
           {/* Mobile cards */}
           <div className="md:hidden space-y-3">
             {sales.map((s) => (
-              <SaleCard key={s.id} sale={s} isAdmin={isAdmin} onPreview={setPreviewSale} onEdit={startEdit} onDelete={(sale) => setDeletingSale(sale)} requestMode={requestMode} requestLabel={requestLabel} showMotivos={showMotivosColumn} />
+              <SaleCard key={s.id} sale={s} isAdmin={isAdmin} archived={archived} onPreview={setPreviewSale} onEdit={startEdit} onDelete={(sale) => setDeletingSale(sale)} onRestore={handleRestore} requestMode={requestMode} requestLabel={requestLabel} showMotivos={showMotivosColumn} />
             ))}
           </div>
 

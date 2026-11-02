@@ -16,6 +16,7 @@ from .reports import (
     sign_report_token, unsign_report_token,
 )
 from .domain import request_type_label
+from .rbac import has_permission
 
 
 class IsAdminRole(BasePermission):
@@ -29,11 +30,8 @@ class IsAdminRole(BasePermission):
 
     def has_permission(self, request, view):
         user = getattr(request, 'user', None)
-        return bool(
-            user
-            and getattr(user, 'active', True)
-            and getattr(user, 'role', None) == 'admin'
-        )
+        return bool(user and getattr(user, 'active', True)
+                    and has_permission(user, 'reports.export'))
 
 
 def _sales_range(params, default_day=True):

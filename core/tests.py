@@ -8,7 +8,7 @@ from django.core.cache import cache
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from .models import User, Plan, Sale, Backup
+from .models import User, Plan, Sale, Backup, Role
 
 
 class ApiTestCase(TestCase):
@@ -153,7 +153,8 @@ class ApiTestCase(TestCase):
         self.auth_as(self.admin, 'admin123')
         res = self.client.post('/api/users', {
             'name': 'Nuevo',
-            'password': 'nuevo123', 'role': 'ventas',
+            'password': 'nuevo123',
+            'roleIds': [Role.objects.get(code='caja').id],
         }, format='json')
         self.assertEqual(res.status_code, 201)
         self.assertNotIn('password', res.data)

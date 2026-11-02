@@ -23,7 +23,7 @@ class ProtectedDeleteTests(TestCase):
             content_type='application/json')
         return response.json()['token']
 
-    def test_delete_sale_with_protected_dependencies_returns_409(self):
+    def test_archive_sale_with_dependencies_keeps_history(self):
         sale = Sale.objects.create(
             date=date.today(), clientCode='PROTECT-1', clientName='PRUEBA',
             serviceType='internet', plan=self.plan, total=150,
@@ -39,8 +39,10 @@ class ProtectedDeleteTests(TestCase):
         response = self.client.delete(
             f'/api/sales/{sale.id}',
             HTTP_AUTHORIZATION=f'Bearer {self.token()}')
-        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.status_code, 204)
         self.assertTrue(Sale.objects.filter(id=sale.id).exists())
+        sale.refresh_from_db()
+        self.assertIsNotNone(sale.deleted_at)
 
     def test_sale_creation_is_idempotent(self):
         payload = {
@@ -94,6 +96,18 @@ class ProtectedDeleteTests(TestCase):
             '/api/sales', HTTP_AUTHORIZATION=f'Bearer {self.token()}')
         self.assertEqual(listed.status_code, 200)
         self.assertNotIn(sale.id, [row['id'] for row in listed.json()['items']])
+
+    def test_admin_can_restore_archived_sale(self):
+        sale = Sale.objects.create(
+            date=date.today(), clientCode='RESTORE-1', clientName='PRUEBA RESTAURAR',
+            serviceType='internet', plan=self.plan, total=150,
+            createdBy=self.admin, deleted_at=date.today())
+        response = self.client.post(
+            f'/api/sales/{sale.id}/restore',
+            HTTP_AUTHORIZATION=f'Bearer {self.token()}')
+        self.assertEqual(response.status_code, 204)
+        sale.refresh_from_db()
+        self.assertIsNone(sale.deleted_at)
 
     def test_edit_with_stale_version_returns_409(self):
         sale = Sale.objects.create(
