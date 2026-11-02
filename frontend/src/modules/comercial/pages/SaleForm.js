@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../../../services/api';
 import { Button, Input, Select, RadioChoiceGroup, Card, Alert, TotalDisplay } from '../../../components/ui';
-import { Check, MapPin, Route, Wrench, Package, ReceiptText } from 'lucide-react';
+import { Check, ExternalLink, MapPin, Route, Wrench, Package, ReceiptText } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import useRequestTypes from '../../../hooks/useRequestTypes';
 import useMotivos from '../../../hooks/useMotivos';
@@ -439,21 +439,34 @@ export default function SaleForm() {
 
   const getMotivoLabel = () => motivoNombreOf(form.motivoId);
   const coverageZoneSelect = (
-    <Select
-      label="Zona de cobertura / Barrio *"
-      name="coverageZoneId"
-      value={form.coverageZoneId}
-      onChange={handleChange}
-      required
-      error={coverageZoneSelectionError}
-    >
-      <option value="">
-        {coverageZonesLoading ? 'Cargando zonas...' : 'Seleccione una zona'}
-      </option>
-      {coverageZones.map((zone) => (
-        <option key={zone.id} value={zone.id}>{zone.name}</option>
-      ))}
-    </Select>
+    <div className="space-y-2">
+      <Select
+        label="Zona de cobertura / Barrio *"
+        name="coverageZoneId"
+        value={form.coverageZoneId}
+        onChange={handleChange}
+        required
+        error={coverageZoneSelectionError}
+      >
+        <option value="">
+          {coverageZonesLoading ? 'Cargando zonas...' : 'Seleccione una zona'}
+        </option>
+        {coverageZones.map((zone) => (
+          <option key={zone.id} value={zone.id}>{zone.name}</option>
+        ))}
+      </Select>
+      {selectedCoverageZone?.google_maps_url && (
+        <a
+          href={selectedCoverageZone.google_maps_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-xs font-semibold text-brand-700 underline-offset-2 hover:underline focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+        >
+          Ver cobertura en el mapa
+          <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+        </a>
+      )}
+    </div>
   );
 
   const previewSale = {

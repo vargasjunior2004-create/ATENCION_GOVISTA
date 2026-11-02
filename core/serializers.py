@@ -310,9 +310,10 @@ class PlanPublicSerializer(serializers.ModelSerializer):
 class CoverageZoneSerializer(serializers.ModelSerializer):
     class Meta:
         model = CoverageZone
-        fields = ['id', 'name', 'description', 'is_active',
+        fields = ['id', 'name', 'description', 'google_maps_url', 'is_active',
                   'created_at', 'updated_at']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = [
+            'id', 'google_maps_url', 'created_at', 'updated_at']
 
     def validate_name(self, value):
         from .models import normalize_coverage_zone_name

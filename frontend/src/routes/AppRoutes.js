@@ -32,7 +32,7 @@ export default function AppRoutes() {
         <Route path="/equipos" element={<EquipmentPage />} />
         <Route
           path="/cobertura/zonas"
-          element={<AdminRoute permission="coverage.manage"><CoverageZones /></AdminRoute>}
+          element={<CoverageZones />}
         />
 
         <Route path="/comercial" element={<ComercialLayout />}>
