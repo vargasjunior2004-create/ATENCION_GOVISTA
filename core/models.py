@@ -324,6 +324,7 @@ class CoverageZone(models.Model):
     name = models.CharField(max_length=120)
     normalized_name = models.CharField(max_length=120, unique=True, editable=False)
     description = models.TextField(blank=True, default='')
+    google_maps_url = models.URLField(max_length=500, blank=True, default='')
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

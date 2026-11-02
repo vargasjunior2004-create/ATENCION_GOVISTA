@@ -12,10 +12,9 @@ export const MODULES = [
   {
     id: 'cobertura',
     name: 'Gestión de cobertura',
-    description: 'Administra las zonas y barrios disponibles para los servicios.',
+    description: 'Consulta barrios y abre su cobertura en Google My Maps.',
     icon: MapPinned,
     to: '/cobertura/zonas',
-    permission: 'coverage.manage',
     status: 'available',
   },
   {

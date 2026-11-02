@@ -541,7 +541,9 @@ class ActiveCoverageZoneListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        zones = CoverageZone.objects.filter(is_active=True)
+        zones = CoverageZone.objects.all()
+        if request.query_params.get('active', '').lower() in {'true', '1'}:
+            zones = zones.filter(is_active=True)
         return Response(CoverageZoneSerializer(zones, many=True).data)
 
 

@@ -19,6 +19,7 @@ class CoverageZoneApiTests(TestCase):
     def setUp(self):
         self.client = Client()
         self.admin = create_user('coverage_admin', 'pass1', 'admin')
+        self.operator = create_user('coverage_operator', 'pass1')
         self.manager = create_user('coverage_manager', 'pass1')
         self.commercial_lead = create_user('coverage_commercial_lead', 'pass1')
         self.cashier = create_user('coverage_cashier', 'pass1')
@@ -82,15 +83,62 @@ class CoverageZoneApiTests(TestCase):
             set(CoverageZone.objects.values_list('normalized_name', flat=True)),
             expected,
         )
+        self.assertEqual(CoverageZone.objects.count(), 15)
 
-    def test_authenticated_operator_can_list_active_zones(self):
+    def test_map_urls_match_each_existing_zone(self):
+        expected_locations = {
+            'villa busch': ('-11.084442928048484%2C-68.77239128169253', '15'),
+            'las isla': ('-11.042655499999979%2C-68.80124675', '18'),
+            'castanal': ('-11.037896500000004%2C-68.80360825', '17'),
+            'roberto rojas': ('-11.031699499999991%2C-68.79058725', '17'),
+            'mototaxi': ('-11.031502509383234%2C-68.79053900000001', '17'),
+            'paraíso': ('-11.02388499999998%2C-68.77447225000002', '16'),
+            'mejillones': ('-11.070286333333337%2C-68.81737650000001', '17'),
+            'gatty ribeiro': ('-11.03703199999997%2C-68.77884240000002', '16'),
+            'mercado evo morales': ('-11.048410499999989%2C-68.77346450000002', '18'),
+            'san juan ii': ('-11.053223714285721%2C-68.776283', '16'),
+            'avaroa': ('-11.083027999999986%2C-68.79755575', '16'),
+            'barrio monte líbano': ('-11.090082833333332%2C-68.772644', '17'),
+            'tahuamanu': ('-11.033353733333334%2C-68.75225113333333', '17'),
+            'terminal': ('-11.062182500000002%2C-68.789622625', '17'),
+            'el portugués': ('-11.0179885%2C-68.78190966666666', '17'),
+        }
+        zones = {
+            zone.normalized_name: zone
+            for zone in CoverageZone.objects.all()
+        }
+        self.assertEqual(set(zones), set(expected_locations))
+        for normalized_name, (coordinates, zoom) in expected_locations.items():
+            with self.subTest(zone=normalized_name):
+                url = zones[normalized_name].google_maps_url
+                self.assertTrue(url.startswith(
+                    'https://www.google.com/maps/d/u/0/viewer?mid='))
+                self.assertIn(
+                    '1wbTe0yQgCet3cFowbPbMejip3njFilKg', url)
+                self.assertIn(f'll={coordinates}&z={zoom}', url)
+        self.assertEqual(
+            len({zone.google_maps_url for zone in zones.values()}), 15)
+
+    def test_any_authenticated_user_can_list_all_zones(self):
+        inactive = CoverageZone.objects.create(
+            name='Zona sin servicio', is_active=False)
+        for user in (
+                self.operator, self.cashier, self.call_center, self.manager):
+            with self.subTest(user=user.name):
+                response = self.client.get(
+                    '/api/coverage/zones/', **self.auth(user))
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(len(response.json()), 16)
+                self.assertIn(
+                    inactive.name, {zone['name'] for zone in response.json()})
+
+    def test_active_zone_query_is_shared_with_commercial_forms(self):
+        CoverageZone.objects.create(name='Zona inactiva', is_active=False)
         response = self.client.get(
-            '/api/coverage/zones/', **self.auth(self.cashier))
+            '/api/coverage/zones/?active=true', **self.auth(self.operator))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()), 15)
-        call_center_response = self.client.get(
-            '/api/coverage/zones/', **self.auth(self.call_center))
-        self.assertEqual(call_center_response.status_code, 200)
+        self.assertTrue(all(zone['is_active'] for zone in response.json()))
 
     def test_anonymous_user_cannot_list_zones(self):
         response = self.client.get('/api/coverage/zones/')
@@ -170,9 +218,15 @@ class CoverageZoneApiTests(TestCase):
         self.assertFalse(deactivated.json()['is_active'])
         active_names = {
             item['name'] for item in self.client.get(
-                '/api/coverage/zones/', **self.auth(self.cashier)).json()
+                '/api/coverage/zones/?active=true',
+                **self.auth(self.cashier)).json()
         }
         self.assertNotIn(self.zone.name, active_names)
+        all_names = {
+            item['name'] for item in self.client.get(
+                '/api/coverage/zones/', **self.auth(self.operator)).json()
+        }
+        self.assertIn(self.zone.name, all_names)
 
         reactivated = self.client.patch(
             f'/api/coverage/zones/{self.zone.id}/',
