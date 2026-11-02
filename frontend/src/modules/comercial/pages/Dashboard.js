@@ -51,7 +51,7 @@ const SERVICE_COLORS = {
   internet: '#0e7490',
   tv: '#ca8a04',
   tv_digital: '#2563eb',
-  combo_analog: '#be123c',
+  combo_analog: '#16a34a',
   combo_digital: '#a10785',
 };
 
@@ -281,10 +281,10 @@ export default function Dashboard() {
             <div className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-vista-accent">
               <TrendingUp className="h-4 w-4" /> Gestion comercial
             </div>
-            <h1 className="max-w-xl text-3xl font-black tracking-tight sm:text-4xl">Solicitudes de clientes</h1>
+            <h1 className="max-w-xl text-3xl font-black tracking-tight sm:text-4xl">Solicitudes comerciales de clientes</h1>
             <p className="mt-2 max-w-lg text-sm leading-6 text-green-100/65">
 
-              Una lectura clara de las solicitudes comerciales, retiros y cambios registrados por GO VISTA.
+              Una lectura clara de las solicitudes comerciales, retiros y cambios registrados por cada usuario.
 
             </p>
           </div>
@@ -372,7 +372,7 @@ export default function Dashboard() {
           ) : (
             <>
               <section className="grid gap-5 xl:grid-cols-[1.35fr_1fr]">
-                <ChartCard eyebrow="Comparativa diaria" title="Nuevos contratos, recontrataciones y retiros">
+                <ChartCard eyebrow="Comparativa diaria" title="Altas comerciales frente a retiros">
                   <div className="h-[300px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={commercialSeries} margin={{ top: 4, right: 4, left: -18, bottom: 4 }}>
@@ -388,7 +388,7 @@ export default function Dashboard() {
                     </ResponsiveContainer>
                   </div>
                 </ChartCard>
-                <ChartCard eyebrow="Solicitudes por zona" title="Zonas de donde más se generaron solicitudes">
+                <ChartCard eyebrow="Solicitudes por zona" title="Zonas de mayor demanda">
                   {zones.length ? (
                     <div className="space-y-4">
                       {zones.map((zone, index) => {
