@@ -281,7 +281,7 @@ export default function Dashboard() {
             <div className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-vista-accent">
               <TrendingUp className="h-4 w-4" /> Gestion comercial
             </div>
-            <h1 className="max-w-xl text-3xl font-black tracking-tight sm:text-4xl">Solicitudes de clientes</h1>
+            <h1 className="max-w-xl text-3xl font-black tracking-tight sm:text-4xl">Solicitudes comerciales de clientes</h1>
             <p className="mt-2 max-w-lg text-sm leading-6 text-green-100/65">
 
               Una lectura clara de las solicitudes comerciales, retiros y cambios registrados por GO VISTA.
