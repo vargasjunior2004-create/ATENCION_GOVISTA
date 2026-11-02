@@ -15,6 +15,7 @@ urlpatterns = [
 
     path('coverage/zones/', views.ActiveCoverageZoneListView.as_view()),
     path('coverage/zones/manage/', views.CoverageZoneAdminListView.as_view()),
+    path('coverage/zones/registrations/', views.CoverageZoneRegistrationView.as_view()),
     path('coverage/zones/<int:pk>/', views.CoverageZoneDetailView.as_view()),
 
     path('request-types/active', views.ActiveRequestTypesView.as_view()),

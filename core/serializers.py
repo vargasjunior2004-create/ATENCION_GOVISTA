@@ -308,12 +308,20 @@ class PlanPublicSerializer(serializers.ModelSerializer):
 
 
 class CoverageZoneSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(
+        source='created_by.name', read_only=True, default='')
+
     class Meta:
         model = CoverageZone
-        fields = ['id', 'name', 'description', 'google_maps_url', 'is_active',
-                  'created_at', 'updated_at']
+        fields = [
+            'id', 'name', 'description', 'google_maps_url', 'is_active',
+            'is_pending', 'created_by', 'created_by_name',
+            'created_at', 'updated_at',
+        ]
         read_only_fields = [
-            'id', 'google_maps_url', 'created_at', 'updated_at']
+            'id', 'is_pending', 'created_by', 'created_by_name',
+            'created_at', 'updated_at',
+        ]
 
     def validate_name(self, value):
         from .models import normalize_coverage_zone_name

@@ -15,6 +15,7 @@ export const MODULES = [
     description: 'Consulta barrios y abre su cobertura en Google My Maps.',
     icon: MapPinned,
     to: '/cobertura/zonas',
+    permission: 'coverage.view',
     status: 'available',
   },
   {

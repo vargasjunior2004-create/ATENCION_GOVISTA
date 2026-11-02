@@ -25,11 +25,16 @@ class CoverageZoneApiTests(TestCase):
         self.cashier = create_user('coverage_cashier', 'pass1')
         self.call_center = create_user('coverage_call_center', 'pass1')
         self.technical_lead = create_user('coverage_technical', 'pass1')
+        self.registerer = create_user('coverage_registerer', 'pass1')
+        self.operations_lead = create_user('coverage_operations', 'pass1')
+        self.attach_role(self.operator, 'tecnico-uno')
         self.attach_role(self.manager, 'gerente')
         self.attach_role(self.commercial_lead, 'jefe-comercial')
         self.attach_role(self.cashier, 'caja')
         self.attach_role(self.call_center, 'call-center')
         self.attach_role(self.technical_lead, 'jefe-tecnico')
+        self.attach_role(self.registerer, 'encargado-red')
+        self.attach_role(self.operations_lead, 'jefa-operativa')
         self._auth_headers = {}
         self.zone = CoverageZone.objects.get(normalized_name='villa busch')
         self.plan = Plan.objects.create(
@@ -167,6 +172,119 @@ class CoverageZoneApiTests(TestCase):
             {'name': 'No autorizada'},
             content_type='application/json',
             **self.auth(self.cashier),
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_registerer_creates_pending_zone_and_can_check_its_status(self):
+        created = self.client.post(
+            '/api/coverage/zones/registrations/',
+            {
+                'name': 'Barrio nuevo',
+                'google_maps_url': 'https://maps.google.com/?q=-11.1,-68.8',
+            },
+            content_type='application/json',
+            **self.auth(self.registerer),
+        )
+        self.assertEqual(created.status_code, 201, created.content)
+        zone = CoverageZone.objects.get(name='Barrio nuevo')
+        self.assertEqual(zone.created_by, self.registerer)
+        self.assertFalse(zone.is_active)
+        self.assertTrue(zone.is_pending)
+        self.assertEqual(created.json()['created_by_name'], self.registerer.name)
+
+        registrations = self.client.get(
+            '/api/coverage/zones/registrations/',
+            **self.auth(self.registerer),
+        )
+        self.assertEqual(registrations.status_code, 200)
+        self.assertEqual([item['id'] for item in registrations.json()], [zone.id])
+
+        catalog = self.client.get(
+            '/api/coverage/zones/', **self.auth(self.operator))
+        self.assertEqual(catalog.status_code, 200)
+        self.assertNotIn(zone.name, {item['name'] for item in catalog.json()})
+
+        commercial = self.client.get(
+            '/api/coverage/zones/?active=true', **self.auth(self.operator))
+        self.assertNotIn(zone.name, {item['name'] for item in commercial.json()})
+
+    def test_only_users_with_create_permission_can_register(self):
+        response = self.client.post(
+            '/api/coverage/zones/registrations/',
+            {
+                'name': 'No autorizada',
+                'google_maps_url': 'https://maps.google.com/',
+            },
+            content_type='application/json',
+            **self.auth(self.cashier),
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_registration_requires_google_maps_url(self):
+        response = self.client.post(
+            '/api/coverage/zones/registrations/',
+            {'name': 'Barrio sin mapa'},
+            content_type='application/json',
+            **self.auth(self.registerer),
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            CoverageZone.objects.filter(name='Barrio sin mapa').count(), 0)
+
+    def test_operations_lead_can_edit_urls_and_enable_pending_zone(self):
+        pending = CoverageZone.objects.create(
+            name='Zona pendiente',
+            google_maps_url='https://maps.google.com/?q=old',
+            is_active=False,
+            is_pending=True,
+            created_by=self.registerer,
+        )
+        updated = self.client.patch(
+            f'/api/coverage/zones/{pending.id}/',
+            {
+                'name': 'Zona habilitada',
+                'google_maps_url': 'https://maps.google.com/?q=new',
+            },
+            content_type='application/json',
+            **self.auth(self.operations_lead),
+        )
+        self.assertEqual(updated.status_code, 200, updated.content)
+        self.assertEqual(updated.json()['google_maps_url'],
+                         'https://maps.google.com/?q=new')
+        self.assertTrue(updated.json()['is_pending'])
+
+        enabled = self.client.patch(
+            f'/api/coverage/zones/{pending.id}/',
+            {'is_active': True},
+            content_type='application/json',
+            **self.auth(self.operations_lead),
+        )
+        self.assertEqual(enabled.status_code, 200, enabled.content)
+        self.assertTrue(enabled.json()['is_active'])
+        self.assertFalse(enabled.json()['is_pending'])
+        self.assertIn(
+            'Zona habilitada',
+            {
+                item['name'] for item in self.client.get(
+                    '/api/coverage/zones/?active=true',
+                    **self.auth(self.operator),
+                ).json()
+            },
+        )
+
+    def test_view_permission_cannot_edit_or_activate_zones(self):
+        response = self.client.patch(
+            f'/api/coverage/zones/{self.zone.id}/',
+            {'google_maps_url': 'https://maps.google.com/'},
+            content_type='application/json',
+            **self.auth(self.operator),
+        )
+        self.assertEqual(response.status_code, 403)
+        response = self.client.patch(
+            f'/api/coverage/zones/{self.zone.id}/',
+            {'is_active': False},
+            content_type='application/json',
+            **self.auth(self.operator),
         )
         self.assertEqual(response.status_code, 403)
 

@@ -67,6 +67,11 @@ const api = {
   // Zonas de cobertura
   getActiveCoverageZones: () => request('/api/coverage/zones/?active=true'),
   getCoverageZones: () => request('/api/coverage/zones/'),
+  getManagedCoverageZones: () => request('/api/coverage/zones/manage/'),
+  getCoverageZoneRegistrations: () => request('/api/coverage/zones/registrations/'),
+  registerCoverageZone: (data) => request('/api/coverage/zones/registrations/', {
+    method: 'POST', body: JSON.stringify(data),
+  }),
   createCoverageZone: (data) => request('/api/coverage/zones/manage/', {
     method: 'POST', body: JSON.stringify(data),
   }),
