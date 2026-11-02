@@ -1,3 +1,5 @@
+import unicodedata
+
 from django.db import models
 from django.utils import timezone
 from django.contrib.auth.hashers import make_password, check_password
@@ -313,6 +315,32 @@ class TarifaTrasladoHistorial(models.Model):
         ordering = ['-created_at', '-id']
 
 
+def normalize_coverage_zone_name(value):
+    normalized = unicodedata.normalize('NFKC', value or '')
+    return ' '.join(normalized.split())
+
+
+class CoverageZone(models.Model):
+    name = models.CharField(max_length=120)
+    normalized_name = models.CharField(max_length=120, unique=True, editable=False)
+    description = models.TextField(blank=True, default='')
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'coverage_zones'
+        ordering = ['name', 'id']
+
+    def save(self, *args, **kwargs):
+        self.name = normalize_coverage_zone_name(self.name)
+        self.normalized_name = self.name.casefold()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+
 class Customer(models.Model):
     """Cliente maestro (KARDEX). Clave natural: code."""
     STATUS_CHOICES = [
@@ -427,6 +455,10 @@ class Sale(models.Model):
     requestType = models.CharField(
         max_length=20, blank=True, default='nuevo_contrato',
         help_text='Codigo de TipoSolicitud; el catalogo vive en esa tabla')
+    coverage_zone = models.ForeignKey(
+        CoverageZone, null=True, blank=True, on_delete=models.PROTECT,
+        related_name='sales',
+        help_text='Zona asociada al servicio o destino de traslado')
     additionType = models.CharField(
         max_length=20, choices=ADDITION_TYPE_CHOICES, blank=True, default='',
         help_text='Sub-tipo de adicion: internet o tv')

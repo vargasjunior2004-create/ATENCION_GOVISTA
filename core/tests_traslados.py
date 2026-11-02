@@ -3,7 +3,9 @@ from datetime import date
 
 from django.test import TestCase, Client
 
-from .models import Customer, Plan, Sale, TrasladoExterno, User, TarifaTraslado
+from .models import (
+    Customer, Plan, Sale, TrasladoExterno, User, TarifaTraslado, CoverageZone,
+)
 
 
 class TrasladoExternoTests(TestCase):
@@ -18,6 +20,8 @@ class TrasladoExternoTests(TestCase):
         self.plan = Plan.objects.create(
             code='TRAS-PLAN', label='Plan Internet', type='internet',
             monthly=200, installation=100, active=True)
+        self.coverage_zone_id = CoverageZone.objects.get(
+            normalized_name='villa busch').id
 
     def token(self, user=None, password=None):
         user = user or self.user
@@ -34,6 +38,7 @@ class TrasladoExternoTests(TestCase):
                 'clientCode': '1-1', 'clientName': 'JUAN PEREZ',
                 'serviceType': 'internet', 'requestType': 'traslado_externo',
                 'planId': self.plan.id, 'transferTariffId': tariff.id,
+                'coverageZoneId': self.coverage_zone_id,
                 'transferCurrentAddress': 'BARRIO VICTORIA',
                 'transferNewAddress': 'LAS PALMAS #20',
                 'transferZone': 'LAS PALMAS',
@@ -59,6 +64,7 @@ class TrasladoExternoTests(TestCase):
                 'clientCode': '1-LEGACY', 'clientName': 'JUAN PEREZ',
                 'serviceType': 'internet', 'requestType': 'traslado_externo',
                 'planId': legacy.id, 'transferTariffId': tariff.id,
+                'coverageZoneId': self.coverage_zone_id,
                 'transferNewAddress': 'NUEVO DOMICILIO',
                 'transferHasSketch': True,
             }, content_type='application/json',
@@ -72,6 +78,7 @@ class TrasladoExternoTests(TestCase):
                 'clientCode': '2-1', 'clientName': 'JUAN PEREZ',
                 'serviceType': 'internet', 'requestType': 'traslado_externo',
                 'planId': self.plan.id, 'transferTariffId': tariff.id,
+                'coverageZoneId': self.coverage_zone_id,
                 'transferNewAddress': 'NUEVO DOMICILIO',
                 'transferHasSketch': False,
             }, content_type='application/json',

@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from .models import (
     Plan, Role, Sale, TemporaryAssignment, TemporaryFunction, User, UserRole,
-    Contract,
+    Contract, CoverageZone,
 )
 
 
@@ -20,6 +20,8 @@ class ExternalSellerTests(TestCase):
         self.plan = Plan.objects.create(
             type='internet', code='EXT01', label='Plan externo',
             monthly=100, installation=0, active=True)
+        self.coverage_zone_id = CoverageZone.objects.get(
+            normalized_name='villa busch').id
         self.function = TemporaryFunction.objects.get(code='external_seller')
         self.login(self.registrar)
 
@@ -57,6 +59,7 @@ class ExternalSellerTests(TestCase):
             'serviceType': 'internet',
             'requestType': 'nuevo_contrato',
             'planId': self.plan.id,
+            'coverageZoneId': self.coverage_zone_id,
         }
         payload.update(extra)
         return self.client.post(

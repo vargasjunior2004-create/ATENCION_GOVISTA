@@ -8,7 +8,7 @@ from decimal import Decimal
 from django.test import TestCase, Client
 from django.utils import timezone
 
-from .models import User, Plan, Sale, Motivo
+from .models import User, Plan, Sale, Motivo, CoverageZone
 
 
 def _create_user(name, password, role='admin'):
@@ -35,6 +35,8 @@ class MotivoApiTests(TestCase):
             categoria='retiro', nombre='MUDANZA')
         self.retiro_inactivo = Motivo.objects.create(
             categoria='retiro', nombre='FALLECIMIENTO', activo=False)
+        self.coverage_zone_id = CoverageZone.objects.get(
+            normalized_name='villa busch').id
 
     def _token(self, user, pw):
         r = self.c.post('/api/auth/login', {'name': user.name, 'password': pw},
@@ -134,7 +136,8 @@ class MotivoApiTests(TestCase):
         r = self.c.post('/api/sales', {
             'clientCode': 'MN001', 'clientName': 'ALTA',
             'serviceType': 'internet', 'requestType': 'nuevo_contrato',
-            'planId': self.plan.id},
+            'planId': self.plan.id,
+            'coverageZoneId': self.coverage_zone_id},
             content_type='application/json', **self._auth(self.admin, 'pass1'))
         self.assertEqual(r.status_code, 201)
         self.assertIsNone(Sale.objects.get(clientCode='MN001').motivo)

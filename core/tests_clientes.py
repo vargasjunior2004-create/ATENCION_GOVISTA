@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django.test import Client, TestCase
 
-from .models import Customer, Plan, User
+from .models import Customer, Plan, User, CoverageZone
 
 
 def _json(response):
@@ -18,6 +18,8 @@ class CustomerProfileTests(TestCase):
         self.plan = Plan.objects.create(
             code='CLI-001', label='Plan Cliente', type='internet',
             monthly=100, installation=0, active=True)
+        self.coverage_zone_id = CoverageZone.objects.get(
+            normalized_name='villa busch').id
         token_response = self.client.post(
             '/api/auth/login',
             {'name': 'cliente_admin', 'password': 'password'},
@@ -34,6 +36,7 @@ class CustomerProfileTests(TestCase):
                 'serviceType': 'internet',
                 'requestType': 'nuevo_contrato',
                 'planId': self.plan.id,
+                'coverageZoneId': self.coverage_zone_id,
                 'meterNumber': meter,
             },
             content_type='application/json', **self.headers)

@@ -22,7 +22,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
 from .models import (
-    User, Customer, Contract, Role, Permission, RolePermission, UserRole,
+    User, Customer, Contract, CoverageZone, Role, Permission, RolePermission, UserRole,
     TemporaryFunction, TemporaryAssignment, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
     TarifaTraslado, TarifaTrasladoHistorial, SaleIdempotencyKey, AuditLog,
     InventarioMovimiento,
@@ -35,7 +35,7 @@ from .serializers import (
     SaleCreateSerializer, BackupSerializer,
     PromotionSerializer, PromotionWriteSerializer,
     TipoSolicitudPublicSerializer, MotivoSerializer, MotivoPublicSerializer,
-    TarifaTrasladoSerializer, TarifaTrasladoHistorialSerializer,
+    CoverageZoneSerializer, TarifaTrasladoSerializer, TarifaTrasladoHistorialSerializer,
 )
 from .domain import (
     request_type_mode, request_type_catalog,
@@ -537,6 +537,79 @@ class ActivePlansView(APIView):
         return Response(PlanPublicSerializer(plans, many=True).data)
 
 
+class ActiveCoverageZoneListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        zones = CoverageZone.objects.filter(is_active=True)
+        return Response(CoverageZoneSerializer(zones, many=True).data)
+
+
+class CoverageZoneAdminListView(IsAdminMixin, APIView):
+    permission_code = 'coverage.manage'
+
+    def get(self, request):
+        error = self.check_admin(request)
+        if error:
+            return error
+        zones = CoverageZone.objects.all()
+        return Response(CoverageZoneSerializer(zones, many=True).data)
+
+    def post(self, request):
+        error = self.check_admin(request)
+        if error:
+            return error
+        serializer = CoverageZoneSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({'error': _first_error(serializer)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            zone = serializer.save()
+        except IntegrityError:
+            return Response(
+                {'error': 'Ya existe una zona con ese nombre'},
+                status=status.HTTP_400_BAD_REQUEST)
+        record_audit(
+            request, 'created', 'coverage_zone', zone.id,
+            after={'name': zone.name, 'is_active': zone.is_active})
+        return Response(
+            CoverageZoneSerializer(zone).data,
+            status=status.HTTP_201_CREATED)
+
+
+class CoverageZoneDetailView(IsAdminMixin, APIView):
+    permission_code = 'coverage.manage'
+
+    def patch(self, request, pk):
+        error = self.check_admin(request)
+        if error:
+            return error
+        try:
+            zone = CoverageZone.objects.get(pk=pk)
+        except CoverageZone.DoesNotExist:
+            return Response(
+                {'error': 'Zona de cobertura no encontrada'},
+                status=status.HTTP_404_NOT_FOUND)
+
+        before = {'name': zone.name, 'is_active': zone.is_active}
+        serializer = CoverageZoneSerializer(
+            zone, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response({'error': _first_error(serializer)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            zone = serializer.save()
+        except IntegrityError:
+            return Response(
+                {'error': 'Ya existe una zona con ese nombre'},
+                status=status.HTTP_400_BAD_REQUEST)
+        record_audit(
+            request, 'updated', 'coverage_zone', zone.id,
+            before=before,
+            after={'name': zone.name, 'is_active': zone.is_active})
+        return Response(CoverageZoneSerializer(zone).data)
+
+
 @extend_schema(responses={200: TipoSolicitudPublicSerializer(many=True)})
 class ActiveRequestTypesView(APIView):
     """Catalogo para el formulario de movimientos.
@@ -1000,7 +1073,8 @@ class CustomerDetailView(APIView):
             item['meterMatches'] = matches_by_meter.get(item['meter_number'], [])
 
         sales = Sale.objects.filter(customer=customer).select_related(
-            'plan', 'planFromId', 'createdBy').order_by('-date', '-id')
+            'plan', 'planFromId', 'createdBy', 'coverage_zone'
+        ).order_by('-date', '-id')
         timeline = SaleSerializer(
             sales, many=True, context={'catalog': request_type_catalog()}).data
         return Response({
@@ -1307,8 +1381,9 @@ class SaleListView(APIView):
             return Response(
                 {'error': {'serviceTypeFrom': 'Tipo de servicio desconocido'}},
                 status=status.HTTP_400_BAD_REQUEST)
-        qs = Sale.objects.select_related('plan', 'planFromId', 'createdBy').filter(
-            deleted_at__isnull=not archived).order_by('-date', '-id')
+        qs = Sale.objects.select_related(
+            'plan', 'planFromId', 'createdBy', 'coverage_zone'
+        ).filter(deleted_at__isnull=not archived).order_by('-date', '-id')
         if from_date:
             qs = qs.filter(date__gte=from_date)
         if to_date:

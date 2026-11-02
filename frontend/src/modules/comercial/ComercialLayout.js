@@ -23,6 +23,12 @@ export default function ComercialLayout() {
   const visibleAdminNavigation = commercialAdminNavigation.filter(
     (item) => isAdmin || (item.permission && hasPermission(item.permission)),
   );
+  const adminNavigationGroups = visibleAdminNavigation.reduce((groups, item) => {
+    const group = groups.find((entry) => entry.label === item.group);
+    if (group) group.items.push(item);
+    else groups.push({ label: item.group, items: [item] });
+    return groups;
+  }, []);
 
   const linkClass = ({ isActive }) =>
     `flex items-center gap-3 px-4 py-2.5 text-sm font-medium rounded-xl transition-all duration-200 group
@@ -78,12 +84,12 @@ export default function ComercialLayout() {
             </NavLink>
           ))}
 
-          {visibleAdminNavigation.length > 0 && (
-            <>
+          {adminNavigationGroups.map((group) => (
+            <section key={group.label}>
               <div className="pt-5 pb-2 px-4">
-                <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-green-400/30">Administracion</span>
+                <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-green-400/30">{group.label}</span>
               </div>
-              {visibleAdminNavigation.map((item) => (
+              {group.items.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
@@ -94,8 +100,8 @@ export default function ComercialLayout() {
                   {item.label}
                 </NavLink>
               ))}
-            </>
-          )}
+            </section>
+          ))}
         </nav>
 
         <div className="px-4 py-4 border-t border-white/5">
