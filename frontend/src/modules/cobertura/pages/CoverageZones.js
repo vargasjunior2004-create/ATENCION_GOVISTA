@@ -2,29 +2,60 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, ExternalLink, MapPinned, Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import api from '../../../services/api';
-import { Alert, Badge, Card, Input } from '../../../components/ui';
+import { Alert, Badge, Button, Card, Input } from '../../../components/ui';
 import Brand from '../../../components/layout/Brand';
 import AccountMenu from '../../../components/layout/AccountMenu';
+import { useAuth } from '../../../context/AuthContext';
+
+const EMPTY_ZONE = { name: '', google_maps_url: '' };
+
+function zoneStatus(zone) {
+  if (zone.is_pending) return 'Pendiente de habilitación';
+  return zone.is_active ? 'Activa' : 'Inactiva';
+}
 
 export default function CoverageZones() {
+  const { hasPermission } = useAuth();
+  const canManage = hasPermission('coverage.manage');
+  const canEdit = canManage || hasPermission('coverage.change');
+  const canRegister = hasPermission('coverage.create');
   const [zones, setZones] = useState([]);
+  const [registrations, setRegistrations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [form, setForm] = useState(EMPTY_ZONE);
+  const [editingId, setEditingId] = useState(null);
+  const [editingForm, setEditingForm] = useState(EMPTY_ZONE);
 
   const loadZones = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      setZones(await api.getCoverageZones());
+      setZones(await (
+        canEdit
+          ? api.getManagedCoverageZones()
+          : api.getCoverageZones()
+      ));
     } catch (err) {
       setError(err?.error || 'No se pudieron cargar las zonas de cobertura.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [canEdit]);
+
+  const loadRegistrations = useCallback(async () => {
+    if (!canRegister || canManage) return;
+    try {
+      setRegistrations(await api.getCoverageZoneRegistrations());
+    } catch (err) {
+      setError(err?.error || 'No se pudo cargar el estado de tus registros.');
+    }
+  }, [canManage, canRegister]);
 
   useEffect(() => { loadZones(); }, [loadZones]);
+  useEffect(() => { loadRegistrations(); }, [loadRegistrations]);
 
   const activeCount = zones.filter((zone) => zone.is_active).length;
   const filteredZones = useMemo(() => {
@@ -34,6 +65,64 @@ export default function CoverageZones() {
       (zone) => zone.name.toLocaleLowerCase('es').includes(normalizedQuery),
     );
   }, [query, zones]);
+
+  const submitZone = async (event) => {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+    try {
+      if (canManage) {
+        await api.createCoverageZone(form);
+        setMessage('Nuevo barrio creado correctamente.');
+      } else {
+        await api.registerCoverageZone(form);
+        setMessage('Nuevo barrio creado correctamente.');
+      }
+      setForm(EMPTY_ZONE);
+      await Promise.all([loadZones(), loadRegistrations()]);
+    } catch (err) {
+      setError(err?.error || 'No se pudo registrar el barrio.');
+    }
+  };
+
+  const beginEdit = (zone) => {
+    setEditingId(zone.id);
+    setEditingForm({
+      name: zone.name,
+      google_maps_url: zone.google_maps_url || '',
+    });
+  };
+
+  const saveEdit = async (event, zone) => {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+    try {
+      await api.updateCoverageZone(zone.id, editingForm);
+      setEditingId(null);
+      setMessage('Barrio actualizado correctamente.');
+      await loadZones();
+    } catch (err) {
+      setError(err?.error || 'No se pudo actualizar el barrio.');
+    }
+  };
+
+  const toggleZone = async (zone) => {
+    setError('');
+    setMessage('');
+    const activating = !zone.is_active;
+    try {
+      await api.updateCoverageZone(zone.id, { is_active: activating });
+      setMessage(
+        activating
+          ? 'Barrio activado correctamente.'
+          : 'Barrio desactivado correctamente.',
+      );
+      await loadZones();
+    } catch (err) {
+      setError(err?.error || 'No se pudo actualizar el estado del barrio.');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -69,7 +158,72 @@ export default function CoverageZones() {
           <Badge color="green">{activeCount} zonas activas</Badge>
         </header>
 
+        {message && <Alert type="success">{message}</Alert>}
         {error && <Alert type="error">{error}</Alert>}
+
+        {(canManage || (canRegister && !canManage)) && (
+          <Card className="p-5">
+            <h2 className="text-sm font-black text-slate-800">
+              {canManage ? 'Agregar barrio al catálogo' : 'Registrar barrio nuevo'}
+            </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              {canManage
+                ? 'El barrio quedará disponible para las consultas comerciales.'
+                : 'El registro quedará pendiente y no aparecerá en Comercial hasta que sea habilitado.'}
+            </p>
+            <form onSubmit={submitZone} className="mt-4 grid gap-3 sm:grid-cols-2">
+              <Input
+                label="Nombre del barrio"
+                value={form.name}
+                onChange={(event) => setForm({ ...form, name: event.target.value })}
+                required
+                maxLength={120}
+              />
+              <Input
+                label="URL de Google Maps"
+                type="url"
+                value={form.google_maps_url}
+                onChange={(event) => setForm({
+                  ...form,
+                  google_maps_url: event.target.value,
+                })}
+                required
+                maxLength={500}
+              />
+              <div className="sm:col-span-2">
+                <Button type="submit">Guardar barrio</Button>
+              </div>
+            </form>
+          </Card>
+        )}
+
+        {canRegister && !canManage && (
+          <Card className="p-5">
+            <h2 className="text-sm font-black text-slate-800">Estado de mis registros</h2>
+            {registrations.length ? (
+              <div className="mt-3 space-y-2">
+                {registrations.map((zone) => (
+                  <div
+                    key={zone.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 p-3"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">{zone.name}</p>
+                      <p className="text-xs text-slate-400">
+                        Registrado {new Date(zone.created_at).toLocaleString('es-BO')}
+                      </p>
+                    </div>
+                    <Badge color={zone.is_pending ? 'amber' : zone.is_active ? 'green' : 'slate'}>
+                      {zoneStatus(zone)}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-slate-500">Aún no registraste barrios.</p>
+            )}
+          </Card>
+        )}
 
         <Card className="overflow-hidden">
           <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
@@ -100,7 +254,7 @@ export default function CoverageZones() {
               <table className="w-full min-w-[520px] text-sm">
                 <thead>
                   <tr className="border-b border-slate-100">
-                    {['Zona / barrio', 'Descripción', 'Estado'].map((label) => (
+                    {['Zona / barrio', 'Descripción', 'Estado', ...(canEdit ? ['Acciones'] : [])].map((label) => (
                       <th
                         key={label}
                         className="px-5 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400"
@@ -114,7 +268,34 @@ export default function CoverageZones() {
                   {filteredZones.map((zone) => (
                     <tr key={zone.id} className="transition-colors hover:bg-brand-50/30">
                       <td className="px-5 py-4 font-semibold text-slate-800">
-                        {zone.google_maps_url ? (
+                        {editingId === zone.id ? (
+                          <form
+                            id={`edit-zone-${zone.id}`}
+                            onSubmit={(event) => saveEdit(event, zone)}
+                            className="min-w-60 space-y-2"
+                          >
+                            <Input
+                              aria-label="Nombre del barrio"
+                              value={editingForm.name}
+                              onChange={(event) => setEditingForm({
+                                ...editingForm,
+                                name: event.target.value,
+                              })}
+                              required
+                              maxLength={120}
+                            />
+                            <Input
+                              aria-label="URL de Google Maps"
+                              type="url"
+                              value={editingForm.google_maps_url}
+                              onChange={(event) => setEditingForm({
+                                ...editingForm,
+                                google_maps_url: event.target.value,
+                              })}
+                              maxLength={500}
+                            />
+                          </form>
+                        ) : zone.google_maps_url ? (
                           <a
                             href={zone.google_maps_url}
                             target="_blank"
@@ -132,10 +313,54 @@ export default function CoverageZones() {
                         {zone.description || '—'}
                       </td>
                       <td className="px-5 py-4">
-                        <Badge color={zone.is_active ? 'green' : 'slate'}>
-                          {zone.is_active ? 'Activa' : 'Inactiva'}
+                        <Badge color={zone.is_pending ? 'amber' : zone.is_active ? 'green' : 'slate'}>
+                          {zone.is_pending ? zoneStatus(zone) : zone.is_active ? 'Activa' : 'Inactiva'}
                         </Badge>
                       </td>
+                      {canEdit && (
+                        <td className="px-5 py-4">
+                          <div className="flex flex-wrap gap-2">
+                            {editingId === zone.id ? (
+                              <>
+                                <Button
+                                  type="submit"
+                                  size="sm"
+                                  form={`edit-zone-${zone.id}`}
+                                >
+                                  Guardar
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => setEditingId(null)}
+                                >
+                                  Cancelar
+                                </Button>
+                              </>
+                            ) : (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => beginEdit(zone)}
+                              >
+                                Editar
+                              </Button>
+                            )}
+                            {canManage && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={zone.is_active ? 'danger' : 'success'}
+                                onClick={() => toggleZone(zone)}
+                              >
+                                {zone.is_active ? 'Desactivar' : 'Habilitar'}
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

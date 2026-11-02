@@ -537,11 +537,15 @@ class ActivePlansView(APIView):
         return Response(PlanPublicSerializer(plans, many=True).data)
 
 
-class ActiveCoverageZoneListView(APIView):
+class ActiveCoverageZoneListView(PermissionMixin, APIView):
     permission_classes = [IsAuthenticated]
+    permission_code = 'coverage.view'
 
     def get(self, request):
-        zones = CoverageZone.objects.all()
+        error = self.check_permission(request)
+        if error:
+            return error
+        zones = CoverageZone.objects.filter(is_pending=False)
         if request.query_params.get('active', '').lower() in {'true', '1'}:
             zones = zones.filter(is_active=True)
         return Response(CoverageZoneSerializer(zones, many=True).data)
@@ -551,9 +555,11 @@ class CoverageZoneAdminListView(IsAdminMixin, APIView):
     permission_code = 'coverage.manage'
 
     def get(self, request):
-        error = self.check_admin(request)
-        if error:
-            return error
+        if not (has_permission(request.user, 'coverage.manage')
+                or has_permission(request.user, 'coverage.change')):
+            return Response(
+                {'error': 'Se requieren permisos de administrador'},
+                status=status.HTTP_403_FORBIDDEN)
         zones = CoverageZone.objects.all()
         return Response(CoverageZoneSerializer(zones, many=True).data)
 
@@ -566,14 +572,62 @@ class CoverageZoneAdminListView(IsAdminMixin, APIView):
             return Response({'error': _first_error(serializer)},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            zone = serializer.save()
+            zone = serializer.save(created_by=request.user)
         except IntegrityError:
             return Response(
                 {'error': 'Ya existe una zona con ese nombre'},
                 status=status.HTTP_400_BAD_REQUEST)
         record_audit(
             request, 'created', 'coverage_zone', zone.id,
-            after={'name': zone.name, 'is_active': zone.is_active})
+            after={
+                'name': zone.name,
+                'google_maps_url': zone.google_maps_url,
+                'is_active': zone.is_active,
+                'is_pending': zone.is_pending,
+            })
+        return Response(
+            CoverageZoneSerializer(zone).data,
+            status=status.HTTP_201_CREATED)
+
+
+class CoverageZoneRegistrationView(PermissionMixin, APIView):
+    permission_code = 'coverage.create'
+
+    def get(self, request):
+        error = self.check_permission(request)
+        if error:
+            return error
+        zones = CoverageZone.objects.filter(created_by=request.user)
+        return Response(CoverageZoneSerializer(zones, many=True).data)
+
+    def post(self, request):
+        error = self.check_permission(request)
+        if error:
+            return error
+        if not request.data.get('google_maps_url'):
+            return Response(
+                {'error': 'La URL de Google Maps es obligatoria'},
+                status=status.HTTP_400_BAD_REQUEST)
+        serializer = CoverageZoneSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {'error': _first_error(serializer)},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            zone = serializer.save(
+                created_by=request.user, is_active=False, is_pending=True)
+        except IntegrityError:
+            return Response(
+                {'error': 'Ya existe una zona con ese nombre'},
+                status=status.HTTP_400_BAD_REQUEST)
+        record_audit(
+            request, 'created', 'coverage_zone', zone.id,
+            after={
+                'name': zone.name,
+                'google_maps_url': zone.google_maps_url,
+                'is_active': zone.is_active,
+                'is_pending': zone.is_pending,
+            })
         return Response(
             CoverageZoneSerializer(zone).data,
             status=status.HTTP_201_CREATED)
@@ -583,9 +637,14 @@ class CoverageZoneDetailView(IsAdminMixin, APIView):
     permission_code = 'coverage.manage'
 
     def patch(self, request, pk):
-        error = self.check_admin(request)
-        if error:
-            return error
+        permission_code = (
+            'coverage.manage' if 'is_active' in request.data
+            else 'coverage.change')
+        if not (has_permission(request.user, permission_code)
+                or has_permission(request.user, 'coverage.manage')):
+            return Response(
+                {'error': 'No tienes permiso para realizar esta operación'},
+                status=status.HTTP_403_FORBIDDEN)
         try:
             zone = CoverageZone.objects.get(pk=pk)
         except CoverageZone.DoesNotExist:
@@ -593,14 +652,23 @@ class CoverageZoneDetailView(IsAdminMixin, APIView):
                 {'error': 'Zona de cobertura no encontrada'},
                 status=status.HTTP_404_NOT_FOUND)
 
-        before = {'name': zone.name, 'is_active': zone.is_active}
+        before = {
+            'name': zone.name,
+            'google_maps_url': zone.google_maps_url,
+            'is_active': zone.is_active,
+            'is_pending': zone.is_pending,
+        }
         serializer = CoverageZoneSerializer(
             zone, data=request.data, partial=True)
         if not serializer.is_valid():
             return Response({'error': _first_error(serializer)},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
-            zone = serializer.save()
+            save_data = {}
+            if zone.is_pending and serializer.validated_data.get(
+                    'is_active') is True:
+                save_data['is_pending'] = False
+            zone = serializer.save(**save_data)
         except IntegrityError:
             return Response(
                 {'error': 'Ya existe una zona con ese nombre'},
@@ -608,7 +676,12 @@ class CoverageZoneDetailView(IsAdminMixin, APIView):
         record_audit(
             request, 'updated', 'coverage_zone', zone.id,
             before=before,
-            after={'name': zone.name, 'is_active': zone.is_active})
+            after={
+                'name': zone.name,
+                'google_maps_url': zone.google_maps_url,
+                'is_active': zone.is_active,
+                'is_pending': zone.is_pending,
+            })
         return Response(CoverageZoneSerializer(zone).data)
 
 
