@@ -13,6 +13,10 @@ urlpatterns = [
     path('plans/active', views.ActivePlansView.as_view()),
     path('plans/<int:pk>', views.PlanDetailView.as_view()),
 
+    path('coverage/zones/', views.ActiveCoverageZoneListView.as_view()),
+    path('coverage/zones/manage/', views.CoverageZoneAdminListView.as_view()),
+    path('coverage/zones/<int:pk>/', views.CoverageZoneDetailView.as_view()),
+
     path('request-types/active', views.ActiveRequestTypesView.as_view()),
 
     path('motivos', views.MotivoListView.as_view()),

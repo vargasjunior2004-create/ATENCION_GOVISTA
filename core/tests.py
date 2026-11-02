@@ -8,7 +8,7 @@ from django.core.cache import cache
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from .models import User, Plan, Sale, Backup, Role
+from .models import User, Plan, Sale, Backup, Role, CoverageZone
 
 
 class ApiTestCase(TestCase):
@@ -27,6 +27,8 @@ class ApiTestCase(TestCase):
         self.tv_plan = Plan.objects.create(
             code='TV-BASIC', label='TV Básico', type='tv',
             speed=None, monthly=150, installation=150)
+        self.coverage_zone_id = CoverageZone.objects.get(
+            normalized_name='villa busch').id
 
         self.client = APIClient()
 
@@ -85,6 +87,7 @@ class ApiTestCase(TestCase):
             'clientName': 'Cliente Uno',
             'serviceType': 'internet',
             'planId': self.plan.id,
+            'coverageZoneId': self.coverage_zone_id,
         }, format='json')
         self.assertEqual(res.status_code, 201, res.data)
         self.assertEqual(float(res.data['total']), 400.00)
@@ -100,6 +103,7 @@ class ApiTestCase(TestCase):
             'serviceType': 'internet',
             'planId': self.plan.id,
             'total': 1.00,
+            'coverageZoneId': self.coverage_zone_id,
         }, format='json')
         self.assertEqual(res.status_code, 201)
         self.assertEqual(float(res.data['total']), 400.00)
@@ -112,6 +116,7 @@ class ApiTestCase(TestCase):
             'clientName': 'Cliente Tres',
             'serviceType': 'tv',
             'planId': self.plan.id,
+            'coverageZoneId': self.coverage_zone_id,
         }, format='json')
         self.assertEqual(res.status_code, 400)
 
@@ -123,6 +128,7 @@ class ApiTestCase(TestCase):
             'clientName': 'Cliente Cuatro',
             'serviceType': 'internet',
             'planId': self.plan.id,
+            'coverageZoneId': self.coverage_zone_id,
         }, format='json')
         sale_id = res.data['id']
 
@@ -273,6 +279,8 @@ class TimezoneBugAcceptanceTest(TestCase):
         self.plan = Plan.objects.create(
             code='GO-TZ', label='Plan TZ', type='internet',
             speed=50, monthly=220, installation=180)
+        self.coverage_zone_id = CoverageZone.objects.get(
+            normalized_name='villa busch').id
         self.client = APIClient()
 
     def _auth(self, user, password):
@@ -288,6 +296,7 @@ class TimezoneBugAcceptanceTest(TestCase):
             'clientName': 'Cliente TZ',
             'serviceType': 'internet',
             'planId': self.plan.id,
+            'coverageZoneId': self.coverage_zone_id,
         }, format='json')
         self.assertEqual(res.status_code, 201, res.data)
         sale_date = date.fromisoformat(res.data['date'])
@@ -333,6 +342,7 @@ class TimezoneBugAcceptanceTest(TestCase):
             'clientName': 'Cliente UTC Test',
             'serviceType': 'internet',
             'planId': self.plan.id,
+            'coverageZoneId': self.coverage_zone_id,
         }, format='json')
         self.assertEqual(res.status_code, 201, res.data)
         sale_date = date.fromisoformat(res.data['date'])

@@ -3,7 +3,7 @@ from django.utils import timezone
 from decimal import Decimal
 from datetime import timedelta
 
-from .models import User, Plan, Sale, Motivo, Role
+from .models import User, Plan, Sale, Motivo, Role, CoverageZone
 
 
 def _json(response):
@@ -96,6 +96,8 @@ class SaleTests(TestCase):
             categoria='cambio', nombre='AUMENTO DE DISPOSITIVOS')
         self.motivo_retiro = Motivo.objects.create(
             categoria='retiro', nombre='MUDANZA')
+        self.coverage_zone_id = CoverageZone.objects.get(
+            normalized_name='villa busch').id
 
     def _token(self, user, pw):
         r = self.c.post('/api/auth/login', {'name': user.name, 'password': pw},
@@ -107,7 +109,7 @@ class SaleTests(TestCase):
         r = self.c.post('/api/sales', {
             'clientCode': 'K001', 'clientName': 'CLIENTE TEST',
             'serviceType': 'internet', 'requestType': 'nuevo_contrato',
-            'planId': self.plan.id
+            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r.status_code, 201)
         data = _json(r)
@@ -119,7 +121,7 @@ class SaleTests(TestCase):
         r = self.c.post('/api/sales', {
             'clientCode': 'K002', 'clientName': 'CLIENTE 2',
             'serviceType': 'internet', 'requestType': 'nuevo_contrato',
-            'planId': self.plan.id
+            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r.status_code, 201)
 
@@ -127,7 +129,7 @@ class SaleTests(TestCase):
         r = self.c.post('/api/sales', {
             'clientCode': 'K003', 'clientName': 'X',
             'serviceType': 'internet', 'requestType': 'nuevo_contrato',
-            'planId': self.plan.id
+            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id
         }, content_type='application/json')
         self.assertEqual(r.status_code, 401)
 
@@ -142,7 +144,7 @@ class SaleTests(TestCase):
         self.c.post('/api/sales', {
             'clientCode': 'K010', 'clientName': 'L1',
             'serviceType': 'internet', 'requestType': 'nuevo_contrato',
-            'planId': self.plan.id
+            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         r = self.c.get('/api/sales', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r.status_code, 200)
@@ -184,7 +186,7 @@ class SaleTests(TestCase):
         r = self.c.post('/api/sales', {
             'clientCode': 'K040', 'clientName': 'EDIT ME',
             'serviceType': 'internet', 'requestType': 'nuevo_contrato',
-            'planId': self.plan.id
+            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         sale_id = _json(r)['id']
         r2 = self.c.put(f'/api/sales/{sale_id}', {
@@ -202,7 +204,7 @@ class SaleTests(TestCase):
         r = self.c.post('/api/sales', {
             'clientCode': 'K050', 'clientName': 'NO EDIT',
             'serviceType': 'internet', 'requestType': 'nuevo_contrato',
-            'planId': self.plan.id
+            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token_a}')
         sale_id = _json(r)['id']
         r2 = self.c.put(f'/api/sales/{sale_id}', {'clientName': 'HACKED'},
@@ -214,7 +216,7 @@ class SaleTests(TestCase):
         r = self.c.post('/api/sales', {
             'clientCode': 'K060', 'clientName': 'TZ TEST',
             'serviceType': 'internet', 'requestType': 'nuevo_contrato',
-            'planId': self.plan.id
+            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r.status_code, 201)
         data = _json(r)
@@ -231,6 +233,8 @@ class DashboardTests(TestCase):
             installation=Decimal('0'))
         self.motivo_retiro = Motivo.objects.create(
             categoria='retiro', nombre='MUDANZA')
+        self.coverage_zone_id = CoverageZone.objects.get(
+            normalized_name='villa busch').id
 
     def _token(self):
         r = self.c.post('/api/auth/login', {'name': 'admin2', 'password': 'pass1'},
@@ -252,14 +256,14 @@ class DashboardTests(TestCase):
         self.c.post('/api/sales', {
             'clientCode': 'D001', 'clientName': 'DASH1',
             'serviceType': 'internet', 'requestType': 'nuevo_contrato',
-            'planId': self.plan.id
+            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.c.post('/api/sales', {
             'clientCode': 'D003', 'clientName': 'DASH3',
             'serviceType': 'internet', 'requestType': 'recontratacion',
             'planId': self.plan.id, 'equipmentRetained': True,
             'requiresTechnicalVisit': False, 'debtApplies': False,
-            'debtAmount': 0
+            'debtAmount': 0, 'coverageZoneId': self.coverage_zone_id
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.c.post('/api/sales', {
             'clientCode': 'D002', 'clientName': 'DASH2',

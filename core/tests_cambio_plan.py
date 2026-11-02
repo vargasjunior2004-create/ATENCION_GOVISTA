@@ -9,7 +9,7 @@ from datetime import timedelta
 from django.test import TestCase
 from django.utils import timezone
 
-from .models import User, Plan, Sale, Motivo, Promotion
+from .models import User, Plan, Sale, Motivo, Promotion, CoverageZone
 from .domain import SERVICE_TYPE_TO_PLAN_TYPE, sale_service_label
 
 
@@ -73,6 +73,13 @@ class CambioPlanEntreServiciosTest(TestCase):
             HTTP_AUTHORIZATION=f'Bearer {self._token(self.admin, "pass1")}')
 
     def _post_sale(self, payload):
+        if payload.get('requestType') in {
+                'nuevo_contrato', 'recontratacion', 'traslado_externo'}:
+            payload = {
+                **payload,
+                'coverageZoneId': CoverageZone.objects.get(
+                    normalized_name='villa busch').id,
+            }
         return self.client_.post(
             '/api/sales', payload, content_type='application/json',
             HTTP_AUTHORIZATION=f'Bearer {self._token(self.admin, "pass1")}')

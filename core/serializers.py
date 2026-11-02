@@ -4,7 +4,7 @@ from django.db import connection
 from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_field
 from .models import (
-    User, Customer, Contract, Role, Permission, RolePermission, UserRole,
+    User, Customer, Contract, CoverageZone, Role, Permission, RolePermission, UserRole,
     TemporaryFunction, TemporaryAssignment, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
     TarifaTraslado, TarifaTrasladoHistorial, TrasladoExterno,
     InventarioMovimiento,
@@ -307,6 +307,32 @@ class PlanPublicSerializer(serializers.ModelSerializer):
                   'monthly', 'installation', 'total', 'legacy', 'active']
 
 
+class CoverageZoneSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CoverageZone
+        fields = ['id', 'name', 'description', 'is_active',
+                  'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_name(self, value):
+        from .models import normalize_coverage_zone_name
+
+        value = normalize_coverage_zone_name(value)
+        if not value:
+            raise serializers.ValidationError('El nombre de la zona es obligatorio')
+        if len(value) > 120:
+            raise serializers.ValidationError(
+                'El nombre no puede superar 120 caracteres')
+        normalized_name = value.casefold()
+        zones = CoverageZone.objects.filter(normalized_name=normalized_name)
+        if self.instance:
+            zones = zones.exclude(pk=self.instance.pk)
+        if zones.exists():
+            raise serializers.ValidationError(
+                'Ya existe una zona con ese nombre')
+        return value
+
+
 class MotivoSerializer(serializers.ModelSerializer):
     """CRUD administrativo de motivos."""
 
@@ -466,6 +492,9 @@ class SaleSerializer(serializers.ModelSerializer):
         source='debt_amount', max_digits=12, decimal_places=2, read_only=True)
     totalToCollect = serializers.SerializerMethodField()
     traslado = serializers.SerializerMethodField()
+    coverageZoneId = serializers.IntegerField(
+        source='coverage_zone_id', read_only=True)
+    coverageZone = serializers.SerializerMethodField()
 
     class Meta:
         model = Sale
@@ -479,7 +508,7 @@ class SaleSerializer(serializers.ModelSerializer):
         fields = fields + [
             'equipmentRetained', 'requiresTechnicalVisit', 'debtApplies',
             'debtAmount', 'totalToCollect', 'version']
-        fields = fields + ['traslado']
+        fields = fields + ['traslado', 'coverageZoneId', 'coverageZone']
 
     @extend_schema_field(str)
     def get_motivoNombre(self, obj):
@@ -543,6 +572,17 @@ class SaleSerializer(serializers.ModelSerializer):
             'status': traslado.status,
         }
 
+    @extend_schema_field(dict)
+    def get_coverageZone(self, obj):
+        zone = obj.coverage_zone
+        if not zone:
+            return None
+        return {
+            'id': zone.id,
+            'name': zone.name,
+            'is_active': zone.is_active,
+        }
+
 
 class SaleCreateSerializer(serializers.Serializer):
     """Crea una venta. El total se calcula en el servidor a partir del plan."""
@@ -563,6 +603,7 @@ class SaleCreateSerializer(serializers.Serializer):
         max_digits=12, decimal_places=2, required=False, allow_null=True)
     notes = serializers.CharField(required=False, allow_blank=True)
     planId = serializers.IntegerField()
+    coverageZoneId = serializers.IntegerField(required=False, allow_null=True)
     meterNumber = serializers.CharField(
         required=False, allow_blank=True, max_length=80)
     sellerUserId = serializers.IntegerField(required=False, allow_null=True)
@@ -618,6 +659,24 @@ class SaleCreateSerializer(serializers.Serializer):
         equipment_delivered = attrs.get('equipment_delivered')
         equipment_serial = (attrs.get('equipment_serial') or '').strip().upper()
         contract_mode = mode == 'nuevo' or is_rehire
+        coverage_zone_id = attrs.get('coverageZoneId')
+        if contract_mode or is_transfer:
+            if coverage_zone_id is None:
+                raise serializers.ValidationError(
+                    {'coverageZoneId': 'Seleccione una zona de cobertura'})
+            coverage_zone = CoverageZone.objects.filter(
+                id=coverage_zone_id, is_active=True).first()
+            if coverage_zone is None:
+                raise serializers.ValidationError(
+                    {'coverageZoneId':
+                     'La zona de cobertura no existe o está inactiva'})
+        else:
+            if coverage_zone_id is not None:
+                raise serializers.ValidationError(
+                    {'coverageZoneId':
+                     'La zona solo aplica a contratos, recontrataciones y traslados'})
+            coverage_zone = None
+        attrs['coverageZone'] = coverage_zone
         meter_number = (attrs.get('meterNumber') or '').strip()
         seller_user_id = attrs.get('sellerUserId')
 
@@ -830,6 +889,7 @@ class SaleCreateSerializer(serializers.Serializer):
     def create(self, validated_data):
         user = self.context['user']
         plan = validated_data.pop('plan')
+        coverage_zone = validated_data.pop('coverageZone', None)
         promotion = validated_data.pop('promotion', None)
         transfer_tariff = validated_data.pop('transferTariff', None)
         plan_from = validated_data.pop('planFromPlan', None)
@@ -877,6 +937,7 @@ class SaleCreateSerializer(serializers.Serializer):
             clientName=validated_data['clientName'],
             serviceType=validated_data['serviceType'],
             requestType=request_type,
+            coverage_zone=coverage_zone,
             additionType=validated_data.get('additionType', ''),
             changeReason=validated_data.get('changeReason', ''),
             motivo=motivo,
@@ -912,7 +973,7 @@ class SaleCreateSerializer(serializers.Serializer):
                 tariff_amount=transfer_tariff.amount,
                 current_address=validated_data.get('transferCurrentAddress', '').strip(),
                 new_address=validated_data.get('transferNewAddress', '').strip(),
-                zone=validated_data.get('transferZone', '').strip(),
+                zone=coverage_zone.name,
                 references=validated_data.get('transferReferences', '').strip(),
                 has_physical_sketch=validated_data.get('transferHasSketch'),
                 status=('recibido' if validated_data.get('transferHasSketch')

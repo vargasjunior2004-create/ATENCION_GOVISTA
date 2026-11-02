@@ -64,6 +64,16 @@ const api = {
   // Tipos de solicitud (solo lectura para el formulario)
   getActiveRequestTypes: () => request('/api/request-types/active'),
 
+  // Zonas de cobertura
+  getActiveCoverageZones: () => request('/api/coverage/zones/'),
+  getCoverageZones: () => request('/api/coverage/zones/manage/'),
+  createCoverageZone: (data) => request('/api/coverage/zones/manage/', {
+    method: 'POST', body: JSON.stringify(data),
+  }),
+  updateCoverageZone: (id, data) => request(`/api/coverage/zones/${id}/`, {
+    method: 'PATCH', body: JSON.stringify(data),
+  }),
+
   // Motivos
   getMotivos: (categoria = '') => {
     const params = new URLSearchParams();

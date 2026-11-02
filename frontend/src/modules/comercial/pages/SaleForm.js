@@ -55,16 +55,19 @@ export default function SaleForm() {
   };
   const today = getToday();
   const [plans, setPlans] = useState([]);
+  const [coverageZones, setCoverageZones] = useState([]);
+  const [coverageZonesLoading, setCoverageZonesLoading] = useState(true);
+  const [coverageZonesError, setCoverageZonesError] = useState('');
   const [form, setForm] = useState({
     date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet',
     requestType: 'nuevo_contrato', additionType: '', planFromId: '',
     serviceTypeFrom: '', motivoId: '', notes: '',
-    planId: '',
+    planId: '', coverageZoneId: '',
     equipmentRetained: null, requiresTechnicalVisit: null,
     equipmentDelivered: null, equipmentSerial: '',
     meterNumber: '', sellerUserId: '',
     debtApplies: false, debtAmount: '',
-    transferCurrentAddress: '', transferNewAddress: '', transferZone: '',
+    transferCurrentAddress: '', transferNewAddress: '',
     transferReferences: '', transferHasSketch: null,
   });
   const { tipos: requestTypes, modoOf, nombreOf } = useRequestTypes();
@@ -100,6 +103,25 @@ export default function SaleForm() {
       .catch((err) => setError(
         err.error || 'No se pudieron cargar los vendedores externos activos.',
       ));
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    api.getActiveCoverageZones()
+      .then((zones) => {
+        if (active) setCoverageZones(zones);
+      })
+      .catch((err) => {
+        if (active) {
+          setCoverageZonesError(
+            err?.error || 'No se pudieron cargar las zonas de cobertura.',
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setCoverageZonesLoading(false);
+      });
+    return () => { active = false; };
   }, []);
 
   // El tipo por defecto viene sembrado, pero si un administrador lo
@@ -142,6 +164,15 @@ export default function SaleForm() {
   const isRecontratacion = form.requestType === 'recontratacion';
   const isContract = modo === 'nuevo' || isRecontratacion;
   const isTransfer = form.requestType === 'traslado_externo';
+  const requiresCoverageZone = isContract || isTransfer;
+  const coverageZoneSelectionError = coverageZonesError || (
+    !coverageZonesLoading && coverageZones.length === 0
+      ? 'No hay zonas activas disponibles. Contacte al administrador.'
+      : ''
+  );
+  const selectedCoverageZone = coverageZones.find(
+    (zone) => String(zone.id) === String(form.coverageZoneId),
+  );
   const isCallCenter = (user?.roles || []).some(
     (role) => role.code === 'call-center',
   );
@@ -267,6 +298,7 @@ export default function SaleForm() {
       if (name === 'requestType') {
         next.planId = '';
         next.motivoId = '';
+        next.coverageZoneId = '';
         const nuevoModo = modoOf(value);
         if (nuevoModo !== 'adicion') next.additionType = '';
         if (nuevoModo !== 'cambio_plan') {
@@ -288,7 +320,6 @@ export default function SaleForm() {
         if (value !== 'traslado_externo') {
           next.transferCurrentAddress = '';
           next.transferNewAddress = '';
-          next.transferZone = '';
           next.transferReferences = '';
           next.transferHasSketch = null;
         }
@@ -341,6 +372,9 @@ export default function SaleForm() {
         notes: form.notes,
         planId: Number(form.planId),
       };
+      if (requiresCoverageZone) {
+        payload.coverageZoneId = Number(form.coverageZoneId);
+      }
       if (isContract) {
         payload.clientCi = form.clientCi;
         payload.clientPhone = form.clientPhone;
@@ -365,7 +399,6 @@ export default function SaleForm() {
         payload.transferTariffId = tariff?.id;
         payload.transferCurrentAddress = form.transferCurrentAddress;
         payload.transferNewAddress = form.transferNewAddress;
-        payload.transferZone = form.transferZone;
         payload.transferReferences = form.transferReferences;
         payload.transferHasSketch = form.transferHasSketch;
       }
@@ -374,7 +407,7 @@ export default function SaleForm() {
       }
       await api.createSale(payload);
       setSuccess('Registro guardado correctamente');
-       setForm({ date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', equipmentRetained: null, requiresTechnicalVisit: null, equipmentDelivered: null, equipmentSerial: '', meterNumber: '', sellerUserId: '', debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferZone: '', transferReferences: '', transferHasSketch: null });
+       setForm({ date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', coverageZoneId: '', equipmentRetained: null, requiresTechnicalVisit: null, equipmentDelivered: null, equipmentSerial: '', meterNumber: '', sellerUserId: '', debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferReferences: '', transferHasSketch: null });
        setEquipmentLookup(null); setEquipmentLookupError('');
       setSelectedPlan(null); setSelectedCustomer(null); setQuery(''); setCustomers([]);
       setPromotions([]); setSelectedPromotion(null); setPriceMode('normal');
@@ -405,6 +438,23 @@ export default function SaleForm() {
   };
 
   const getMotivoLabel = () => motivoNombreOf(form.motivoId);
+  const coverageZoneSelect = (
+    <Select
+      label="Zona de cobertura / Barrio *"
+      name="coverageZoneId"
+      value={form.coverageZoneId}
+      onChange={handleChange}
+      required
+      error={coverageZoneSelectionError}
+    >
+      <option value="">
+        {coverageZonesLoading ? 'Cargando zonas...' : 'Seleccione una zona'}
+      </option>
+      {coverageZones.map((zone) => (
+        <option key={zone.id} value={zone.id}>{zone.name}</option>
+      ))}
+    </Select>
+  );
 
   const previewSale = {
     date: formatDate(form.date),
@@ -428,7 +478,8 @@ export default function SaleForm() {
     requiresTechnicalVisit: isRecontratacion ? form.requiresTechnicalVisit : null,
     transferCurrentAddress: isTransfer ? form.transferCurrentAddress : null,
     transferNewAddress: isTransfer ? form.transferNewAddress : null,
-    transferZone: isTransfer ? form.transferZone : null,
+    transferZone: isTransfer ? selectedCoverageZone?.name : null,
+    coverageZoneName: requiresCoverageZone ? selectedCoverageZone?.name : null,
     transferReferences: isTransfer ? form.transferReferences : null,
     transferHasSketch: isTransfer ? form.transferHasSketch : null,
     motivo: getMotivoLabel(),
@@ -533,6 +584,7 @@ export default function SaleForm() {
                   ))}
                 </Select>
               </div>
+              {coverageZoneSelect}
               <div className="rounded-xl border border-sky-100 bg-white/80 px-4 py-3">
                 <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Origen automático
@@ -556,7 +608,7 @@ export default function SaleForm() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Input label="Domicilio actual" name="transferCurrentAddress" value={form.transferCurrentAddress} onChange={handleChange} placeholder="Si está disponible" />
                 <Input label="Nuevo domicilio *" name="transferNewAddress" value={form.transferNewAddress} onChange={handleChange} placeholder="Calle y número" required />
-                <Input label="Barrio / zona" name="transferZone" value={form.transferZone} onChange={handleChange} placeholder="Zona del nuevo domicilio" />
+                {coverageZoneSelect}
                 <Input label="Referencias" name="transferReferences" value={form.transferReferences} onChange={handleChange} placeholder="Puntos de referencia" />
               </div>
               <RadioChoiceGroup
@@ -880,7 +932,7 @@ export default function SaleForm() {
             </div>
           )}
 
-          <Button type="submit" size="lg" className="w-full" disabled={!form.planId || samePlanSelected || ((isCambio || isRetiro) && !form.motivoId) || (isRetiro && (form.equipmentDelivered === null || (form.equipmentDelivered && (!form.equipmentSerial.trim() || !equipmentLookup)))) || (isRecontratacion && (form.equipmentRetained === null || form.requiresTechnicalVisit === null || (form.debtApplies && (!form.debtAmount || Number(form.debtAmount) <= 0)))) || (isTransfer && (!form.transferNewAddress.trim() || form.transferHasSketch === null || !transferTariffs.some((item) => item.service_type === SERVICE_TYPE_TO_PLAN_TYPE[form.serviceType])))}>
+          <Button type="submit" size="lg" className="w-full" disabled={!form.planId || samePlanSelected || (requiresCoverageZone && (!form.coverageZoneId || coverageZonesLoading || coverageZoneSelectionError)) || ((isCambio || isRetiro) && !form.motivoId) || (isRetiro && (form.equipmentDelivered === null || (form.equipmentDelivered && (!form.equipmentSerial.trim() || !equipmentLookup)))) || (isRecontratacion && (form.equipmentRetained === null || form.requiresTechnicalVisit === null || (form.debtApplies && (!form.debtAmount || Number(form.debtAmount) <= 0)))) || (isTransfer && (!form.transferNewAddress.trim() || form.transferHasSketch === null || !transferTariffs.some((item) => item.service_type === SERVICE_TYPE_TO_PLAN_TYPE[form.serviceType])))}>
             Revisar Registro
           </Button>
         </form>

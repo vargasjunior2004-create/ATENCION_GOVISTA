@@ -36,11 +36,13 @@ export function SalePreviewDetails({ sale }) {
         <PreviewRow label="Servicio" value={sale.serviceLabel} />
       )}
       <PreviewRow label="Plan" value={sale.planLabel} />
+      {sale.coverageZoneName && (
+        <PreviewRow label="Zona de cobertura / Barrio" value={sale.coverageZoneName} />
+      )}
       {isTransfer && (
         <>
           <PreviewRow label="Domicilio actual" value={sale.transferCurrentAddress} />
           <PreviewRow label="Nuevo domicilio" value={sale.transferNewAddress} />
-          <PreviewRow label="Zona" value={sale.transferZone} />
           <PreviewRow label="Referencias" value={sale.transferReferences} />
           <PreviewRow label="Croquis físico" value={sale.transferHasSketch ? 'Sí' : 'No'} />
         </>

@@ -15,6 +15,7 @@ import CustomersList from '../modules/comercial/pages/CustomersList';
 import CustomerDetail from '../modules/comercial/pages/CustomerDetail';
 import ContractDetail from '../modules/comercial/pages/ContractDetail';
 import TransferTariffs from '../modules/comercial/pages/TransferTariffs';
+import CoverageZones from '../modules/comercial/pages/CoverageZones';
 import { AdminRoute, ProtectedRoute, PublicRoute } from './guards';
 import LegacyRedirect from './LegacyRedirect';
 import EquipmentPage from '../modules/equipos/EquipmentPage';
@@ -59,6 +60,10 @@ export default function AppRoutes() {
           <Route
             path="tarifas-traslados"
             element={<AdminRoute permission="commercial_config.manage"><TransferTariffs /></AdminRoute>}
+          />
+          <Route
+            path="cobertura/zonas"
+            element={<AdminRoute permission="coverage.manage"><CoverageZones /></AdminRoute>}
           />
           <Route
             path="seguridad"
