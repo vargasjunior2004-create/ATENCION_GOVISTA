@@ -15,7 +15,10 @@ import CustomersList from '../modules/comercial/pages/CustomersList';
 import CustomerDetail from '../modules/comercial/pages/CustomerDetail';
 import ContractDetail from '../modules/comercial/pages/ContractDetail';
 import TransferTariffs from '../modules/comercial/pages/TransferTariffs';
+import CoverageLayout from '../modules/cobertura/CoverageLayout';
+import CoverageDashboard from '../modules/cobertura/pages/CoverageDashboard';
 import CoverageZones from '../modules/cobertura/pages/CoverageZones';
+import RegisterCoverageZone from '../modules/cobertura/pages/RegisterCoverageZone';
 import { AdminRoute, ProtectedRoute, PublicRoute } from './guards';
 import LegacyRedirect from './LegacyRedirect';
 import EquipmentPage from '../modules/equipos/EquipmentPage';
@@ -31,8 +34,19 @@ export default function AppRoutes() {
         <Route path="/" element={<ModuleSelector />} />
         <Route path="/equipos" element={<EquipmentPage />} />
         <Route
+          path="/cobertura"
+          element={<AdminRoute permission="coverage.view"><CoverageLayout /></AdminRoute>}
+        >
+          <Route index element={<CoverageDashboard />} />
+          <Route path="consultar" element={<CoverageZones />} />
+          <Route
+            path="registrar"
+            element={<AdminRoute permission="coverage.create"><RegisterCoverageZone /></AdminRoute>}
+          />
+        </Route>
+        <Route
           path="/cobertura/zonas"
-          element={<CoverageZones />}
+          element={<LegacyRedirect to="/cobertura/consultar" />}
         />
 
         <Route path="/comercial" element={<ComercialLayout />}>
@@ -84,7 +98,7 @@ export default function AppRoutes() {
         <Route path="/backups" element={<LegacyRedirect to="/comercial/backups" />} />
         <Route
           path="/comercial/cobertura/zonas"
-          element={<LegacyRedirect to="/cobertura/zonas" />}
+          element={<LegacyRedirect to="/cobertura/consultar" />}
         />
 
         <Route path="*" element={<Navigate to="/" replace />} />
