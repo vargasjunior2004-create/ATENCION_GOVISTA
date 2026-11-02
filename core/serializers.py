@@ -315,12 +315,10 @@ class CoverageZoneSerializer(serializers.ModelSerializer):
         model = CoverageZone
         fields = [
             'id', 'name', 'description', 'google_maps_url', 'is_active',
-            'is_pending', 'created_by', 'created_by_name',
-            'created_at', 'updated_at',
+            'created_by', 'created_by_name', 'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'id', 'is_pending', 'created_by', 'created_by_name',
-            'created_at', 'updated_at',
+            'id', 'created_by', 'created_by_name', 'created_at', 'updated_at',
         ]
 
     def validate_name(self, value):

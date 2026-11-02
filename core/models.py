@@ -326,7 +326,6 @@ class CoverageZone(models.Model):
     description = models.TextField(blank=True, default='')
     google_maps_url = models.URLField(max_length=500, blank=True, default='')
     is_active = models.BooleanField(default=True)
-    is_pending = models.BooleanField(default=False)
     created_by = models.ForeignKey(
         User, null=True, blank=True, on_delete=models.PROTECT,
         related_name='coverage_zones_created')
