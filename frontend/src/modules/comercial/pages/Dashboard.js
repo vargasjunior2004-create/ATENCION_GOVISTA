@@ -32,7 +32,7 @@ import { Alert, Button, Card, Input, Select } from '../../../components/ui';
 import { useAuth } from '../../../context/AuthContext';
 
 const MOVEMENT_OPTIONS = [
-  { value: 'all', label: 'Todas las solicitudes' },
+  { value: 'all', label: 'Todas las solicitudes comerciales' },
   { value: 'nuevo_contrato', label: 'Nuevos contratos' },
   { value: 'recontrataciones', label: 'Recontrataciones' },
   { value: 'retiros', label: 'Retiros' },
@@ -54,11 +54,12 @@ const COMPARISON_COLORS = {
   retiros: '#f97316',
 };
 const SERVICE_COLORS = {
-  internet: '#6d28d9',
-  tv: '#be123c',
-  tv_digital: '#0f766e',
-  combo_analog: '#4d7c0f',
-  combo_digital: '#a21caf',
+const SERVICE_COLORS = {
+  internet: '#0e7490',
+  tv: '#ca8a04',
+  tv_digital: '#2563eb',
+  combo_analog: '#be123c',
+  combo_digital: '#a10785',
 };
 
 function todayInBolivia() {
@@ -286,7 +287,9 @@ export default function Dashboard() {
             </div>
             <h1 className="max-w-xl text-3xl font-black tracking-tight sm:text-4xl">Solicitudes de clientes</h1>
             <p className="mt-2 max-w-lg text-sm leading-6 text-green-100/65">
+
               Una lectura clara de las solicitudes comerciales, retiros y cambios registrados por GO VISTA.
+
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
@@ -365,7 +368,7 @@ export default function Dashboard() {
             <MetricCard label="Recontrataciones" count={analytics?.recontrataciones?.count} total={analytics?.recontrataciones?.total} icon={RefreshCw} tone="blue" />
             <MetricCard label="Retiros" count={analytics?.retiros?.count} total={analytics?.retiros?.total} icon={ArrowDownRight} tone="red" />
             <MetricCard label="Cambios de plan" count={analytics?.cambios_plan?.count} total={analytics?.cambios_plan?.total} icon={RefreshCw} tone="blue" />
-            <MetricCard label="Balance neto" count={analytics?.balance_neto} icon={Activity} tone="slate" detail="Nuevos + recontrataciones - retiros" />
+            <MetricCard label="Balance neto" count={analytics?.balance_neto} icon={Activity} tone="slate" detaiAltas comerciales frente a retiros" />
           </section>
 
           {!hasData ? (
@@ -373,7 +376,7 @@ export default function Dashboard() {
           ) : (
             <>
               <section className="grid gap-5 xl:grid-cols-[1.35fr_1fr]">
-                <ChartCard eyebrow="Comparativa diaria" title="Altas comerciales frente a retiros">
+                <ChartCard eyebrow="Comparativa diaria" title="Nuevos contratos, recontrataciones y retiros">
                   <div className="h-[300px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={commercialSeries} margin={{ top: 4, right: 4, left: -18, bottom: 4 }}>
@@ -382,8 +385,9 @@ export default function Dashboard() {
                         <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                         <Tooltip content={<ChartTooltip />} />
                         <Legend iconType="circle" wrapperStyle={{ fontSize: 11, paddingTop: 12 }} />
-                        <Bar name="Altas comerciales" dataKey="altas_comerciales" fill={COMPARISON_COLORS.altas} radius={[5, 5, 0, 0]} />
-                        <Bar name="Retiros" dataKey="retiros" fill={COMPARISON_COLORS.retiros} radius={[5, 5, 0, 0]} />
+                        <Bar name="Nuevos contratos" dataKey="nuevo_contrato" fill="#12e67c" radius={[5, 5, 0, 0]} />
+                        <Bar name="Recontrataciones" dataKey="recontrataciones" fill="#7c3aed" radius={[5, 5, 0, 0]} />
+                        <Bar name="Retiros" dataKey="retiros" fill="#e82711" radius={[5, 5, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -405,7 +409,7 @@ export default function Dashboard() {
               </section>
 
               <section className="grid gap-5 lg:grid-cols-[1fr_1.2fr]">
-                <ChartCard eyebrow="Composición del período" title="Distribución por servicio">
+                <ChartCard eyebrow="Composición del período" title="Distribución por tipo de servicio">
                   {services.length ? (
                     <div className="h-[300px] w-full">
                       <ResponsiveContainer width="100%" height="100%">
@@ -420,7 +424,7 @@ export default function Dashboard() {
                     </div>
                   ) : <EmptyChart />}
                 </ChartCard>
-                <ChartCard eyebrow="Lectura operativa" title="Desglose por categoría">
+                <ChartCard eyebrow="Lectura operativa" title="Desglose por tipo de plan">
                   <div className="space-y-4 pt-2">
                     {categories.map((item, index) => (
                       <div key={item.type}>
