@@ -54,7 +54,6 @@ const COMPARISON_COLORS = {
   retiros: '#f97316',
 };
 const SERVICE_COLORS = {
-const SERVICE_COLORS = {
   internet: '#0e7490',
   tv: '#ca8a04',
   tv_digital: '#2563eb',
@@ -368,7 +367,7 @@ export default function Dashboard() {
             <MetricCard label="Recontrataciones" count={analytics?.recontrataciones?.count} total={analytics?.recontrataciones?.total} icon={RefreshCw} tone="blue" />
             <MetricCard label="Retiros" count={analytics?.retiros?.count} total={analytics?.retiros?.total} icon={ArrowDownRight} tone="red" />
             <MetricCard label="Cambios de plan" count={analytics?.cambios_plan?.count} total={analytics?.cambios_plan?.total} icon={RefreshCw} tone="blue" />
-            <MetricCard label="Balance neto" count={analytics?.balance_neto} icon={Activity} tone="slate" detaiAltas comerciales frente a retiros" />
+            <MetricCard label="Balance neto" count={analytics?.balance_neto} icon={Activity} tone="slate" detail="Nuevos contratos + recontrataciones - retiros" />
           </section>
 
           {!hasData ? (
