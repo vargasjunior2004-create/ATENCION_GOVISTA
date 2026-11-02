@@ -51,7 +51,7 @@ const SERVICE_COLORS = {
   internet: '#0e7490',
   tv: '#ca8a04',
   tv_digital: '#2563eb',
-  combo_analog: '#16a34a',
+  combo_analog: '#f9f508',
   combo_digital: '#a10785',
 };
 
@@ -424,7 +424,7 @@ export default function Dashboard() {
                         );
                       })}
                       <p className="border-t border-slate-100 pt-3 text-xs text-slate-400">
-                        Incluye contratos nuevos, recontrataciones y traslados con zona registrada.
+                        Altas comerciales - retiros.
                       </p>
                     </div>
                   ) : (
