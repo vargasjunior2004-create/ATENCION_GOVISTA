@@ -15,7 +15,7 @@ import CustomersList from '../modules/comercial/pages/CustomersList';
 import CustomerDetail from '../modules/comercial/pages/CustomerDetail';
 import ContractDetail from '../modules/comercial/pages/ContractDetail';
 import TransferTariffs from '../modules/comercial/pages/TransferTariffs';
-import CoverageZones from '../modules/comercial/pages/CoverageZones';
+import CoverageZones from '../modules/cobertura/pages/CoverageZones';
 import { AdminRoute, ProtectedRoute, PublicRoute } from './guards';
 import LegacyRedirect from './LegacyRedirect';
 import EquipmentPage from '../modules/equipos/EquipmentPage';
@@ -30,6 +30,10 @@ export default function AppRoutes() {
       <Route element={<ProtectedRoute />}>
         <Route path="/" element={<ModuleSelector />} />
         <Route path="/equipos" element={<EquipmentPage />} />
+        <Route
+          path="/cobertura/zonas"
+          element={<AdminRoute permission="coverage.manage"><CoverageZones /></AdminRoute>}
+        />
 
         <Route path="/comercial" element={<ComercialLayout />}>
           <Route index element={<Navigate to="dashboard" replace />} />
@@ -62,10 +66,6 @@ export default function AppRoutes() {
             element={<AdminRoute permission="commercial_config.manage"><TransferTariffs /></AdminRoute>}
           />
           <Route
-            path="cobertura/zonas"
-            element={<AdminRoute permission="coverage.manage"><CoverageZones /></AdminRoute>}
-          />
-          <Route
             path="seguridad"
             element={(
               <AdminRoute permission="users.manage">
@@ -82,6 +82,10 @@ export default function AppRoutes() {
         <Route path="/promociones" element={<LegacyRedirect to="/comercial/promociones" />} />
         <Route path="/usuarios" element={<LegacyRedirect to="/comercial/usuarios" />} />
         <Route path="/backups" element={<LegacyRedirect to="/comercial/backups" />} />
+        <Route
+          path="/comercial/cobertura/zonas"
+          element={<LegacyRedirect to="/cobertura/zonas" />}
+        />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

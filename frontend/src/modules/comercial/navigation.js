@@ -68,13 +68,6 @@ export const commercialAdminNavigation = [
     group: 'Configuración comercial',
   },
   {
-    to: '/comercial/cobertura/zonas',
-    label: 'Zonas y barrios',
-    icon: SlidersHorizontal,
-    permission: 'coverage.manage',
-    group: 'Gestión de cobertura',
-  },
-  {
     to: '/comercial/usuarios',
     label: 'Usuarios',
     icon: Users,
