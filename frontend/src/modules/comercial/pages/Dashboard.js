@@ -421,7 +421,7 @@ export default function Dashboard() {
                     </div>
                   ) : <EmptyChart />}
                 </ChartCard>
-                <ChartCard eyebrow="Altas comerciales del período" title="Planes más solicitados">
+                <ChartCard eyebrow="Preferencias de clientes" title="Planes más solicitados">
                   {topPlans.length ? (
                     <div className="space-y-4 pt-2">
                       {topPlans.map((item, index) => (
