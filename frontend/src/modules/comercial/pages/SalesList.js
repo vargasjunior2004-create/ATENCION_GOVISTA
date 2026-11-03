@@ -188,6 +188,7 @@ export default function SalesList() {
     requestType: sale.requestType,
     clientCode: sale.clientCode,
     clientName: sale.clientName,
+    creatorName: sale.creator?.name,
     requestLabel: requestLabel(sale),
     serviceLabel: SERVICE_LABELS[sale.serviceType] || sale.serviceType,
     previousServiceLabel: sale.previousService?.serviceType
@@ -205,6 +206,8 @@ export default function SalesList() {
       ? parseFloat(sale.totalToCollect).toFixed(2) : null,
     equipmentRetained: sale.requestType === 'recontratacion' ? sale.equipmentRetained : null,
     requiresTechnicalVisit: sale.requestType === 'recontratacion' ? sale.requiresTechnicalVisit : null,
+    equipmentDelivered: sale.equipmentDelivered,
+    equipmentSerial: sale.equipmentSerial,
     canalCaptacionNombre: sale.canalCaptacion?.nombre,
     motivo: sale.changeReason,
     notes: sale.notes,

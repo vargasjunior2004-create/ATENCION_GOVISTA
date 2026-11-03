@@ -2493,6 +2493,18 @@ class DashboardStatsView(APIView):
             'total': cls._amount(data['total']),
         }
 
+    @staticmethod
+    def _selected_sales(categories, from_date, to_date, movement_type):
+        queryset = Sale.objects.filter(
+            deleted_at__isnull=True,
+            date__gte=from_date,
+            date__lte=to_date,
+        )
+        if movement_type != 'all':
+            queryset = queryset.filter(
+                requestType__in=categories[movement_type])
+        return queryset
+
     @classmethod
     def _analytics(cls, queryset, categories, from_date, to_date,
                    movement_type):
@@ -2735,11 +2747,8 @@ class DashboardStatsView(APIView):
                 'role': request.user.role,
             }
 
-            selected_sales = all_sales.filter(
-                date__gte=from_date, date__lte=to_date)
-            if movement_type != 'all':
-                selected_sales = selected_sales.filter(
-                    requestType__in=categories[movement_type])
+            selected_sales = self._selected_sales(
+                categories, from_date, to_date, movement_type)
 
             return Response({
                 **legacy,
@@ -2753,6 +2762,134 @@ class DashboardStatsView(APIView):
             logger.exception('Error calculando estadisticas del dashboard')
             return Response(
                 {'error': 'No se pudieron calcular las estadísticas'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@extend_schema(responses={200: dict, 400: dict, 500: dict})
+class DashboardDrilldownView(APIView):
+    INDICATOR_CATEGORIES = {
+        'nuevo_contrato': ('nuevo_contrato',),
+        'recontrataciones': ('recontrataciones',),
+        'retiros': ('retiros',),
+        'cambios_plan': ('cambios_plan',),
+        'altas_comerciales': ('nuevo_contrato', 'recontrataciones'),
+        'balance_neto': (
+            'nuevo_contrato', 'recontrataciones', 'retiros'),
+    }
+
+    def get(self, request):
+        indicator = request.query_params.get('indicator', '')
+        if indicator not in self.INDICATOR_CATEGORIES:
+            return Response(
+                {'error': {'indicator': 'Indicador no válido'}},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        dashboard = DashboardStatsView()
+        movement_type = request.query_params.get('movement_type', 'all')
+        if movement_type not in dashboard.MOVEMENT_TYPES:
+            return Response({
+                'error': 'movement_type no válido',
+                'allowed': sorted(dashboard.MOVEMENT_TYPES),
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        page, error = _query_int(request.query_params, 'page', 1)
+        if error:
+            return error
+        page_size, error = _query_int(
+            request.query_params, 'page_size', 25, maximum=100)
+        if error:
+            return error
+
+        search = request.query_params.get('search', '').strip()
+        if len(search) > 100:
+            return Response(
+                {'error': {'search': 'No puede superar 100 caracteres'}},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        today = timezone.localdate()
+        if getattr(request.user, 'role', '') == 'admin':
+            try:
+                from_date, to_date = dashboard._parse_range(
+                    request.query_params, today)
+            except ValueError as exc:
+                return Response(
+                    {'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            from_date = to_date = today
+
+        try:
+            catalog = request_type_catalog()
+            categories = dashboard._category_codes(catalog)
+            filtered_sales = dashboard._selected_sales(
+                categories, from_date, to_date, movement_type)
+            relevant_categories = self.INDICATOR_CATEGORIES[indicator]
+            category = request.query_params.get(
+                'category', relevant_categories[0])
+            if category not in relevant_categories:
+                return Response(
+                    {'error': {'category': 'Categoría no válida para el indicador'}},
+                    status=status.HTTP_400_BAD_REQUEST)
+
+            breakdown = []
+            for name in relevant_categories:
+                summary = dashboard._summary(
+                    filtered_sales.filter(requestType__in=categories[name]))
+                breakdown.append({
+                    'category': name,
+                    'label': {
+                        'nuevo_contrato': 'Nuevos contratos',
+                        'recontrataciones': 'Recontrataciones',
+                        'retiros': 'Retiros',
+                        'cambios_plan': 'Cambios de plan',
+                    }[name],
+                    **summary,
+                })
+
+            selected_sales = filtered_sales.filter(
+                requestType__in=categories[category])
+            if search:
+                selected_sales = selected_sales.filter(
+                    Q(clientName__icontains=search)
+                    | Q(clientCode__icontains=search))
+
+            total = selected_sales.count()
+            start = (page - 1) * page_size
+            items = selected_sales.select_related(
+                'plan', 'planFromId', 'createdBy', 'coverage_zone',
+                'canal_captacion', 'motivo', 'traslado_externo',
+            ).order_by('-date', '-id')[start:start + page_size]
+
+            if indicator == 'balance_neto':
+                totals = {item['category']: item['count'] for item in breakdown}
+                indicator_count = (
+                    totals['nuevo_contrato'] + totals['recontrataciones']
+                    - totals['retiros'])
+            else:
+                indicator_count = sum(item['count'] for item in breakdown)
+
+            return Response({
+                'indicator': indicator,
+                'category': category,
+                'period': {
+                    'from': from_date.isoformat(),
+                    'to': to_date.isoformat(),
+                    'movement_type': movement_type,
+                },
+                'indicator_count': indicator_count,
+                'breakdown': breakdown,
+                'items': SaleSerializer(
+                    items, many=True,
+                    context={'catalog': catalog}).data,
+                'total': total,
+                'page': page,
+                'page_size': page_size,
+                'total_pages': max(1, (total + page_size - 1) // page_size),
+            })
+        except Exception:
+            logger.exception(
+                'Error consultando detalle del dashboard comercial')
+            return Response(
+                {'error': 'No se pudo consultar el detalle comercial'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

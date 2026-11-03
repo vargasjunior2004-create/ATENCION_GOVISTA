@@ -53,6 +53,22 @@ const api = {
     const query = params.toString();
     return request(`/api/dashboard/stats${query ? `?${query}` : ''}`);
   },
+  getDashboardDrilldown: ({
+    indicator, category, from, to, movementType = 'all',
+    search = '', page = 1, pageSize = 25,
+  }) => {
+    const params = new URLSearchParams({
+      indicator,
+      category,
+      from,
+      to,
+      movement_type: movementType,
+      search,
+      page: String(page),
+      page_size: String(pageSize),
+    });
+    return request(`/api/dashboard/drilldown?${params.toString()}`);
+  },
 
   // Planes
   getPlans: () => request('/api/plans'),

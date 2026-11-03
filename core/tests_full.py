@@ -350,6 +350,121 @@ class DashboardTests(TestCase):
             5,
         )
 
+    def test_dashboard_drilldown_matches_indicator_and_paginates_search(self):
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+        self._sale('DD001', 'nuevo_contrato', today)
+        self._sale('DD002', 'nuevo_contrato', today)
+        self._sale('DD004', 'nuevo_contrato', yesterday)
+        archived = self._sale('DD003', 'nuevo_contrato', today)
+        archived.deleted_at = timezone.now()
+        archived.save(update_fields=['deleted_at'])
+        token = self._token()
+
+        stats = self.c.get(
+            f'/api/dashboard/stats?from={today.isoformat()}&to={today.isoformat()}',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        params = (
+            f'from={today.isoformat()}&to={today.isoformat()}'
+            '&indicator=nuevo_contrato&category=nuevo_contrato'
+            '&search=DASH&page_size=1&page=1'
+        )
+        response = self.c.get(
+            f'/api/dashboard/drilldown?{params}',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(response.status_code, 200, _json(response))
+        data = _json(response)
+        self.assertEqual(data['indicator_count'], 2)
+        self.assertEqual(
+            data['indicator_count'],
+            _json(stats)['analytics']['nuevo_contrato']['count'])
+        self.assertEqual(data['total'], 2)
+        self.assertEqual(data['total_pages'], 2)
+        self.assertEqual(len(data['items']), 1)
+
+        next_page = self.c.get(
+            f'/api/dashboard/drilldown?{params.replace("page=1", "page=2")}',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(next_page.status_code, 200)
+        self.assertNotEqual(
+            _json(response)['items'][0]['id'],
+            _json(next_page)['items'][0]['id'])
+
+        by_code = self.c.get(
+            f'/api/dashboard/drilldown?from={today.isoformat()}&to={today.isoformat()}'
+            '&indicator=nuevo_contrato&category=nuevo_contrato&search=DD002',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(_json(by_code)['total'], 1)
+        self.assertEqual(_json(by_code)['items'][0]['clientCode'], 'DD002')
+
+    def test_dashboard_drilldown_group_breakdown_matches_balance(self):
+        today = timezone.localdate()
+        self._sale('DG001', 'nuevo_contrato', today)
+        self._sale('DG002', 'recontratacion', today)
+        self._sale('DG003', 'retiro', today)
+        token = self._token()
+        params = f'from={today.isoformat()}&to={today.isoformat()}'
+
+        stats = self.c.get(
+            f'/api/dashboard/stats?{params}',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        balance = self.c.get(
+            f'/api/dashboard/drilldown?{params}&indicator=balance_neto',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        altas = self.c.get(
+            f'/api/dashboard/drilldown?{params}&indicator=altas_comerciales',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        filtered_altas = self.c.get(
+            f'/api/dashboard/drilldown?{params}&indicator=altas_comerciales'
+            '&movement_type=recontrataciones',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(balance.status_code, 200)
+        self.assertEqual(altas.status_code, 200)
+        self.assertEqual(filtered_altas.status_code, 200)
+        self.assertEqual(
+            _json(balance)['indicator_count'],
+            _json(stats)['analytics']['balance_neto'])
+        self.assertEqual(_json(altas)['indicator_count'], 2)
+        self.assertEqual(_json(filtered_altas)['indicator_count'], 1)
+        self.assertEqual(
+            {item['category']: item['count'] for item in _json(balance)['breakdown']},
+            {'nuevo_contrato': 1, 'recontrataciones': 1, 'retiros': 1})
+
+    def test_dashboard_drilldown_requires_auth_and_limits_operator_to_today(self):
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+        self._sale('DO001', 'nuevo_contrato', yesterday)
+        self._sale('DO002', 'nuevo_contrato', today)
+        self.assertEqual(
+            self.c.get('/api/dashboard/drilldown?indicator=nuevo_contrato').status_code,
+            401)
+
+        operator = _create_user('drilldown-operator', 'pass1', 'ventas')
+        login = self.c.post(
+            '/api/auth/login',
+            {'name': operator.name, 'password': 'pass1'},
+            content_type='application/json')
+        token = _json(login)['token']
+        response = self.c.get(
+            '/api/dashboard/drilldown'
+            f'?from={yesterday.isoformat()}&to={today.isoformat()}'
+            '&indicator=nuevo_contrato&category=nuevo_contrato',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(_json(response)['period']['from'], today.isoformat())
+        self.assertEqual(_json(response)['total'], 1)
+
+    def test_dashboard_drilldown_rejects_invalid_filters(self):
+        token = self._token()
+        response = self.c.get(
+            '/api/dashboard/drilldown?indicator=incorrecto',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(response.status_code, 400)
+        response = self.c.get(
+            '/api/dashboard/drilldown?indicator=balance_neto&category=cambios_plan',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(response.status_code, 400)
+
     def test_dashboard_zones_rank_contracts_rehires_and_transfers(self):
         today = timezone.localdate()
         yesterday = today - timedelta(days=1)

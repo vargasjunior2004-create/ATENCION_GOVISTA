@@ -28,6 +28,7 @@ import {
 import api from '../../../services/api';
 import { Alert, Button, Card, Input, Select } from '../../../components/ui';
 import { useAuth } from '../../../context/AuthContext';
+import DashboardDrilldownModal from '../components/DashboardDrilldownModal';
 
 const MOVEMENT_OPTIONS = [
   { value: 'all', label: 'Todas las solicitudes comerciales' },
@@ -136,7 +137,7 @@ function EmptyChart({ message = 'No hay solicitudes comerciales en este período
   );
 }
 
-function MetricCard({ label, count, total, icon: Icon, tone, detail }) {
+function MetricCard({ label, count, total, icon: Icon, tone, detail, onClick }) {
   const tones = {
     green: 'border-brand-200 bg-brand-50/60 text-brand-700',
     red: 'border-red-200 bg-red-50/70 text-red-700',
@@ -144,7 +145,12 @@ function MetricCard({ label, count, total, icon: Icon, tone, detail }) {
     slate: 'border-slate-200 bg-slate-50 text-slate-700',
   };
   return (
-    <Card className="relative overflow-hidden p-5">
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`Consultar ${label.toLowerCase()}: ${number(count)} registros`}
+      className="card-modern group relative w-full cursor-pointer appearance-none overflow-hidden p-5 text-left transition-shadow hover:border-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+    >
       <div className="mb-5 flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">{label}</p>
@@ -162,7 +168,7 @@ function MetricCard({ label, count, total, icon: Icon, tone, detail }) {
       ) : (
         <p className="border-t border-slate-100 pt-3 text-xs font-medium text-slate-400">{detail}</p>
       )}
-    </Card>
+    </button>
   );
 }
 
@@ -192,6 +198,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [drilldownIndicator, setDrilldownIndicator] = useState(null);
   const requestId = useRef(0);
 
   const visiblePeriod = isAdmin ? period : 'today';
@@ -359,12 +366,20 @@ export default function Dashboard() {
         </Card>
       ) : stats && (
         <>
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <MetricCard label="Nuevos contratos" count={analytics?.nuevo_contrato?.count} total={analytics?.nuevo_contrato?.total} icon={ArrowUpRight} tone="green" />
-            <MetricCard label="Recontrataciones" count={analytics?.recontrataciones?.count} total={analytics?.recontrataciones?.total} icon={RefreshCw} tone="blue" />
-            <MetricCard label="Retiros" count={analytics?.retiros?.count} total={analytics?.retiros?.total} icon={ArrowDownRight} tone="red" />
-            <MetricCard label="Cambios de plan" count={analytics?.cambios_plan?.count} total={analytics?.cambios_plan?.total} icon={RefreshCw} tone="blue" />
-            <MetricCard label="Balance neto" count={analytics?.balance_neto} icon={Activity} tone="slate" detail="Alta comerciales - retiros" />
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+            <MetricCard label="Nuevos contratos" count={analytics?.nuevo_contrato?.count} total={analytics?.nuevo_contrato?.total} icon={ArrowUpRight} tone="green" onClick={() => setDrilldownIndicator('nuevo_contrato')} />
+            <MetricCard label="Recontrataciones" count={analytics?.recontrataciones?.count} total={analytics?.recontrataciones?.total} icon={RefreshCw} tone="blue" onClick={() => setDrilldownIndicator('recontrataciones')} />
+            <MetricCard label="Retiros" count={analytics?.retiros?.count} total={analytics?.retiros?.total} icon={ArrowDownRight} tone="red" onClick={() => setDrilldownIndicator('retiros')} />
+            <MetricCard
+              label="Altas comerciales"
+              count={(analytics?.nuevo_contrato?.count || 0) + (analytics?.recontrataciones?.count || 0)}
+              icon={TrendingUp}
+              tone="green"
+              detail="Nuevos contratos + recontrataciones"
+              onClick={() => setDrilldownIndicator('altas_comerciales')}
+            />
+            <MetricCard label="Cambios de plan" count={analytics?.cambios_plan?.count} total={analytics?.cambios_plan?.total} icon={RefreshCw} tone="blue" onClick={() => setDrilldownIndicator('cambios_plan')} />
+            <MetricCard label="Balance neto" count={analytics?.balance_neto} icon={Activity} tone="slate" detail="Altas comerciales - retiros" onClick={() => setDrilldownIndicator('balance_neto')} />
           </section>
 
           {!hasData ? (
@@ -485,6 +500,16 @@ export default function Dashboard() {
             </div>
           </Card>
         </>
+      )}
+      {drilldownIndicator && (
+        <DashboardDrilldownModal
+          indicator={drilldownIndicator}
+          from={range.from}
+          to={range.to}
+          movementType={movementType}
+          periodLabel={periodLabel}
+          onClose={() => setDrilldownIndicator(null)}
+        />
       )}
     </div>
   );
