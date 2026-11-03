@@ -7,8 +7,9 @@ from .models import (
     User, Customer, Contract, CoverageZone, Role, Permission, RolePermission, UserRole,
     TemporaryFunction, TemporaryAssignment, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
     TarifaTraslado, TarifaTrasladoHistorial, TrasladoExterno,
-    InventarioMovimiento,
+    InventarioMovimiento, CanalCaptacion,
 )
+from .models import normalize_canal_captacion_name
 from .domain import (
     SERVICE_TYPE_LABELS, SERVICE_TYPE_FAMILY, SERVICE_TYPE_TO_PLAN_TYPE,
     service_family_label, previous_service_family, is_service_change,
@@ -370,6 +371,37 @@ class TipoSolicitudPublicSerializer(serializers.ModelSerializer):
         fields = ['id', 'code', 'nombre', 'descripcion', 'modo', 'orden']
 
 
+class CanalCaptacionSerializer(serializers.ModelSerializer):
+    """CRUD administrativo de canales de captacion."""
+
+    class Meta:
+        model = CanalCaptacion
+        fields = ['id', 'nombre', 'descripcion', 'activo',
+                  'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_nombre(self, value):
+        nombre = normalize_canal_captacion_name(value)
+        if not nombre:
+            raise serializers.ValidationError('El nombre es obligatorio')
+        duplicados = CanalCaptacion.objects.filter(
+            nombre_normalizado=nombre.casefold())
+        if self.instance is not None:
+            duplicados = duplicados.exclude(pk=self.instance.pk)
+        if duplicados.exists():
+            raise serializers.ValidationError(
+                'Ya existe un canal con ese nombre')
+        return nombre
+
+
+class CanalCaptacionPublicSerializer(serializers.ModelSerializer):
+    """Lo que recibe el selector "¿Como nos conocio?"."""
+
+    class Meta:
+        model = CanalCaptacion
+        fields = ['id', 'nombre']
+
+
 class PromotionSerializer(serializers.ModelSerializer):
     planLabel = serializers.SerializerMethodField()
     is_current = serializers.BooleanField(read_only=True)
@@ -502,6 +534,9 @@ class SaleSerializer(serializers.ModelSerializer):
     coverageZoneId = serializers.IntegerField(
         source='coverage_zone_id', read_only=True)
     coverageZone = serializers.SerializerMethodField()
+    canalCaptacionId = serializers.IntegerField(
+        source='canal_captacion_id', read_only=True)
+    canalCaptacion = serializers.SerializerMethodField()
 
     class Meta:
         model = Sale
@@ -515,7 +550,8 @@ class SaleSerializer(serializers.ModelSerializer):
         fields = fields + [
             'equipmentRetained', 'requiresTechnicalVisit', 'debtApplies',
             'debtAmount', 'totalToCollect', 'version']
-        fields = fields + ['traslado', 'coverageZoneId', 'coverageZone']
+        fields = fields + ['traslado', 'coverageZoneId', 'coverageZone',
+                           'canalCaptacionId', 'canalCaptacion']
 
     @extend_schema_field(str)
     def get_motivoNombre(self, obj):
@@ -590,6 +626,17 @@ class SaleSerializer(serializers.ModelSerializer):
             'is_active': zone.is_active,
         }
 
+    @extend_schema_field(dict)
+    def get_canalCaptacion(self, obj):
+        canal = obj.canal_captacion
+        if not canal:
+            return None
+        return {
+            'id': canal.id,
+            'nombre': canal.nombre,
+            'activo': canal.activo,
+        }
+
 
 class SaleCreateSerializer(serializers.Serializer):
     """Crea una venta. El total se calcula en el servidor a partir del plan."""
@@ -611,6 +658,7 @@ class SaleCreateSerializer(serializers.Serializer):
     notes = serializers.CharField(required=False, allow_blank=True)
     planId = serializers.IntegerField()
     coverageZoneId = serializers.IntegerField(required=False, allow_null=True)
+    canalCaptacionId = serializers.IntegerField(required=False, allow_null=True)
     meterNumber = serializers.CharField(
         required=False, allow_blank=True, max_length=80)
     sellerUserId = serializers.IntegerField(required=False, allow_null=True)
@@ -684,6 +732,22 @@ class SaleCreateSerializer(serializers.Serializer):
                      'La zona solo aplica a contratos, recontrataciones y traslados'})
             coverage_zone = None
         attrs['coverageZone'] = coverage_zone
+
+        canal_captacion_id = attrs.get('canalCaptacionId')
+        if canal_captacion_id is not None:
+            if not contract_mode:
+                raise serializers.ValidationError(
+                    {'canalCaptacionId':
+                     'El canal de captacion solo aplica a contratos y recontrataciones'})
+            canal_captacion = CanalCaptacion.objects.filter(
+                id=canal_captacion_id, activo=True).first()
+            if canal_captacion is None:
+                raise serializers.ValidationError(
+                    {'canalCaptacionId':
+                     'El canal de captacion no existe o esta inactivo'})
+        else:
+            canal_captacion = None
+        attrs['canalCaptacion'] = canal_captacion
         meter_number = (attrs.get('meterNumber') or '').strip()
         seller_user_id = attrs.get('sellerUserId')
 
@@ -897,6 +961,7 @@ class SaleCreateSerializer(serializers.Serializer):
         user = self.context['user']
         plan = validated_data.pop('plan')
         coverage_zone = validated_data.pop('coverageZone', None)
+        canal_captacion = validated_data.pop('canalCaptacion', None)
         promotion = validated_data.pop('promotion', None)
         transfer_tariff = validated_data.pop('transferTariff', None)
         plan_from = validated_data.pop('planFromPlan', None)
@@ -945,6 +1010,7 @@ class SaleCreateSerializer(serializers.Serializer):
             serviceType=validated_data['serviceType'],
             requestType=request_type,
             coverage_zone=coverage_zone,
+            canal_captacion=canal_captacion,
             additionType=validated_data.get('additionType', ''),
             changeReason=validated_data.get('changeReason', ''),
             motivo=motivo,

@@ -25,7 +25,7 @@ from .models import (
     User, Customer, Contract, CoverageZone, Role, Permission, RolePermission, UserRole,
     TemporaryFunction, TemporaryAssignment, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
     TarifaTraslado, TarifaTrasladoHistorial, SaleIdempotencyKey, AuditLog,
-    InventarioMovimiento,
+    InventarioMovimiento, CanalCaptacion,
 )
 from .serializers import (
     UserSerializer, UserWriteSerializer, PermissionSerializer, RoleSerializer,
@@ -36,6 +36,7 @@ from .serializers import (
     PromotionSerializer, PromotionWriteSerializer,
     TipoSolicitudPublicSerializer, MotivoSerializer, MotivoPublicSerializer,
     CoverageZoneSerializer, TarifaTrasladoSerializer, TarifaTrasladoHistorialSerializer,
+    CanalCaptacionSerializer, CanalCaptacionPublicSerializer,
 )
 from .domain import (
     request_type_mode, request_type_catalog,
@@ -750,6 +751,117 @@ class MotivoDetailView(IsAdminMixin, APIView):
 
 
 @extend_schema_view(
+    get=extend_schema(responses={200: CanalCaptacionSerializer(many=True)}),
+    post=extend_schema(request=CanalCaptacionSerializer,
+                       responses={201: CanalCaptacionSerializer, 400: dict}),
+)
+class CanalCaptacionListView(PermissionMixin, APIView):
+    """Catalogo administrable de canales de captacion."""
+
+    def get(self, request):
+        error = self.check_permission(request, 'captacion.view')
+        if error:
+            return error
+        return Response(CanalCaptacionSerializer(
+            CanalCaptacion.objects.all(), many=True).data)
+
+    def post(self, request):
+        error = self.check_permission(request, 'captacion.manage')
+        if error:
+            return error
+        serializer = CanalCaptacionSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({'error': _first_error(serializer)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            canal = serializer.save()
+        except IntegrityError:
+            return Response(
+                {'error': 'Ya existe un canal con ese nombre'},
+                status=status.HTTP_400_BAD_REQUEST)
+        record_audit(request, 'created', 'canal_captacion', canal.id,
+                     after={'nombre': canal.nombre, 'activo': canal.activo})
+        return Response(CanalCaptacionSerializer(canal).data,
+                        status=status.HTTP_201_CREATED)
+
+
+@extend_schema(responses={200: CanalCaptacionPublicSerializer(many=True)})
+class ActiveCanalesCaptacionView(APIView):
+    """Canales activos para el selector "¿Como nos conocio?".
+
+    Sin permisos administrativos: el operador que registra solicitudes
+    necesita el catalogo aunque no pueda modificarlo.
+    """
+
+    def get(self, request):
+        return Response(CanalCaptacionPublicSerializer(
+            CanalCaptacion.objects.filter(activo=True), many=True).data)
+
+
+@extend_schema_view(
+    put=extend_schema(request=CanalCaptacionSerializer,
+                      responses={200: CanalCaptacionSerializer, 400: dict, 404: dict}),
+    patch=extend_schema(request=CanalCaptacionSerializer,
+                        responses={200: CanalCaptacionSerializer, 400: dict, 404: dict}),
+    delete=extend_schema(responses={204: None, 404: dict}),
+)
+class CanalCaptacionDetailView(PermissionMixin, APIView):
+    """Edita o desactiva un canal. Nunca se borra fisicamente."""
+
+    def _get_canal(self, pk):
+        return CanalCaptacion.objects.filter(pk=pk).first()
+
+    def put(self, request, pk):
+        return self._update(request, pk, partial=False)
+
+    def patch(self, request, pk):
+        return self._update(request, pk, partial=True)
+
+    def _update(self, request, pk, partial):
+        error = self.check_permission(request, 'captacion.manage')
+        if error:
+            return error
+        canal = self._get_canal(pk)
+        if canal is None:
+            return Response({'error': 'Canal de captacion no encontrado'},
+                            status=status.HTTP_404_NOT_FOUND)
+        serializer = CanalCaptacionSerializer(
+            canal, data=request.data, partial=partial)
+        if not serializer.is_valid():
+            return Response({'error': _first_error(serializer)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        before = {'nombre': canal.nombre, 'activo': canal.activo,
+                  'descripcion': canal.descripcion}
+        try:
+            canal = serializer.save()
+        except IntegrityError:
+            return Response(
+                {'error': 'Ya existe un canal con ese nombre'},
+                status=status.HTTP_400_BAD_REQUEST)
+        record_audit(request, 'updated', 'canal_captacion', canal.id,
+                     before=before,
+                     after={'nombre': canal.nombre, 'activo': canal.activo,
+                            'descripcion': canal.descripcion})
+        return Response(CanalCaptacionSerializer(canal).data)
+
+    def delete(self, request, pk):
+        error = self.check_permission(request, 'captacion.manage')
+        if error:
+            return error
+        canal = self._get_canal(pk)
+        if canal is None:
+            return Response({'error': 'Canal de captacion no encontrado'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if not canal.activo:
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        canal.activo = False
+        canal.save(update_fields=['activo', 'updated_at'])
+        record_audit(request, 'deactivated', 'canal_captacion', canal.id,
+                     before={'activo': True}, after={'activo': False})
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema_view(
     get=extend_schema(responses={200: PromotionSerializer(many=True)}),
     post=extend_schema(request=PromotionWriteSerializer, responses={201: PromotionSerializer, 400: dict}),
 )
@@ -1101,7 +1213,7 @@ class CustomerDetailView(APIView):
             item['meterMatches'] = matches_by_meter.get(item['meter_number'], [])
 
         sales = Sale.objects.filter(customer=customer).select_related(
-            'plan', 'planFromId', 'createdBy', 'coverage_zone'
+            'plan', 'planFromId', 'createdBy', 'coverage_zone', 'canal_captacion'
         ).order_by('-date', '-id')
         timeline = SaleSerializer(
             sales, many=True, context={'catalog': request_type_catalog()}).data
@@ -1410,7 +1522,7 @@ class SaleListView(APIView):
                 {'error': {'serviceTypeFrom': 'Tipo de servicio desconocido'}},
                 status=status.HTTP_400_BAD_REQUEST)
         qs = Sale.objects.select_related(
-            'plan', 'planFromId', 'createdBy', 'coverage_zone'
+            'plan', 'planFromId', 'createdBy', 'coverage_zone', 'canal_captacion'
         ).filter(deleted_at__isnull=not archived).order_by('-date', '-id')
         if from_date:
             qs = qs.filter(date__gte=from_date)
@@ -1766,6 +1878,27 @@ class SaleDetailView(IsAdminMixin, APIView):
             if mode != MODO_ADICION:
                 data = {**data, 'additionType': ''}
 
+        canal_captacion = sale.canal_captacion
+        if 'canalCaptacionId' in data:
+            canal_captacion_id = data.get('canalCaptacionId')
+            if canal_captacion_id in (None, ''):
+                canal_captacion = None
+            elif str(canal_captacion_id) == str(sale.canal_captacion_id):
+                # Conserva el canal historico aunque ya este inactivo.
+                canal_captacion = sale.canal_captacion
+            else:
+                if not (mode == 'nuevo' or is_rehire):
+                    return Response(
+                        {'error': 'El canal de captacion solo aplica a contratos '
+                                  'y recontrataciones'},
+                        status=status.HTTP_400_BAD_REQUEST)
+                canal_captacion = CanalCaptacion.objects.filter(
+                    id=canal_captacion_id, activo=True).first()
+                if canal_captacion is None:
+                    return Response(
+                        {'error': 'El canal de captacion no existe o esta inactivo'},
+                        status=status.HTTP_400_BAD_REQUEST)
+
         sale.date = data.get('date', sale.date)
         sale.clientCode = data.get('clientCode', sale.clientCode)
         sale.clientName = data.get('clientName', sale.clientName)
@@ -1778,6 +1911,7 @@ class SaleDetailView(IsAdminMixin, APIView):
         sale.plan = plan
         if plan.id != old_plan_id or not sale.planName:
             sale.planName = plan.label
+        sale.canal_captacion = canal_captacion
         sale.planFromId = plan_from
         if plan_from is None:
             sale.planFrom = ''

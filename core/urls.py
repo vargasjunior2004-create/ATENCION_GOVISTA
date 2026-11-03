@@ -23,6 +23,10 @@ urlpatterns = [
     path('motivos/active', views.ActiveMotivosView.as_view()),
     path('motivos/<int:pk>', views.MotivoDetailView.as_view()),
 
+    path('canales-captacion', views.CanalCaptacionListView.as_view()),
+    path('canales-captacion/active', views.ActiveCanalesCaptacionView.as_view()),
+    path('canales-captacion/<int:pk>', views.CanalCaptacionDetailView.as_view()),
+
     path('promotions', views.PromotionListView.as_view()),
     path('promotions/active', views.ActivePromotionsView.as_view()),
     path('promotions/<int:pk>', views.PromotionDetailView.as_view()),

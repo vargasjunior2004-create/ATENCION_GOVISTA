@@ -320,6 +320,10 @@ def normalize_coverage_zone_name(value):
     return ' '.join(normalized.split())
 
 
+def normalize_canal_captacion_name(value):
+    return normalize_coverage_zone_name(value)
+
+
 class CoverageZone(models.Model):
     name = models.CharField(max_length=120)
     normalized_name = models.CharField(max_length=120, unique=True, editable=False)
@@ -343,6 +347,34 @@ class CoverageZone(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class CanalCaptacion(models.Model):
+    """Catalogo administrable de canales de captacion.
+
+    Responde a la pregunta comercial "¿Como nos conocio?". Se administra
+    desde Gestion Comercial y solo se desactiva: las solicitudes historicas
+    conservan su relacion mediante la FK de Sale.
+    """
+
+    nombre = models.CharField(max_length=120)
+    nombre_normalizado = models.CharField(
+        max_length=120, unique=True, editable=False)
+    descripcion = models.CharField(max_length=255, blank=True, default='')
+    activo = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['nombre', 'id']
+
+    def save(self, *args, **kwargs):
+        self.nombre = normalize_canal_captacion_name(self.nombre)
+        self.nombre_normalizado = self.nombre.casefold()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.nombre
 
 
 class Customer(models.Model):
@@ -463,6 +495,10 @@ class Sale(models.Model):
         CoverageZone, null=True, blank=True, on_delete=models.PROTECT,
         related_name='sales',
         help_text='Zona asociada al servicio o destino de traslado')
+    canal_captacion = models.ForeignKey(
+        CanalCaptacion, null=True, blank=True, on_delete=models.PROTECT,
+        related_name='sales',
+        help_text='Canal por el que el cliente conocio el servicio')
     additionType = models.CharField(
         max_length=20, choices=ADDITION_TYPE_CHOICES, blank=True, default='',
         help_text='Sub-tipo de adicion: internet o tv')

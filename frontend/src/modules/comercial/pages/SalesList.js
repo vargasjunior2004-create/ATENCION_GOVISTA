@@ -120,6 +120,12 @@ function SaleCard({ sale, isAdmin, archived, onPreview, onEdit, onDelete, onRest
               <span className="font-semibold text-slate-600">Motivo:</span> {sale.changeReason}
             </div>
           )}
+          {sale.canalCaptacion?.nombre && (
+            <div className="text-xs text-slate-500">
+              <span className="font-semibold text-slate-600">¿Cómo nos conoció?</span>{' '}
+              {sale.canalCaptacion.nombre}
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <span className="text-xs text-slate-400">por {sale.creator?.name || '-'}</span>
             <div className="flex items-center gap-1">
@@ -199,6 +205,7 @@ export default function SalesList() {
       ? parseFloat(sale.totalToCollect).toFixed(2) : null,
     equipmentRetained: sale.requestType === 'recontratacion' ? sale.equipmentRetained : null,
     requiresTechnicalVisit: sale.requestType === 'recontratacion' ? sale.requiresTechnicalVisit : null,
+    canalCaptacionNombre: sale.canalCaptacion?.nombre,
     motivo: sale.changeReason,
     notes: sale.notes,
   });

@@ -92,6 +92,19 @@ const api = {
   updateMotivo: (id, data) => request(`/api/motivos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteMotivo: (id) => request(`/api/motivos/${id}`, { method: 'DELETE' }),
 
+  // Canales de captación
+  getCanalesCaptacion: () => request('/api/canales-captacion'),
+  getActiveCanalesCaptacion: () => request('/api/canales-captacion/active'),
+  createCanalCaptacion: (data) => request('/api/canales-captacion', {
+    method: 'POST', body: JSON.stringify(data),
+  }),
+  updateCanalCaptacion: (id, data) => request(`/api/canales-captacion/${id}`, {
+    method: 'PATCH', body: JSON.stringify(data),
+  }),
+  deleteCanalCaptacion: (id) => request(`/api/canales-captacion/${id}`, {
+    method: 'DELETE',
+  }),
+
   // Promociones
   getPromotions: (planId) => {
     const params = new URLSearchParams();

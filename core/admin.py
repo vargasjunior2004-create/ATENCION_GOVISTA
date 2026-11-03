@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
     User, Plan, Motivo, Promotion, Sale, Backup,
-    TarifaTraslado, TarifaTrasladoHistorial,
+    TarifaTraslado, TarifaTrasladoHistorial, CanalCaptacion,
 )
 
 
@@ -22,6 +22,13 @@ class MotivoAdmin(admin.ModelAdmin):
     list_filter = ('categoria', 'activo')
 
 
+@admin.register(CanalCaptacion)
+class CanalCaptacionAdmin(admin.ModelAdmin):
+    list_display = ('id', 'nombre', 'activo', 'created_at', 'updated_at')
+    list_filter = ('activo',)
+    search_fields = ('nombre',)
+
+
 @admin.register(Promotion)
 class PromotionAdmin(admin.ModelAdmin):
     list_display = ('id', 'name', 'plan', 'apply_installation', 'apply_monthly',
@@ -33,7 +40,7 @@ class PromotionAdmin(admin.ModelAdmin):
 @admin.register(Sale)
 class SaleAdmin(admin.ModelAdmin):
     list_display = ('id', 'date', 'clientCode', 'clientName', 'plan',
-                    'total', 'createdBy')
+                    'canal_captacion', 'total', 'createdBy')
 
 
 @admin.register(TarifaTraslado)
