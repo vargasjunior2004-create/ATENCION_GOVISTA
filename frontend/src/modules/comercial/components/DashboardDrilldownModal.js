@@ -85,7 +85,7 @@ function ResultSummary({ breakdown, selectedCategory, onSelect }) {
   );
 }
 
-function RowDetails({ sale, isRetirement }) {
+function RowDetails({ sale, isRetirement, isPlanChange }) {
   return (
     <span className="grid gap-2 text-sm">
       <span>
@@ -97,6 +97,12 @@ function RowDetails({ sale, isRetirement }) {
         <span className="text-right text-slate-700">{displayDate(sale.date)}</span>
         <span className="text-slate-500">Servicio</span>
         <span className="text-right text-slate-700">{SERVICE_LABELS[sale.serviceType] || sale.serviceType || '—'}</span>
+        {isPlanChange && (
+          <>
+            <span className="text-slate-500">Plan anterior</span>
+            <span className="text-right text-slate-700">{sale.planFrom || sale.previousPlan?.label || '—'}</span>
+          </>
+        )}
         <span className="text-slate-500">Plan</span>
         <span className="text-right text-slate-700">{sale.Plan?.label || '—'}</span>
         {isRetirement && (
@@ -177,6 +183,7 @@ export default function DashboardDrilldownModal({
   };
 
   const isRetirement = category === 'retiros';
+  const isPlanChange = category === 'cambios_plan';
   const sales = result?.items || [];
   const breakdown = result?.breakdown || [];
   const selectedLabel = CATEGORY_LABELS[category] || INDICATOR_LABELS[indicator];
@@ -292,6 +299,7 @@ export default function DashboardDrilldownModal({
                         <th className="px-4 py-3">Cliente</th>
                         <th className="px-4 py-3">Fecha</th>
                         <th className="px-4 py-3">Servicio</th>
+                        {isPlanChange && <th className="px-4 py-3">Plan anterior</th>}
                         <th className="px-4 py-3">Plan</th>
                         {isRetirement && <th className="px-4 py-3">Motivo</th>}
                         <th className="px-4 py-3">Registró</th>
@@ -319,6 +327,7 @@ export default function DashboardDrilldownModal({
                           </td>
                           <td className="px-4 py-3 text-slate-600">{displayDate(sale.date)}</td>
                           <td className="px-4 py-3 text-slate-600">{SERVICE_LABELS[sale.serviceType] || sale.serviceType || '—'}</td>
+                          {isPlanChange && <td className="px-4 py-3 text-slate-600">{sale.planFrom || sale.previousPlan?.label || '—'}</td>}
                           <td className="px-4 py-3 text-slate-600">{sale.Plan?.label || '—'}</td>
                           {isRetirement && <td className="px-4 py-3 text-slate-600">{sale.changeReason || sale.motivoNombre || '—'}</td>}
                           <td className="px-4 py-3 text-slate-600">{sale.creator?.name || '—'}</td>
@@ -335,7 +344,7 @@ export default function DashboardDrilldownModal({
                       onClick={() => setPreviewSale(sale)}
                       className="w-full rounded-xl border border-slate-200 p-4 text-left transition-colors hover:border-brand-300 hover:bg-brand-50/40 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
                     >
-                      <RowDetails sale={sale} isRetirement={isRetirement} />
+                      <RowDetails sale={sale} isRetirement={isRetirement} isPlanChange={isPlanChange} />
                     </button>
                   ))}
                 </div>
