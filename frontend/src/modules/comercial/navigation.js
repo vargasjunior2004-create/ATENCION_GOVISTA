@@ -1,5 +1,4 @@
 import {
-  Database,
   FilePlus2,
   History,
   LayoutDashboard,
@@ -9,7 +8,6 @@ import {
   Percent,
   Tag,
   SlidersHorizontal,
-  Users,
   UserRoundSearch,
 } from 'lucide-react';
 
@@ -74,19 +72,6 @@ export const commercialAdminNavigation = [
     icon: Percent,
     permission: 'commercial_config.manage',
     group: 'Configuración comercial',
-  },
-  {
-    to: '/comercial/usuarios',
-    label: 'Usuarios',
-    icon: Users,
-    permission: 'users.manage',
-    group: 'Administración',
-  },
-  {
-    to: '/comercial/backups',
-    label: 'Copias de Seguridad',
-    icon: Database,
-    group: 'Administración',
   },
   {
     to: '/comercial/tarifas-traslados',

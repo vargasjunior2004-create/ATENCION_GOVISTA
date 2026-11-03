@@ -19,7 +19,8 @@ class CoreJWTAuthentication(JWTAuthentication):
 
         for attempt in range(5):
             try:
-                return User.objects.get(id=user_id)
+                user = User.objects.get(id=user_id)
+                break
             except User.DoesNotExist:
                 raise InvalidToken('User not found')
             except OperationalError as e:
@@ -28,4 +29,16 @@ class CoreJWTAuthentication(JWTAuthentication):
                 wait = 0.5 * (attempt + 1)
                 logger.warning('DB locked in auth, retry %d in %.1fs', attempt + 1, wait)
                 time.sleep(wait)
-        raise InvalidToken('Database unavailable')
+        else:
+            raise InvalidToken('Database unavailable')
+
+        if not user.active:
+            raise InvalidToken('User is inactive')
+
+        token_version = validated_token.get('ver')
+        # Los tokens emitidos antes de esta versión no llevan 'ver'. Se
+        # aceptan hasta que expiren; los nuevos siempre lo incluyen.
+        if token_version is not None and int(token_version) != user.token_version:
+            raise InvalidToken('Token has been revoked')
+
+        return user

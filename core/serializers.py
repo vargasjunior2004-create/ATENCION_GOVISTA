@@ -135,14 +135,20 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'name', 'role', 'active', 'roles']
+        fields = [
+            'id', 'name', 'role', 'active', 'roles',
+            'last_login_at', 'last_login_ip', 'must_change_password',
+            'created_at',
+        ]
 
     def get_roles(self, obj):
         return [
             {
                 'id': assignment.role_id,
+                'code': assignment.role.code,
                 'name': assignment.role.name,
                 'is_system_role': assignment.role.is_system_role,
+                'grants_full_access': assignment.role.grants_full_access,
             }
             for assignment in obj.role_assignments.all()
             if assignment.active and assignment.role.active
@@ -151,6 +157,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 class UserWriteSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False)
+    password_confirm = serializers.CharField(write_only=True, required=False)
     roleIds = serializers.ListField(
         child=serializers.IntegerField(min_value=1),
         required=False,
@@ -159,26 +166,64 @@ class UserWriteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'name', 'password', 'active', 'roleIds']
+        fields = [
+            'id', 'name', 'password', 'password_confirm', 'active', 'roleIds',
+        ]
 
     def validate(self, attrs):
+        from .models import normalize_user_name
+        from .passwords import PasswordPolicyError, validate_password
+
         if 'role' in self.initial_data:
             raise serializers.ValidationError({
                 'role': 'El rol heredado ya no se registra; asigne roleIds.'
             })
+
+        name = attrs.get('name')
+        if name is not None:
+            normalized = normalize_user_name(name)
+            if not normalized:
+                raise serializers.ValidationError(
+                    {'name': 'El nombre no puede estar vacío.'})
+            duplicates = User.objects.filter(name_normalized=normalized)
+            if self.instance is not None:
+                duplicates = duplicates.exclude(pk=self.instance.pk)
+            if duplicates.exists():
+                raise serializers.ValidationError(
+                    {'name': 'Ya existe un usuario con ese nombre.'})
+
+        password = attrs.get('password')
+        if password:
+            confirmation = attrs.get('password_confirm')
+            if confirmation is None:
+                raise serializers.ValidationError({
+                    'password_confirm': 'Confirme la contraseña.'})
+            if password != confirmation:
+                raise serializers.ValidationError({
+                    'password_confirm': 'Las contraseñas no coinciden.'})
+            try:
+                validate_password(password, self.instance or User(
+                    name=attrs.get('name') or ''))
+            except PasswordPolicyError as exc:
+                raise serializers.ValidationError({'password': str(exc)})
+
         return attrs
 
     def create(self, validated_data):
         password = validated_data.pop('password', None)
+        validated_data.pop('password_confirm', None)
         validated_data.pop('roleIds', None)
         user = User(**validated_data)
         if password:
             user.set_password(password)
+        else:
+            user.set_password('')
         user.save()
         return user
 
     def update(self, instance, validated_data):
         password = validated_data.pop('password', None)
+        validated_data.pop('password_confirm', None)
         validated_data.pop('roleIds', None)
         if password:
             instance.set_password(password)
@@ -190,24 +235,42 @@ class PermissionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Permission
-        fields = ['id', 'code', 'module', 'action', 'name', 'description', 'active']
+        fields = [
+            'id', 'code', 'module', 'resource', 'action', 'name',
+            'description', 'active', 'is_reserved', 'sort_order',
+        ]
 
 
 class RoleSerializer(serializers.ModelSerializer):
     permissions = serializers.SerializerMethodField()
+    user_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Role
         fields = [
             'id', 'code', 'name', 'description', 'active',
-            'is_system_role', 'permissions', 'created_at', 'updated_at',
+            'is_system_role', 'grants_full_access', 'permissions',
+            'user_count', 'created_at', 'updated_at',
         ]
-        read_only_fields = ['is_system_role', 'permissions', 'created_at', 'updated_at']
+        read_only_fields = [
+            'is_system_role', 'grants_full_access', 'permissions',
+            'user_count', 'created_at', 'updated_at',
+        ]
+
+    def validate_code(self, value):
+        if self.instance is not None and value != self.instance.code:
+            raise serializers.ValidationError(
+                'El código del rol no se puede modificar.')
+        return value
 
     def get_permissions(self, obj):
         permissions = Permission.objects.filter(
-            role_permissions__role=obj, active=True).order_by('module', 'action')
+            role_permissions__role=obj, active=True).order_by(
+                'module', 'resource', 'action')
         return PermissionSerializer(permissions, many=True).data
+
+    def get_user_count(self, obj):
+        return obj.user_assignments.filter(active=True).count()
 
 
 class UserRoleSerializer(serializers.ModelSerializer):

@@ -1,4 +1,4 @@
-import { Briefcase, Headphones, MapPinned, Router } from 'lucide-react';
+import { Briefcase, Headphones, MapPinned, Router, ShieldCheck } from 'lucide-react';
 
 export const MODULES = [
   {
@@ -7,6 +7,15 @@ export const MODULES = [
     description: 'Solicitudes comerciales, contratos, cambios de plan y reportes.',
     icon: Briefcase,
     to: '/comercial',
+    status: 'available',
+  },
+  {
+    id: 'administracion',
+    name: 'Administración del Sistema',
+    description: 'Usuarios, roles, auditoría, respaldos y seguridad.',
+    icon: ShieldCheck,
+    to: '/administracion',
+    permission: 'sistema.acceso.view',
     status: 'available',
   },
   {
