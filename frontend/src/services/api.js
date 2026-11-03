@@ -55,11 +55,10 @@ const api = {
   },
   getDashboardDrilldown: ({
     indicator, category, from, to, movementType = 'all',
-    search = '', page = 1, pageSize = 25,
+    zoneName = '', search = '', page = 1, pageSize = 25,
   }) => {
     const params = new URLSearchParams({
       indicator,
-      category,
       from,
       to,
       movement_type: movementType,
@@ -67,6 +66,8 @@ const api = {
       page: String(page),
       page_size: String(pageSize),
     });
+    if (category) params.set('category', category);
+    if (zoneName) params.set('zone_name', zoneName);
     return request(`/api/dashboard/drilldown?${params.toString()}`);
   },
 

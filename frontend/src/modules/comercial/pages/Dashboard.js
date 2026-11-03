@@ -199,6 +199,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [drilldownIndicator, setDrilldownIndicator] = useState(null);
+  const [drilldownZoneName, setDrilldownZoneName] = useState('');
   const requestId = useRef(0);
 
   const visiblePeriod = isAdmin ? period : 'today';
@@ -409,7 +410,16 @@ export default function Dashboard() {
                       {zones.map((zone) => {
                         const width = Math.max(zone.percentage, zone.count ? 2 : 0);
                         return (
-                          <div key={zone.name}>
+                          <button
+                            key={zone.name}
+                            type="button"
+                            aria-label={`Consultar solicitudes de ${zone.name}`}
+                            onClick={() => {
+                              setDrilldownZoneName(zone.name);
+                              setDrilldownIndicator('zone');
+                            }}
+                            className="block w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/30"
+                          >
                             <div className="mb-1.5 flex items-center justify-between gap-3 text-sm">
                               <span className="min-w-0 truncate font-semibold text-slate-600">
                                 {zone.name}
@@ -432,7 +442,7 @@ export default function Dashboard() {
                                 style={{ width: `${width}%` }}
                               />
                             </div>
-                          </div>
+                          </button>
                         );
                       })}
                       <p className="border-t border-slate-100 pt-3 text-xs text-slate-400">
@@ -501,11 +511,15 @@ export default function Dashboard() {
       {drilldownIndicator && (
         <DashboardDrilldownModal
           indicator={drilldownIndicator}
+          zoneName={drilldownZoneName}
           from={range.from}
           to={range.to}
           movementType={movementType}
           periodLabel={periodLabel}
-          onClose={() => setDrilldownIndicator(null)}
+          onClose={() => {
+            setDrilldownIndicator(null);
+            setDrilldownZoneName('');
+          }}
         />
       )}
     </div>
