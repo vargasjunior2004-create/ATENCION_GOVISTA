@@ -590,6 +590,10 @@ class SaleSerializer(serializers.ModelSerializer):
     requiresTechnicalVisit = serializers.BooleanField(
         source='requires_technical_visit', read_only=True)
     debtApplies = serializers.BooleanField(source='debt_applies', read_only=True)
+    equipmentDelivered = serializers.BooleanField(
+        source='equipment_delivered', read_only=True)
+    equipmentSerial = serializers.CharField(
+        source='equipment_serial', read_only=True)
     debtAmount = serializers.DecimalField(
         source='debt_amount', max_digits=12, decimal_places=2, read_only=True)
     totalToCollect = serializers.SerializerMethodField()
@@ -612,7 +616,8 @@ class SaleSerializer(serializers.ModelSerializer):
                    'applied_installation', 'applied_monthly', 'previousPlan']
         fields = fields + [
             'equipmentRetained', 'requiresTechnicalVisit', 'debtApplies',
-            'debtAmount', 'totalToCollect', 'version']
+            'equipmentDelivered', 'equipmentSerial', 'debtAmount',
+            'totalToCollect', 'version']
         fields = fields + ['traslado', 'coverageZoneId', 'coverageZone',
                            'canalCaptacionId', 'canalCaptacion']
 

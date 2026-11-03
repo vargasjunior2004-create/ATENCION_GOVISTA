@@ -71,8 +71,13 @@ export function SalePreviewDetails({ sale }) {
       {isRehire && sale.requiresTechnicalVisit != null && (
         <PreviewRow label="Requiere visita técnica" value={sale.requiresTechnicalVisit ? 'Sí' : 'No'} />
       )}
+      {sale.equipmentDelivered != null && (
+        <PreviewRow label="Equipo entregado" value={sale.equipmentDelivered ? 'Sí' : 'No'} />
+      )}
+      {sale.equipmentSerial && <PreviewRow label="Serie del equipo" value={sale.equipmentSerial} />}
       {sale.motivo && <PreviewRow label="Motivo" value={sale.motivo} />}
       {sale.notes && <PreviewRow label="Comentarios" value={sale.notes} />}
+      {sale.creatorName && <PreviewRow label="Registró" value={sale.creatorName} />}
     </div>
   );
 }
