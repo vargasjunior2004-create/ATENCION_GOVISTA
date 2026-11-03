@@ -170,6 +170,7 @@ export default function SaleForm() {
   const isCambio = modo === 'cambio_plan';
   const isAdicion = modo === 'adicion';
   const isRecontratacion = form.requestType === 'recontratacion';
+  const isNewContract = form.requestType === 'nuevo_contrato';
   const isContract = modo === 'nuevo' || isRecontratacion;
   const isTransfer = form.requestType === 'traslado_externo';
   const requiresCoverageZone = isContract || isTransfer;
@@ -308,7 +309,7 @@ export default function SaleForm() {
         next.motivoId = '';
         next.coverageZoneId = '';
         const nuevoModo = modoOf(value);
-        if (nuevoModo !== 'nuevo') next.canalCaptacionId = '';
+        if (value !== 'nuevo_contrato') next.canalCaptacionId = '';
         if (nuevoModo !== 'adicion') next.additionType = '';
         if (nuevoModo !== 'cambio_plan') {
           next.planFromId = '';
@@ -388,7 +389,7 @@ export default function SaleForm() {
         payload.clientCi = form.clientCi;
         payload.clientPhone = form.clientPhone;
         payload.meterNumber = form.meterNumber;
-        if (form.canalCaptacionId) {
+        if (isNewContract && form.canalCaptacionId) {
           payload.canalCaptacionId = Number(form.canalCaptacionId);
         }
         if (form.sellerUserId) {
@@ -505,7 +506,7 @@ export default function SaleForm() {
     transferNewAddress: isTransfer ? form.transferNewAddress : null,
     transferZone: isTransfer ? selectedCoverageZone?.name : null,
     coverageZoneName: requiresCoverageZone ? selectedCoverageZone?.name : null,
-    canalCaptacionNombre: isContract
+    canalCaptacionNombre: isNewContract
       ? canalCaptacionNombreOf(Number(form.canalCaptacionId)) : null,
     transferReferences: isTransfer ? form.transferReferences : null,
     transferHasSketch: isTransfer ? form.transferHasSketch : null,
@@ -612,24 +613,28 @@ export default function SaleForm() {
                 </Select>
               </div>
               {coverageZoneSelect}
-              <Select
-                label="¿Cómo nos conoció?"
-                name="canalCaptacionId"
-                value={form.canalCaptacionId}
-                onChange={handleChange}
-                disabled={canalesCaptacionLoading}
-              >
-                <option value="">
-                  {canalesCaptacionLoading
-                    ? 'Cargando canales...'
-                    : 'Seleccione un canal (opcional)'}
-                </option>
-                {canalesCaptacion.map((canal) => (
-                  <option key={canal.id} value={canal.id}>{canal.nombre}</option>
-                ))}
-              </Select>
-              {canalesCaptacionError && (
-                <p className="text-xs text-red-600">{canalesCaptacionError}</p>
+              {isNewContract && (
+                <>
+                  <Select
+                    label="¿Cómo nos conoció?"
+                    name="canalCaptacionId"
+                    value={form.canalCaptacionId}
+                    onChange={handleChange}
+                    disabled={canalesCaptacionLoading}
+                  >
+                    <option value="">
+                      {canalesCaptacionLoading
+                        ? 'Cargando canales...'
+                        : 'Seleccione un canal (opcional)'}
+                    </option>
+                    {canalesCaptacion.map((canal) => (
+                      <option key={canal.id} value={canal.id}>{canal.nombre}</option>
+                    ))}
+                  </Select>
+                  {canalesCaptacionError && (
+                    <p className="text-xs text-red-600">{canalesCaptacionError}</p>
+                  )}
+                </>
               )}
               <div className="rounded-xl border border-sky-100 bg-white/80 px-4 py-3">
                 <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
