@@ -36,10 +36,10 @@ const api = {
 
   me: () => request('/api/auth/me'),
 
-  changePassword: (current_password, new_password) =>
+  changePassword: (current_password, new_password, new_password_confirm) =>
     request('/api/auth/change-password', {
       method: 'POST',
-      body: JSON.stringify({ current_password, new_password }),
+      body: JSON.stringify({ current_password, new_password, new_password_confirm }),
     }),
 
   // Dashboard
@@ -157,17 +157,18 @@ const api = {
   }),
 
   // Usuarios
-  getUsers: () => request('/api/users'),
+  getUsers: () => request('/api/admin/usuarios').then((data) => data.results || data),
   getActiveExternalSellers: () => request('/api/external-sellers/active'),
-  createUser: (data) => request('/api/users', { method: 'POST', body: JSON.stringify(data) }),
-  updateUser: (id, data) => request(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  getRoles: () => request('/api/roles'),
-  getPermissions: () => request('/api/permissions'),
-  createRole: (data) => request('/api/roles', { method: 'POST', body: JSON.stringify(data) }),
-  updateRole: (id, data) => request(`/api/roles/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  getUserRoles: (id) => request(`/api/users/${id}/roles`),
-  assignUserRole: (id, role) => request(`/api/users/${id}/roles`, { method: 'POST', body: JSON.stringify({ role }) }),
-  revokeUserRole: (id) => request(`/api/user-roles/${id}`, { method: 'DELETE' }),
+  createUser: (data) => request('/api/admin/usuarios', { method: 'POST', body: JSON.stringify(data) }),
+  updateUser: (id, data) => request(`/api/admin/usuarios/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  getRoles: () => request('/api/admin/roles'),
+  getPermissions: () => request('/api/admin/permisos'),
+  getAdminAudit: () => request('/api/admin/auditoria'),
+  createRole: (data) => request('/api/admin/roles', { method: 'POST', body: JSON.stringify(data) }),
+  updateRole: (id, data) => request(`/api/admin/roles/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  getUserRoles: (id) => request(`/api/admin/usuarios/${id}/roles`),
+  assignUserRole: (id, role) => request(`/api/admin/usuarios/${id}/roles`, { method: 'POST', body: JSON.stringify({ role }) }),
+  revokeUserRole: (id) => request(`/api/admin/usuarios/roles/${id}`, { method: 'DELETE' }),
   getTemporaryFunctions: () => request('/api/temporary-functions'),
   getTemporaryAssignments: () => request('/api/temporary-assignments'),
   createTemporaryAssignment: (data) => request('/api/temporary-assignments', { method: 'POST', body: JSON.stringify(data) }),
@@ -217,12 +218,12 @@ const api = {
   getDashboardPNG: () => request('/api/reports/dashboard/png'),
 
   // Backups
-  getBackups: () => request('/api/backups'),
+  getBackups: () => request('/api/admin/respaldos'),
   // Genera el respaldo y devuelve el archivo .dump directamente.
   // El servidor lo borra tras la transmision: no queda almacenado en Render.
   createBackup: () => {
     const token = localStorage.getItem('token');
-    return fetch(`${API_URL}/api/backups`, {
+    return fetch(`${API_URL}/api/admin/respaldos`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -243,7 +244,7 @@ const api = {
       return { blob: await res.blob(), filename };
     });
   },
-  deleteBackup: (id) => request(`/api/backups/${id}`, { method: 'DELETE' }),
+  deleteBackup: (id) => request(`/api/admin/respaldos/${id}`, { method: 'DELETE' }),
 };
 
 export default api;

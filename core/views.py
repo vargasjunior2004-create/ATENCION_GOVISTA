@@ -104,9 +104,10 @@ def _user_payload(user):
         'code': assignment.role.code,
         'name': assignment.role.name,
         'is_system_role': assignment.role.is_system_role,
+        'grants_full_access': assignment.role.grants_full_access,
     } for assignment in assignments]
     permissions = sorted({
-        f'{role_permission.permission.module}.{role_permission.permission.action}'
+        role_permission.permission.code
         for assignment in assignments
         for role_permission in assignment.role.role_permissions.all()
         if role_permission.permission.active
@@ -114,9 +115,9 @@ def _user_payload(user):
     return {'id': user.id, 'name': user.name,
             'role': user.role, 'active': user.active, 'roles': roles,
             'permissions': permissions,
-            'isSystemAdmin': (
-                user.role == 'admin'
-                or any(role['is_system_role'] for role in roles))}
+            'mustChangePassword': user.must_change_password,
+            'lastLoginAt': user.last_login_at,
+            'isSystemAdmin': is_system_admin(user)}
 
 
 class IsAdminMixin:
@@ -147,7 +148,7 @@ class PermissionMixin:
 
 
 class PermissionListView(PermissionMixin, APIView):
-    permission_code = 'roles.view'
+    permission_code = 'roles.permisos.view'
 
     def get(self, request):
         error = self.check_permission(request)
@@ -159,55 +160,132 @@ class PermissionListView(PermissionMixin, APIView):
 
 
 class AuditLogListView(PermissionMixin, APIView):
-    permission_code = 'audit.view'
+    permission_code = 'auditoria.eventos.view'
 
     def get(self, request):
         error = self.check_permission(request)
         if error:
             return error
-        events = AuditLog.objects.select_related('actor').all()[:200]
-        return Response([{
-            'id': event.id,
-            'action': event.action,
-            'entity': event.entity,
-            'entityId': event.entity_id,
-            'actor': event.actor.name if event.actor else 'Sistema',
-            'before': event.before,
-            'after': event.after,
-            'ip': event.ip,
-            'createdAt': event.created_at,
-        } for event in events])
+        events = AuditLog.objects.select_related('actor').all()
+        actor = (request.query_params.get('actor') or '').strip()
+        if actor:
+            events = events.filter(actor__name__icontains=actor)
+        action = (request.query_params.get('action') or '').strip()
+        if action:
+            events = events.filter(action=action)
+        entity = (request.query_params.get('entity') or '').strip()
+        if entity:
+            events = events.filter(entity=entity)
+        module = (request.query_params.get('module') or '').strip()
+        if module:
+            events = events.filter(module=module)
+        entity_id = (request.query_params.get('entity_id') or '').strip()
+        if entity_id:
+            events = events.filter(entity_id=entity_id)
+        outcome = (request.query_params.get('outcome') or '').strip()
+        if outcome in ('success', 'failure'):
+            events = events.filter(outcome=outcome)
+        date_from = (request.query_params.get('from') or '').strip()
+        date_to = (request.query_params.get('to') or '').strip()
+        try:
+            if date_from:
+                events = events.filter(
+                    created_at__date=date.fromisoformat(date_from))
+            if date_to:
+                events = events.filter(
+                    created_at__date=date.fromisoformat(date_to))
+        except ValueError:
+            return Response({'error': 'Use fechas YYYY-MM-DD'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        total = events.count()
+        page, error = _query_int(request.query_params, 'page', 1)
+        if error:
+            return error
+        page_size, error = _query_int(
+            request.query_params, 'page_size', 50, maximum=200)
+        if error:
+            return error
+        start = (page - 1) * page_size
+        events = events[start:start + page_size]
+        return Response({
+            'count': total,
+            'page': page,
+            'page_size': page_size,
+            'results': [{
+                'id': event.id,
+                'action': event.action,
+                'entity': event.entity,
+                'entityId': event.entity_id,
+                'module': event.module,
+                'outcome': event.outcome,
+                'requestId': event.request_id,
+                'actor': event.actor.name if event.actor else 'Sistema',
+                'before': event.before,
+                'after': event.after,
+                'ip': event.ip,
+                'createdAt': event.created_at,
+            } for event in events],
+        })
 
 
 class RoleListView(PermissionMixin, APIView):
     def get(self, request):
-        error = self.check_permission(request, 'roles.view')
+        error = self.check_permission(request, 'roles.roles.view')
         if error:
             return error
-        return Response(RoleSerializer(
-            Role.objects.filter(active=True).prefetch_related(
-                'role_permissions__permission'), many=True).data)
+        roles = Role.objects.prefetch_related(
+            'role_permissions__permission', 'user_assignments')
+        include_inactive = request.query_params.get(
+            'include_inactive', '').lower() in ('1', 'true', 'yes')
+        if not include_inactive:
+            roles = roles.filter(active=True)
+        return Response(RoleSerializer(roles, many=True).data)
 
     def post(self, request):
-        error = self.check_permission(request, 'roles.manage')
+        error = self.check_permission(request, 'roles.roles.create')
         if error:
             return error
         serializer = RoleSerializer(data=request.data)
         if not serializer.is_valid():
-            return Response({'error': serializer.errors}, status=400)
-        role = serializer.save()
-        self._set_permissions(role, request.data.get('permissionIds', []))
-        record_audit(request, 'created', 'role', role.id,
-                     after={'code': role.code, 'name': role.name})
+            return Response({'error': serializer.errors, 'fields': serializer.errors},
+                            status=400)
+        role = serializer.save(is_system_role=False, grants_full_access=False)
+        try:
+            self._set_permissions(role, request.data.get('permissionIds', []),
+                                  request.user)
+        except ValueError as exc:
+            role.delete()
+            return Response({'error': str(exc)}, status=400)
+        record_audit(request, 'created', 'role', role.id, module='roles',
+                     after={'code': role.code, 'name': role.name,
+                            'permissions': sorted(
+                                role.role_permissions.values_list(
+                                    'permission__module',
+                                    'permission__resource',
+                                    'permission__action'))})
         return Response(RoleSerializer(role).data, status=201)
 
     @staticmethod
-    def _set_permissions(role, permission_ids):
+    def _set_permissions(role, permission_ids, actor=None):
         if permission_ids is None:
             return
+        if role.is_system_role:
+            raise ValueError('Los permisos de un rol protegido son de solo lectura.')
+        permissions = list(Permission.objects.filter(
+            id__in=permission_ids, active=True))
+        if len(permissions) != len(set(permission_ids)):
+            raise ValueError('Uno o más permisos no existen o están inactivos.')
+        from .rbac import can_grant_permission
+        if actor is not None:
+            for permission in permissions:
+                if not can_grant_permission(actor, permission):
+                    raise ValueError(
+                        f'No puedes asignar el permiso {permission.code}.')
         RolePermission.objects.filter(role=role).delete()
-        for permission in Permission.objects.filter(id__in=permission_ids, active=True):
-            RolePermission.objects.get_or_create(role=role, permission=permission)
+        for permission in permissions:
+            RolePermission.objects.get_or_create(
+                role=role, permission=permission)
 
 
 class RoleDetailView(PermissionMixin, APIView):
@@ -215,7 +293,7 @@ class RoleDetailView(PermissionMixin, APIView):
         return Role.objects.filter(pk=pk).first()
 
     def get(self, request, pk):
-        error = self.check_permission(request, 'roles.view')
+        error = self.check_permission(request, 'roles.roles.view')
         if error:
             return error
         role = self.get_object(pk)
@@ -224,23 +302,64 @@ class RoleDetailView(PermissionMixin, APIView):
         return Response(RoleSerializer(role).data)
 
     def put(self, request, pk):
-        error = self.check_permission(request, 'roles.manage')
+        error = self.check_permission(request, 'roles.roles.change')
         if error:
             return error
         role = self.get_object(pk)
         if role is None:
             return Response({'error': 'Rol no encontrado'}, status=404)
         if role.is_system_role:
-            return Response({'error': 'El rol del sistema no puede modificarse'}, status=400)
+            return Response(
+                {'error': 'El rol protegido no puede modificarse.'}, status=400)
         serializer = RoleSerializer(role, data=request.data, partial=True)
         if not serializer.is_valid():
-            return Response({'error': serializer.errors}, status=400)
-        before = {'name': role.name, 'active': role.active}
-        role = serializer.save()
-        RoleListView._set_permissions(role, request.data.get('permissionIds'))
-        record_audit(request, 'updated', 'role', role.id,
-                     before=before, after={'name': role.name, 'active': role.active})
+            return Response({'error': serializer.errors, 'fields': serializer.errors},
+                            status=400)
+        before = {
+            'name': role.name,
+            'active': role.active,
+            'permissions': sorted(role.role_permissions.values_list(
+                'permission__module', 'permission__resource',
+                'permission__action')),
+        }
+        try:
+            role = serializer.save()
+            RoleListView._set_permissions(
+                role, request.data.get('permissionIds'), request.user)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=400)
+        record_audit(
+            request, 'updated', 'role', role.id, module='roles',
+            before=before,
+            after={
+                'name': role.name,
+                'active': role.active,
+                'permissions': sorted(role.role_permissions.values_list(
+                    'permission__module', 'permission__resource',
+                    'permission__action')),
+            })
         return Response(RoleSerializer(role).data)
+
+    def delete(self, request, pk):
+        error = self.check_permission(request, 'roles.roles.delete')
+        if error:
+            return error
+        role = self.get_object(pk)
+        if role is None:
+            return Response({'error': 'Rol no encontrado'}, status=404)
+        if role.is_system_role:
+            return Response(
+                {'error': 'El rol protegido no puede eliminarse.'}, status=400)
+        if role.user_assignments.filter(active=True).exists():
+            return Response(
+                {'error': 'No se puede eliminar el rol porque tiene usuarios '
+                          'asignados. Desactívelo en su lugar.'},
+                status=status.HTTP_409_CONFLICT)
+        role.active = False
+        role.save(update_fields=['active', 'updated_at'])
+        record_audit(request, 'deactivated', 'role', role.id, module='roles',
+                     after={'active': False})
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class TemporaryFunctionListView(PermissionMixin, APIView):
@@ -254,7 +373,7 @@ class TemporaryFunctionListView(PermissionMixin, APIView):
 
 class UserRoleListView(PermissionMixin, APIView):
     def get(self, request, user_id):
-        error = self.check_permission(request, 'roles.view')
+        error = self.check_permission(request, 'roles.roles.view')
         if error:
             return error
         if not User.objects.filter(pk=user_id).exists():
@@ -263,35 +382,55 @@ class UserRoleListView(PermissionMixin, APIView):
         return Response(UserRoleSerializer(assignments, many=True).data)
 
     def post(self, request, user_id):
-        error = self.check_permission(request, 'roles.manage')
+        error = self.check_permission(request, 'roles.roles.change')
         if error:
             return error
         user = User.objects.filter(pk=user_id).first()
         role = Role.objects.filter(pk=request.data.get('role'), active=True).first()
         if user is None or role is None:
             return Response({'error': 'Usuario o rol no encontrado'}, status=404)
+        if role.is_system_role:
+            return Response(
+                {'error': 'Los roles protegidos se asignan mediante el flujo '
+                          'especial de administración.'},
+                status=status.HTTP_400_BAD_REQUEST)
         assignment, created = UserRole.objects.get_or_create(
             user=user, role=role, active=True,
             defaults={'assigned_by': request.user})
         if not created:
             return Response({'error': 'El usuario ya tiene ese rol activo'}, status=409)
         record_audit(request, 'assigned', 'user_role', assignment.id,
+                     module='roles',
                      after={'user_id': user.id, 'role': role.code})
         return Response(UserRoleSerializer(assignment).data, status=201)
 
 
 class UserRoleDetailView(PermissionMixin, APIView):
     def delete(self, request, pk):
-        error = self.check_permission(request, 'roles.manage')
+        error = self.check_permission(request, 'roles.roles.change')
         if error:
             return error
         assignment = UserRole.objects.select_related('role', 'user').filter(pk=pk).first()
         if assignment is None:
             return Response({'error': 'Asignación de rol no encontrada'}, status=404)
+        if assignment.role.grants_full_access:
+            from .rbac import is_last_superadmin
+            if is_last_superadmin(assignment.user):
+                return Response(
+                    {'error': 'No puedes revocar el acceso del último '
+                              'administrador de sistemas activo.'},
+                    status=status.HTTP_409_CONFLICT)
+            if assignment.user_id == request.user.id:
+                return Response(
+                    {'error': 'No puedes revocar tu propio acceso total.'},
+                    status=status.HTTP_400_BAD_REQUEST)
         assignment.active = False
         assignment.revoked_at = timezone.now()
         assignment.save(update_fields=['active', 'revoked_at'])
+        assignment.user.bump_token_version()
+        assignment.user.save(update_fields=['token_version', 'updated_at'])
         record_audit(request, 'revoked', 'user_role', assignment.id,
+                     module='roles',
                      after={'user_id': assignment.user_id, 'role': assignment.role.code})
         return Response(status=204)
 
@@ -402,6 +541,10 @@ class LoginView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        from .login_security import (
+            client_ip, lockout_remaining, register_failure, register_success)
+        from .models import normalize_user_name
+
         name = (request.data.get('name') or '').strip()
         password = request.data.get('password') or ''
 
@@ -412,16 +555,43 @@ class LoginView(APIView):
             return Response({'error': 'Contraseña requerida'},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        user = User.objects.filter(name__iexact=name, active=True).first()
-        if user and not user.check_password(password):
-            user = None
+        normalized = normalize_user_name(name)
+        ip = client_ip(request)
+        user = User.objects.filter(
+            name_normalized=normalized, active=True).first()
 
-        if user is None:
+        remaining = lockout_remaining(normalized, ip)
+        if remaining:
+            record_audit(
+                request, 'login', 'user', user.pk if user else '', module='auth',
+                outcome='failure', after={'reason': 'locked'})
+            return Response(
+                {'error': 'Demasiados intentos. Intente más tarde.'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+                headers={'Retry-After': str(remaining)})
+
+        if user is None or not user.check_password(password):
+            register_failure(
+                user, normalized, ip,
+                request.META.get('HTTP_USER_AGENT', ''))
+            record_audit(
+                request, 'login', 'user', user.pk if user else '',
+                module='auth', outcome='failure',
+                after={'username': normalized})
             return Response({'error': 'Credenciales inválidas'},
                             status=status.HTTP_401_UNAUTHORIZED)
 
-        token = RefreshToken.for_user(user)
-        return Response({'token': str(token.access_token), 'user': _user_payload(user)})
+        register_success(
+            user, normalized, ip, request.META.get('HTTP_USER_AGENT', ''))
+        refresh = RefreshToken.for_user(user)
+        refresh['ver'] = user.token_version
+        record_audit(
+            request, 'login', 'user', user.pk, module='auth',
+            actor=user, after={'username': user.name})
+        return Response({
+            'token': str(refresh.access_token),
+            'user': _user_payload(user),
+        })
 
 
 @extend_schema(responses={200: dict})
@@ -437,15 +607,16 @@ class ChangePasswordView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        from .passwords import (
+            PasswordPolicyError, validate_password, validate_password_confirmation)
+
         current = request.data.get('current_password', '')
         new_password = request.data.get('new_password', '')
+        confirmation = request.data.get(
+            'new_password_confirm', request.data.get('confirm_password', ''))
 
         if not current or not new_password:
             return Response({'error': 'Completa ambos campos'},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        if len(new_password) < 6:
-            return Response({'error': 'La nueva contrasena debe tener al menos 6 caracteres'},
                             status=status.HTTP_400_BAD_REQUEST)
 
         user = request.user
@@ -453,9 +624,27 @@ class ChangePasswordView(APIView):
             return Response({'error': 'La contrasena actual es incorrecta'},
                             status=status.HTTP_400_BAD_REQUEST)
 
+        try:
+            validate_password_confirmation(new_password, confirmation)
+            validate_password(new_password, user)
+        except PasswordPolicyError as exc:
+            return Response({'error': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+
         user.set_password(new_password)
-        user.save()
-        return Response({'message': 'Contrasena actualizada correctamente'})
+        user.save(update_fields=[
+            'password', 'password_changed_at', 'token_version',
+            'must_change_password', 'updated_at'])
+        record_audit(
+            request, 'password_changed', 'user', user.pk, module='auth',
+            after={'must_change_password': False})
+        refresh = RefreshToken.for_user(user)
+        refresh['ver'] = user.token_version
+        return Response({
+            'message': 'Contrasena actualizada correctamente',
+            'token': str(refresh.access_token),
+            'user': _user_payload(user),
+        })
 
 
 @extend_schema_view(
@@ -2055,13 +2244,43 @@ def _sync_user_roles(user, roles, assigned_by):
 
 class UserListView(IsAdminMixin, APIView):
     permission_code = 'users.manage'
+
     def get(self, request):
         error = self.check_admin(request)
         if error:
             return error
         users = User.objects.prefetch_related(
-            'role_assignments__role').order_by('id')
-        return Response(UserSerializer(users, many=True).data)
+            'role_assignments__role').order_by('name', 'id')
+        query = (request.query_params.get('q') or '').strip()
+        if query:
+            users = users.filter(
+                Q(name__icontains=query) | Q(name_normalized__icontains=query))
+        active = request.query_params.get('active')
+        if active in ('true', 'false'):
+            users = users.filter(active=(active == 'true'))
+        role_code = request.query_params.get('role')
+        if role_code:
+            users = users.filter(
+                role_assignments__active=True,
+                role_assignments__role__code=role_code)
+
+        total = users.count()
+        page, error = _query_int(request.query_params, 'page', 1)
+        if error:
+            return error
+        page_size, error = _query_int(
+            request.query_params, 'page_size', 25, maximum=100)
+        if error:
+            return error
+        start = (page - 1) * page_size
+        page_items = users[start:start + page_size]
+        return Response({
+            'count': total,
+            'page': page,
+            'page_size': page_size,
+            'results': UserSerializer(
+                page_items, many=True).data,
+        })
 
     def post(self, request):
         error = self.check_admin(request)
@@ -2069,10 +2288,16 @@ class UserListView(IsAdminMixin, APIView):
             return error
         serializer = UserWriteSerializer(data=request.data)
         if not serializer.is_valid():
-            return Response({'error': _first_error(serializer)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': _first_error(serializer),
+                             'fields': serializer.errors},
+                            status=status.HTTP_400_BAD_REQUEST)
         if not request.data.get('password'):
             return Response({'error': 'La contraseña es requerida'},
                             status=status.HTTP_400_BAD_REQUEST)
+        if not request.data.get('password_confirm'):
+            return Response(
+                {'error': {'password_confirm': 'Confirme la contraseña.'}},
+                status=status.HTTP_400_BAD_REQUEST)
         role_ids = serializer.validated_data.get('roleIds')
         if not role_ids:
             return Response(
@@ -2100,6 +2325,21 @@ class UserListView(IsAdminMixin, APIView):
 )
 class UserDetailView(IsAdminMixin, APIView):
     permission_code = 'users.manage'
+
+    def _guard_deactivation(self, request, user, new_active):
+        if new_active is False and user == request.user:
+            return Response(
+                {'error': 'No puedes desactivar tu propia cuenta.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if new_active is False:
+            from .rbac import is_last_superadmin
+            if is_last_superadmin(user):
+                return Response(
+                    {'error': 'No puedes desactivar al último administrador '
+                              'de sistemas activo.'},
+                    status=status.HTTP_409_CONFLICT)
+        return None
+
     def delete(self, request, pk):
         error = self.check_admin(request)
         if error:
@@ -2108,18 +2348,18 @@ class UserDetailView(IsAdminMixin, APIView):
             user = User.objects.get(id=pk)
         except User.DoesNotExist:
             return Response({'error': 'Usuario no encontrado'}, status=status.HTTP_404_NOT_FOUND)
-        if user == request.user:
-            return Response({'error': 'No puedes eliminarte a ti mismo'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        guard = self._guard_deactivation(request, user, False)
+        if guard:
+            return guard
         try:
             user.active = False
-            user.save(update_fields=['active'])
+            user.bump_token_version()
+            user.save(update_fields=['active', 'token_version', 'updated_at'])
         except ProtectedError:
             return Response(
                 {'error': 'No se puede eliminar el usuario porque tiene '
                           'registros asociados.'},
                 status=status.HTTP_409_CONFLICT)
-        from .audit import record_audit
         record_audit(request, 'deactivated', 'user', pk,
                      after={'active': False})
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -2132,9 +2372,19 @@ class UserDetailView(IsAdminMixin, APIView):
             user = User.objects.get(id=pk)
         except User.DoesNotExist:
             return Response({'error': 'Usuario no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+
+        new_active = request.data.get('active')
+        if new_active is not None:
+            guard = self._guard_deactivation(
+                request, user, new_active is True)
+            if guard:
+                return guard
+
         serializer = UserWriteSerializer(user, data=request.data, partial=True)
         if not serializer.is_valid():
-            return Response({'error': _first_error(serializer)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': _first_error(serializer),
+                             'fields': serializer.errors},
+                            status=status.HTTP_400_BAD_REQUEST)
         role_ids = serializer.validated_data.get('roleIds')
         roles = None
         if role_ids is not None:
@@ -2145,17 +2395,28 @@ class UserDetailView(IsAdminMixin, APIView):
             roles, error = _resolve_assignable_roles(role_ids)
             if error:
                 return error
-        before = {'role': user.role, 'active': user.active}
+        before = {
+            'role': user.role,
+            'active': user.active,
+            'roles': list(user.role_assignments.filter(
+                active=True).values_list('role__code', flat=True)),
+        }
         with transaction.atomic():
+            was_active = user.active
             serializer.save()
+            if was_active and not user.active:
+                user.bump_token_version()
+                user.save(update_fields=['token_version', 'updated_at'])
             if roles is not None:
                 _sync_user_roles(user, roles, request.user)
+            after_roles = list(user.role_assignments.filter(
+                active=True).values_list('role__code', flat=True))
             record_audit(
                 request, 'updated', 'user', user.id, before=before,
                 after={
                     'role': user.role,
                     'active': user.active,
-                    'roles': [role.name for role in roles or []],
+                    'roles': after_roles,
                 })
         return Response(UserSerializer(user).data)
 
@@ -2506,12 +2767,12 @@ def _first_error(serializer):
 
 
 @extend_schema(exclude=True)
-class BackupListView(IsAdminMixin, APIView):
-    permission_code = 'roles.manage'
+class BackupListView(PermissionMixin, APIView):
+    permission_code = 'respaldos.backups.view'
     """Historial de respaldos. Solo metadatos: el archivo nunca se conserva."""
 
     def get(self, request):
-        error = self.check_admin(request)
+        error = self.check_permission(request)
         if error:
             return error
         backups = Backup.objects.all()[:50]
@@ -2520,7 +2781,7 @@ class BackupListView(IsAdminMixin, APIView):
 
     def post(self, request):
         global _backup_in_progress
-        error = self.check_admin(request)
+        error = self.check_permission(request, 'respaldos.backups.create')
         if error:
             return error
 
@@ -2562,6 +2823,11 @@ class BackupListView(IsAdminMixin, APIView):
 
             # El archivo se transmite y lo borra _BackupFileResponse al
             # terminar la respuesta: en el servidor no queda nada.
+            record_audit(
+                request, 'backup_created', 'backup', backup.id,
+                module='respaldos',
+                after={'filename': backup.filename, 'size': backup.size,
+                       'checksum': backup.checksum})
             response = _stream_backup_file(
                 filepath, backup.filename, backup.checksum)
             return response
@@ -2581,10 +2847,10 @@ class BackupListView(IsAdminMixin, APIView):
 
 
 @extend_schema(responses={204: None, 404: dict})
-class BackupDeleteView(IsAdminMixin, APIView):
-    permission_code = 'roles.manage'
+class BackupDeleteView(PermissionMixin, APIView):
+    permission_code = 'respaldos.backups.delete'
     def delete(self, request, pk):
-        error = self.check_admin(request)
+        error = self.check_permission(request)
         if error:
             return error
         try:
@@ -2599,5 +2865,9 @@ class BackupDeleteView(IsAdminMixin, APIView):
                 os.remove(backup.storage_path)
             except OSError:
                 pass
+        record_audit(request, 'backup_deleted', 'backup', backup.id,
+                     module='respaldos',
+                     before={'filename': backup.filename,
+                             'size': backup.size})
         backup.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

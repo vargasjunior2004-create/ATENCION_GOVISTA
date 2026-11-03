@@ -5,21 +5,57 @@ from django.utils import timezone
 from django.contrib.auth.hashers import make_password, check_password
 
 
+
+def normalize_user_name(value):
+    """Normaliza el nombre de acceso sin perder la grafía visible.
+
+    Se usa para que ``Juan`` y ``juan`` no puedan coexistir y para que el
+    login sea inequívoco. No se eliminan acentos: ``José`` y ``Jose``
+    pueden ser personas distintas.
+    """
+    value = unicodedata.normalize('NFKC', value or '')
+    return ' '.join(value.split()).casefold()[:120]
+
+
 class User(models.Model):
     """Usuario del sistema. Modelo mock: la contraseña se guarda hasheada
     con el hasher estándar de Django."""
     ROLE_CHOICES = [('admin', 'admin'), ('ventas', 'ventas')]
 
     name = models.CharField(max_length=120)
+    name_normalized = models.CharField(
+        max_length=120, unique=True, null=True, blank=True, editable=False,
+        help_text='Nombre normalizado para login y unicidad.')
     password = models.CharField(max_length=255)
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='ventas')
     active = models.BooleanField(default=True)
+    last_login_at = models.DateTimeField(null=True, blank=True)
+    last_login_ip = models.GenericIPAddressField(null=True, blank=True)
+    password_changed_at = models.DateTimeField(null=True, blank=True)
+    must_change_password = models.BooleanField(default=False)
+    token_version = models.PositiveIntegerField(default=0)
+    failed_login_count = models.PositiveIntegerField(default=0)
+    locked_until = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True)
 
-    def set_password(self, raw):
+    def save(self, *args, **kwargs):
+        normalized = normalize_user_name(self.name)
+        if normalized:
+            self.name_normalized = normalized
+        super().save(*args, **kwargs)
+
+    def set_password(self, raw, changed_at=None):
         self.password = make_password(raw)
+        self.password_changed_at = changed_at or timezone.now()
+        self.token_version += 1
+        self.must_change_password = False
 
     def check_password(self, raw):
         return check_password(raw, self.password)
+
+    def bump_token_version(self):
+        self.token_version += 1
 
     @property
     def is_authenticated(self):
@@ -34,12 +70,19 @@ class User(models.Model):
 
 
 class Role(models.Model):
-    """Rol permanente administrable del sistema."""
+    """Rol permanente administrable del sistema.
+
+    ``is_system_role`` significa "protegido": no se renombra, desactiva ni
+    elimina desde la interfaz. ``grants_full_access`` es distinto: solo el
+    rol de Administrador de sistemas lo tiene. Gerente puede ser protegido
+    sin convertirse en superadministrador.
+    """
     code = models.SlugField(max_length=40, unique=True)
     name = models.CharField(max_length=120)
     description = models.CharField(max_length=255, blank=True, default='')
     active = models.BooleanField(default=True)
     is_system_role = models.BooleanField(default=False)
+    grants_full_access = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -48,7 +91,12 @@ class Role(models.Model):
 
 
 class Permission(models.Model):
-    """Permiso granular expresado como módulo + acción."""
+    """Permiso granular expresado como módulo + recurso + acción.
+
+    Los permisos antiguos de dos niveles (``module.action``) siguen siendo
+    válidos: ``resource`` queda vacío. Los nuevos usan
+    ``module.resource.action``.
+    """
     ACTION_CHOICES = [
         ('view', 'Consultar'),
         ('create', 'Crear'),
@@ -57,23 +105,46 @@ class Permission(models.Model):
         ('manage', 'Administrar'),
         ('export', 'Exportar'),
         ('assign', 'Asignar'),
+        ('approve', 'Aprobar'),
+        ('reject', 'Rechazar'),
+        ('cancel', 'Cancelar'),
+        ('close', 'Cerrar'),
+        ('reopen', 'Reabrir'),
+        ('change_status', 'Cambiar estado'),
+        ('download', 'Descargar'),
+        ('restore', 'Restaurar'),
+        ('verify', 'Verificar'),
+        ('schedule', 'Programar'),
+        ('reset_password', 'Restablecer contraseña'),
+        ('revoke', 'Revocar'),
+        ('unlock', 'Desbloquear'),
+        ('configure', 'Configurar'),
+        ('execute', 'Ejecutar'),
     ]
 
     module = models.SlugField(max_length=60)
-    action = models.CharField(max_length=12, choices=ACTION_CHOICES)
+    resource = models.SlugField(max_length=60, blank=True, default='')
+    action = models.CharField(max_length=24, choices=ACTION_CHOICES)
     name = models.CharField(max_length=120)
     description = models.CharField(max_length=255, blank=True, default='')
     active = models.BooleanField(default=True)
+    is_reserved = models.BooleanField(
+        default=False,
+        help_text='Solo el administrador de sistemas puede ejercerlo o asignarlo.')
+    sort_order = models.PositiveIntegerField(default=0)
 
     class Meta:
-        ordering = ['module', 'action']
+        ordering = ['module', 'resource', 'action']
         constraints = [
             models.UniqueConstraint(
-                fields=['module', 'action'], name='unique_permission_module_action')
+                fields=['module', 'resource', 'action'],
+                name='unique_permission_module_resource_action')
         ]
 
     @property
     def code(self):
+        if self.resource:
+            return f'{self.module}.{self.resource}.{self.action}'
         return f'{self.module}.{self.action}'
 
 
@@ -639,6 +710,12 @@ class AuditLog(models.Model):
     action = models.CharField(max_length=40)
     entity = models.CharField(max_length=60)
     entity_id = models.CharField(max_length=80)
+    module = models.CharField(max_length=60, blank=True, default='')
+    request_id = models.CharField(max_length=64, blank=True, default='')
+    outcome = models.CharField(
+        max_length=12, default='success',
+        choices=[('success', 'Éxito'), ('failure', 'Fallo')])
+    user_agent = models.CharField(max_length=255, blank=True, default='')
     before = models.JSONField(default=dict)
     after = models.JSONField(default=dict)
     ip = models.GenericIPAddressField(null=True, blank=True)
@@ -649,7 +726,25 @@ class AuditLog(models.Model):
         indexes = [
             models.Index(fields=['entity', 'entity_id']),
             models.Index(fields=['actor', 'created_at']),
+            models.Index(fields=['module', 'created_at']),
+            models.Index(fields=['action', 'created_at']),
         ]
+
+
+class LoginAttempt(models.Model):
+    """Intento de inicio de sesión para límite de fuerza bruta.
+
+    Se guarda en base de datos, no en memoria, porque Render ejecuta dos
+    workers y un contador local no se compartiría.
+    """
+    username = models.CharField(max_length=120, db_index=True)
+    ip = models.GenericIPAddressField(null=True, blank=True, db_index=True)
+    successful = models.BooleanField(default=False)
+    user_agent = models.CharField(max_length=255, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
 
 
 class TrasladoExterno(models.Model):
