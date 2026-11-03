@@ -406,16 +406,13 @@ export default function Dashboard() {
                 <ChartCard eyebrow="Solicitudes por zona" title="Zonas de mayor demanda">
                   {zones.length ? (
                     <div className="space-y-4">
-                      {zones.map((zone, index) => {
+                      {zones.map((zone) => {
                         const width = Math.max(zone.percentage, zone.count ? 2 : 0);
                         return (
                           <div key={zone.name}>
                             <div className="mb-1.5 flex items-center justify-between gap-3 text-sm">
-                              <span className="flex min-w-0 items-center gap-2 font-semibold text-slate-600">
-                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-[11px] font-black text-brand-700">
-                                  {zone.name === 'Otros barrios' ? '…' : index + 1}
-                                </span>
-                                <span className="truncate">{zone.name}</span>
+                              <span className="min-w-0 truncate font-semibold text-slate-600">
+                                {zone.name}
                               </span>
                               <span className="shrink-0 text-right">
                                 <strong className="font-black tabular-nums text-slate-800">{number(zone.count)}</strong>
