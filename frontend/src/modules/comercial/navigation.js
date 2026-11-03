@@ -4,6 +4,7 @@ import {
   History,
   LayoutDashboard,
   LayoutGrid,
+  Megaphone,
   Package,
   Percent,
   Tag,
@@ -58,6 +59,13 @@ export const commercialAdminNavigation = [
     label: 'Motivos',
     icon: Tag,
     permission: 'commercial_config.manage',
+    group: 'Configuración comercial',
+  },
+  {
+    to: '/comercial/canales-captacion',
+    label: 'Canales de captación',
+    icon: Megaphone,
+    permission: 'captacion.manage',
     group: 'Configuración comercial',
   },
   {

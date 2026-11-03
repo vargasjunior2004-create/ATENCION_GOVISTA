@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import Login from '../components/Login';
 import ModuleSelector from '../components/modules/ModuleSelector';
 import BackupModule from '../components/BackupModule';
+import CanalesCaptacionModule from '../components/CanalesCaptacionModule';
 import MotivosModule from '../components/MotivosModule';
 import PlansModule from '../components/PlansModule';
 import PromotionsModule from '../components/PromotionsModule';
@@ -67,6 +68,10 @@ export default function AppRoutes() {
             element={<AdminRoute permission="commercial_config.manage"><MotivosModule /></AdminRoute>}
           />
           <Route
+            path="canales-captacion"
+            element={<AdminRoute permission="captacion.manage"><CanalesCaptacionModule /></AdminRoute>}
+          />
+          <Route
             path="promociones"
             element={<AdminRoute permission="commercial_config.manage"><PromotionsModule /></AdminRoute>}
           />
@@ -93,6 +98,7 @@ export default function AppRoutes() {
         <Route path="/ventas" element={<LegacyRedirect to="/comercial/solicitudes" />} />
         <Route path="/planes" element={<LegacyRedirect to="/comercial/planes" />} />
         <Route path="/motivos" element={<LegacyRedirect to="/comercial/motivos" />} />
+        <Route path="/canales-captacion" element={<LegacyRedirect to="/comercial/canales-captacion" />} />
         <Route path="/promociones" element={<LegacyRedirect to="/comercial/promociones" />} />
         <Route path="/usuarios" element={<LegacyRedirect to="/comercial/usuarios" />} />
         <Route path="/backups" element={<LegacyRedirect to="/comercial/backups" />} />

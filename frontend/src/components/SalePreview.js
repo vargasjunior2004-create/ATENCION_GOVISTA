@@ -22,6 +22,9 @@ export function SalePreviewDetails({ sale }) {
   const showsCoverageZone = (
     sale.requestType === 'nuevo_contrato' || isRehire || isTransfer
   );
+  const canalNombre = sale.canalCaptacionNombre
+    || sale.canalCaptacion?.nombre
+    || '';
 
   return (
     <div className="bg-slate-50 rounded-2xl p-4 space-y-2 text-sm">
@@ -41,6 +44,9 @@ export function SalePreviewDetails({ sale }) {
       <PreviewRow label="Plan" value={sale.planLabel} />
       {showsCoverageZone && sale.coverageZoneName && (
         <PreviewRow label="Zona de cobertura / Barrio" value={sale.coverageZoneName} />
+      )}
+      {canalNombre && (
+        <PreviewRow label="¿Cómo nos conoció?" value={canalNombre} />
       )}
       {isTransfer && (
         <>

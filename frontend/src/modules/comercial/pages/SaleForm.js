@@ -5,6 +5,7 @@ import { Check, ExternalLink, MapPin, Route, Wrench, Package, ReceiptText } from
 import { useAuth } from '../../../context/AuthContext';
 import useRequestTypes from '../../../hooks/useRequestTypes';
 import useMotivos from '../../../hooks/useMotivos';
+import useCanalesCaptacion from '../../../hooks/useCanalesCaptacion';
 import SalePreviewModal from '../../../components/SalePreview';
 
 const SERVICE_TYPES = [
@@ -63,6 +64,7 @@ export default function SaleForm() {
     requestType: 'nuevo_contrato', additionType: '', planFromId: '',
     serviceTypeFrom: '', motivoId: '', notes: '',
     planId: '', coverageZoneId: '',
+    canalCaptacionId: '',
     equipmentRetained: null, requiresTechnicalVisit: null,
     equipmentDelivered: null, equipmentSerial: '',
     meterNumber: '', sellerUserId: '',
@@ -73,6 +75,12 @@ export default function SaleForm() {
   const { tipos: requestTypes, modoOf, nombreOf } = useRequestTypes();
   const { user } = useAuth();
   const { porCategoria, nombreOf: motivoNombreOf } = useMotivos();
+  const {
+    canales: canalesCaptacion,
+    loading: canalesCaptacionLoading,
+    error: canalesCaptacionError,
+    nombreOf: canalCaptacionNombreOf,
+  } = useCanalesCaptacion();
   const modo = modoOf(form.requestType);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [error, setError] = useState('');
@@ -300,6 +308,7 @@ export default function SaleForm() {
         next.motivoId = '';
         next.coverageZoneId = '';
         const nuevoModo = modoOf(value);
+        if (nuevoModo !== 'nuevo') next.canalCaptacionId = '';
         if (nuevoModo !== 'adicion') next.additionType = '';
         if (nuevoModo !== 'cambio_plan') {
           next.planFromId = '';
@@ -379,6 +388,9 @@ export default function SaleForm() {
         payload.clientCi = form.clientCi;
         payload.clientPhone = form.clientPhone;
         payload.meterNumber = form.meterNumber;
+        if (form.canalCaptacionId) {
+          payload.canalCaptacionId = Number(form.canalCaptacionId);
+        }
         if (form.sellerUserId) {
           payload.sellerUserId = Number(form.sellerUserId);
         }
@@ -407,7 +419,7 @@ export default function SaleForm() {
       }
       await api.createSale(payload);
       setSuccess('Registro guardado correctamente');
-       setForm({ date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', coverageZoneId: '', equipmentRetained: null, requiresTechnicalVisit: null, equipmentDelivered: null, equipmentSerial: '', meterNumber: '', sellerUserId: '', debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferReferences: '', transferHasSketch: null });
+       setForm({ date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', coverageZoneId: '', canalCaptacionId: '', equipmentRetained: null, requiresTechnicalVisit: null, equipmentDelivered: null, equipmentSerial: '', meterNumber: '', sellerUserId: '', debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferReferences: '', transferHasSketch: null });
        setEquipmentLookup(null); setEquipmentLookupError('');
       setSelectedPlan(null); setSelectedCustomer(null); setQuery(''); setCustomers([]);
       setPromotions([]); setSelectedPromotion(null); setPriceMode('normal');
@@ -493,6 +505,8 @@ export default function SaleForm() {
     transferNewAddress: isTransfer ? form.transferNewAddress : null,
     transferZone: isTransfer ? selectedCoverageZone?.name : null,
     coverageZoneName: requiresCoverageZone ? selectedCoverageZone?.name : null,
+    canalCaptacionNombre: isContract
+      ? canalCaptacionNombreOf(Number(form.canalCaptacionId)) : null,
     transferReferences: isTransfer ? form.transferReferences : null,
     transferHasSketch: isTransfer ? form.transferHasSketch : null,
     motivo: getMotivoLabel(),
@@ -598,6 +612,25 @@ export default function SaleForm() {
                 </Select>
               </div>
               {coverageZoneSelect}
+              <Select
+                label="¿Cómo nos conoció?"
+                name="canalCaptacionId"
+                value={form.canalCaptacionId}
+                onChange={handleChange}
+                disabled={canalesCaptacionLoading}
+              >
+                <option value="">
+                  {canalesCaptacionLoading
+                    ? 'Cargando canales...'
+                    : 'Seleccione un canal (opcional)'}
+                </option>
+                {canalesCaptacion.map((canal) => (
+                  <option key={canal.id} value={canal.id}>{canal.nombre}</option>
+                ))}
+              </Select>
+              {canalesCaptacionError && (
+                <p className="text-xs text-red-600">{canalesCaptacionError}</p>
+              )}
               <div className="rounded-xl border border-sky-100 bg-white/80 px-4 py-3">
                 <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Origen automático
