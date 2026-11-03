@@ -2494,6 +2494,23 @@ class DashboardStatsView(APIView):
         }
 
     @staticmethod
+    def _zone_rows(queryset, categories):
+        zone_request_codes = (
+            categories['nuevo_contrato']
+            + categories['recontrataciones']
+            + categories['traslados'])
+        return list(
+            queryset.filter(
+                requestType__in=zone_request_codes,
+                coverage_zone__isnull=False,
+            ).values(
+                'coverage_zone_id', 'coverage_zone__name'
+            ).annotate(
+                count=Count('id')
+            ).order_by('-count', 'coverage_zone__name')
+        )
+
+    @staticmethod
     def _selected_sales(categories, from_date, to_date, movement_type):
         queryset = Sale.objects.filter(
             deleted_at__isnull=True,
@@ -2596,20 +2613,7 @@ class DashboardStatsView(APIView):
             for row in plan_rows
         ]
 
-        zone_request_codes = (
-            categories['nuevo_contrato']
-            + categories['recontrataciones']
-            + categories['traslados'])
-        zone_rows = list(
-            queryset.filter(
-                requestType__in=zone_request_codes,
-                coverage_zone__isnull=False,
-            ).values(
-                'coverage_zone_id', 'coverage_zone__name'
-            ).annotate(
-                count=Count('id')
-            ).order_by('-count', 'coverage_zone__name')
-        )
+        zone_rows = cls._zone_rows(queryset, categories)
         zone_request_total = sum(row['count'] for row in zone_rows)
         top_zone_rows = zone_rows[:5]
         zones = [
@@ -2775,6 +2779,7 @@ class DashboardDrilldownView(APIView):
         'altas_comerciales': ('nuevo_contrato', 'recontrataciones'),
         'balance_neto': (
             'nuevo_contrato', 'recontrataciones', 'retiros'),
+        'zone': (),
     }
 
     def get(self, request):
@@ -2822,31 +2827,65 @@ class DashboardDrilldownView(APIView):
             categories = dashboard._category_codes(catalog)
             filtered_sales = dashboard._selected_sales(
                 categories, from_date, to_date, movement_type)
-            relevant_categories = self.INDICATOR_CATEGORIES[indicator]
-            category = request.query_params.get(
-                'category', relevant_categories[0])
-            if category not in relevant_categories:
-                return Response(
-                    {'error': {'category': 'Categoría no válida para el indicador'}},
-                    status=status.HTTP_400_BAD_REQUEST)
-
             breakdown = []
-            for name in relevant_categories:
-                summary = dashboard._summary(
-                    filtered_sales.filter(requestType__in=categories[name]))
-                breakdown.append({
-                    'category': name,
-                    'label': {
-                        'nuevo_contrato': 'Nuevos contratos',
-                        'recontrataciones': 'Recontrataciones',
-                        'retiros': 'Retiros',
-                        'cambios_plan': 'Cambios de plan',
-                    }[name],
-                    **summary,
-                })
+            zone_count = None
+            category = None
+            if indicator == 'zone':
+                zone_name = request.query_params.get('zone_name', '').strip()
+                if not zone_name or len(zone_name) > 120:
+                    return Response(
+                        {'error': {'zone_name': 'Zona no válida'}},
+                        status=status.HTTP_400_BAD_REQUEST)
 
-            selected_sales = filtered_sales.filter(
-                requestType__in=categories[category])
+                zone_rows = dashboard._zone_rows(filtered_sales, categories)
+                zone_request_codes = (
+                    categories['nuevo_contrato']
+                    + categories['recontrataciones']
+                    + categories['traslados'])
+                if zone_name == 'Otros barrios':
+                    other_rows = zone_rows[5:]
+                    zone_ids = [row['coverage_zone_id'] for row in other_rows]
+                    zone_count = sum(row['count'] for row in other_rows)
+                    selected_sales = filtered_sales.filter(
+                        requestType__in=zone_request_codes,
+                        coverage_zone_id__in=zone_ids)
+                else:
+                    selected_zone = next(
+                        (row for row in zone_rows
+                         if row['coverage_zone__name'] == zone_name),
+                        None)
+                    zone_count = selected_zone['count'] if selected_zone else 0
+                    selected_sales = (
+                        filtered_sales.filter(
+                            requestType__in=zone_request_codes,
+                            coverage_zone_id=selected_zone['coverage_zone_id'])
+                        if selected_zone else filtered_sales.none())
+            else:
+                relevant_categories = self.INDICATOR_CATEGORIES[indicator]
+                category = request.query_params.get(
+                    'category', relevant_categories[0])
+                if category not in relevant_categories:
+                    return Response(
+                        {'error': {'category': 'Categoría no válida para el indicador'}},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+                for name in relevant_categories:
+                    summary = dashboard._summary(
+                        filtered_sales.filter(requestType__in=categories[name]))
+                    breakdown.append({
+                        'category': name,
+                        'label': {
+                            'nuevo_contrato': 'Nuevos contratos',
+                            'recontrataciones': 'Recontrataciones',
+                            'retiros': 'Retiros',
+                            'cambios_plan': 'Cambios de plan',
+                        }[name],
+                        **summary,
+                    })
+
+                selected_sales = filtered_sales.filter(
+                    requestType__in=categories[category])
+
             if search:
                 selected_sales = selected_sales.filter(
                     Q(clientName__icontains=search)
@@ -2859,7 +2898,19 @@ class DashboardDrilldownView(APIView):
                 'canal_captacion', 'motivo', 'traslado_externo',
             ).order_by('-date', '-id')[start:start + page_size]
 
-            if indicator == 'balance_neto':
+            serialized_items = SaleSerializer(
+                items, many=True,
+                context={'catalog': catalog}).data
+            if indicator == 'zone':
+                for item in serialized_items:
+                    request_type = catalog.get(item['requestType'])
+                    item['requestTypeLabel'] = (
+                        request_type.nombre if request_type
+                        else item['requestType'])
+
+            if indicator == 'zone':
+                indicator_count = zone_count
+            elif indicator == 'balance_neto':
                 totals = {item['category']: item['count'] for item in breakdown}
                 indicator_count = (
                     totals['nuevo_contrato'] + totals['recontrataciones']
@@ -2867,7 +2918,7 @@ class DashboardDrilldownView(APIView):
             else:
                 indicator_count = sum(item['count'] for item in breakdown)
 
-            return Response({
+            response_data = {
                 'indicator': indicator,
                 'category': category,
                 'period': {
@@ -2877,14 +2928,16 @@ class DashboardDrilldownView(APIView):
                 },
                 'indicator_count': indicator_count,
                 'breakdown': breakdown,
-                'items': SaleSerializer(
-                    items, many=True,
-                    context={'catalog': catalog}).data,
+                'items': serialized_items,
                 'total': total,
                 'page': page,
                 'page_size': page_size,
                 'total_pages': max(1, (total + page_size - 1) // page_size),
-            })
+            }
+            if indicator == 'zone':
+                response_data['zone_name'] = zone_name
+                response_data['zone_count'] = zone_count
+            return Response(response_data)
         except Exception:
             logger.exception(
                 'Error consultando detalle del dashboard comercial')
