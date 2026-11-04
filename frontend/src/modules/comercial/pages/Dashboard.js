@@ -11,6 +11,8 @@ import {
   RefreshCw,
   SlidersHorizontal,
   TrendingUp,
+  UserCheck,
+  Users,
 } from 'lucide-react';
 import {
   Bar,
@@ -29,7 +31,6 @@ import {
 } from 'recharts';
 import api from '../../../services/api';
 import { Alert, Button, Card, Input, Select } from '../../../components/ui';
-import { useAuth } from '../../../context/AuthContext';
 import DashboardDrilldownModal from '../components/DashboardDrilldownModal';
 
 const MOVEMENT_OPTIONS = [
@@ -187,8 +188,88 @@ function ChartCard({ eyebrow, title, children, className = '' }) {
   );
 }
 
+function ProductivityPanel({ data, from, to, movementType }) {
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [detail, setDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const summary = data?.summary || {};
+  const users = data?.users || [];
+
+  useEffect(() => {
+    if (!selectedUser) {
+      setDetail(null);
+      return undefined;
+    }
+    let active = true;
+    setDetailLoading(true);
+    api.getCommercialProductivity(from, to, movementType, 1, 25, selectedUser)
+      .then((result) => { if (active) setDetail(result); })
+      .catch(() => { if (active) setDetail(null); })
+      .finally(() => { if (active) setDetailLoading(false); });
+    return () => { active = false; };
+  }, [selectedUser, from, to, movementType]);
+
+  const maxRegistered = Math.max(...users.map((item) => item.registered || 0), 1);
+  const isPersonal = data?.scope === 'personal';
+  const visibleItems = detail?.items || data?.items || [];
+  return (
+    <ChartCard
+      eyebrow={isPersonal ? 'Mi productividad' : 'Supervisión comercial'}
+      title={isPersonal ? 'Mi actividad de solicitudes' : 'Actividad de solicitudes por usuario'}
+      className="lg:col-span-2"
+    >
+      <div className="mb-5 grid gap-3 sm:grid-cols-3">
+        {isPersonal && <div className="sm:col-span-3 rounded-xl border border-brand-100 bg-brand-50/50 px-4 py-3"><p className="text-sm font-black text-slate-800">{data?.viewer?.name}</p><p className="mt-1 text-xs text-slate-500">Rol: {data?.viewer?.role || '—'}</p></div>}
+        <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Solicitudes registradas</p>
+          <p className="mt-2 text-2xl font-black text-slate-900">{number(summary.registered)}</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{isPersonal ? 'Actividad personal' : 'Usuarios con actividad'}</p>
+          <p className="mt-2 text-2xl font-black text-slate-900">{isPersonal ? (summary.registered ? 'Activa' : 'Sin actividad') : number(summary.activeUsers)}</p>
+          {isPersonal && <p className="mt-1 text-[11px] text-slate-400">Basada en tus registros del periodo.</p>}
+        </div>
+        <div className="rounded-xl border border-amber-100 bg-amber-50/60 p-4">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Solicitudes atendidas</p>
+          <p className="mt-2 text-lg font-black text-slate-700">No disponible</p>
+          <p className="mt-1 text-[11px] text-amber-700">El sistema no registra responsable de atención.</p>
+        </div>
+      </div>
+      {!isPersonal ? (
+        <div className="space-y-3">
+          {users.length ? users.map((item) => (
+            <button
+              type="button"
+              key={item.userId}
+              onClick={() => setSelectedUser((current) => (current === item.userId ? null : item.userId))}
+              className={`block w-full rounded-xl p-3 text-left ${selectedUser === item.userId ? 'bg-brand-50 ring-1 ring-brand-200' : 'hover:bg-slate-50'}`}
+            >
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="flex min-w-0 items-center gap-2 font-bold text-slate-700"><UserCheck className="h-4 w-4 shrink-0 text-brand-600" />{item.userName}</span>
+                <strong className="tabular-nums text-slate-900">{number(item.registered)}</strong>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-brand-600" style={{ width: `${(item.registered / maxRegistered) * 100}%` }} /></div>
+              <p className="mt-1 text-[11px] text-slate-400">Última actividad: {item.lastActivity ? new Date(item.lastActivity).toLocaleString('es-BO') : '—'}</p>
+            </button>
+          )) : <p className="py-6 text-center text-sm text-slate-400">No hay usuarios con actividad en este periodo.</p>}
+        </div>
+      ) : (
+        <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr]">
+          <div className="h-[240px] w-full"><ResponsiveContainer width="100%" height="100%"><LineChart data={data?.series || []} margin={{ top: 4, right: 4, left: -18, bottom: 4 }}><CartesianGrid stroke="#e8eee9" vertical={false} /><XAxis dataKey="date" tickFormatter={readableShortDate} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} /><YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} /><Tooltip content={<ChartTooltip />} /><Legend iconType="circle" wrapperStyle={{ fontSize: 11, paddingTop: 12 }} /><Line name="Registradas" dataKey="registered" stroke="#0e7490" strokeWidth={2} dot={{ r: 3 }} /></LineChart></ResponsiveContainer></div>
+          <div className="flex items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-6 text-center"><div><Users className="mx-auto mb-2 h-7 w-7 text-slate-300" /><p className="text-sm font-semibold text-slate-600">Actividad personal</p><p className="mt-1 text-xs text-slate-400">La evolución muestra únicamente tus solicitudes registradas.</p></div></div>
+        </div>
+      )}
+      {(selectedUser || isPersonal) && (
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <div className="mb-3 flex items-center justify-between"><p className="text-sm font-black text-slate-800">{isPersonal ? 'Mi actividad reciente' : 'Solicitudes del usuario seleccionado'}</p>{selectedUser && <button type="button" className="text-xs font-bold text-brand-700" onClick={() => setSelectedUser(null)}>Cerrar detalle</button>}</div>
+          {detailLoading ? <p className="text-sm text-slate-400">Cargando solicitudes...</p> : visibleItems.length ? <div className="overflow-x-auto"><table className="w-full min-w-[820px] text-left text-xs"><thead><tr className="text-slate-400"><th className="p-2">Fecha</th><th className="p-2">Cliente</th><th className="p-2">Solicitud</th><th className="p-2">Servicio</th><th className="p-2">Plan</th><th className="p-2">Registró</th><th className="p-2">Estado</th></tr></thead><tbody>{visibleItems.map((item) => <tr key={item.id} className="border-t border-slate-100"><td className="p-2">{item.createdAt ? new Date(item.createdAt).toLocaleString('es-BO') : item.date}</td><td className="p-2">{item.clientName} <span className="text-slate-400">({item.clientCode})</span></td><td className="p-2">{item.requestType}</td><td className="p-2">{item.serviceType}</td><td className="p-2">{item.Plan?.label || '—'}</td><td className="p-2">{item.registeredBy?.name || '—'}</td><td className="p-2">{item.status || 'No registrado'}</td></tr>)}</tbody></table></div> : <p className="text-sm text-slate-400">No hay solicitudes en este periodo.</p>}
+        </div>
+      )}
+    </ChartCard>
+  );
+}
+
 export default function Dashboard() {
-  const { isAdmin } = useAuth();
   const [period, setPeriod] = useState('today');
   const [movementType, setMovementType] = useState('all');
   const [customFrom, setCustomFrom] = useState(todayInBolivia);
@@ -199,6 +280,7 @@ export default function Dashboard() {
   }));
   const [customError, setCustomError] = useState('');
   const [stats, setStats] = useState(null);
+  const [productivity, setProductivity] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [drilldownIndicator, setDrilldownIndicator] = useState(null);
@@ -207,7 +289,7 @@ export default function Dashboard() {
   const [drilldownChannel, setDrilldownChannel] = useState(null);
   const requestId = useRef(0);
 
-  const visiblePeriod = isAdmin ? period : 'today';
+  const visiblePeriod = period;
   const range = useMemo(
     () => (visiblePeriod === 'custom' ? appliedCustomRange : getPresetRange(visiblePeriod)),
     [visiblePeriod, appliedCustomRange],
@@ -218,10 +300,14 @@ export default function Dashboard() {
     setLoading(true);
     setError('');
 
-    api.getDashboardStats(range.from, range.to, movementType)
-      .then((data) => {
+    Promise.all([
+      api.getDashboardStats(range.from, range.to, movementType),
+      api.getCommercialProductivity(range.from, range.to, movementType),
+    ])
+      .then(([data, productivityData]) => {
         if (currentRequest !== requestId.current) return;
         setStats(data);
+        setProductivity(productivityData);
       })
       .catch((err) => {
         if (currentRequest !== requestId.current) return;
@@ -243,7 +329,6 @@ export default function Dashboard() {
   const zones = analytics?.zonas || [];
   const channelAnalysis = analytics?.canales_captacion;
   const channels = channelAnalysis?.items || [];
-  const channelSeries = channelAnalysis?.series || [];
   const topPlans = plans.slice(0, 5);
   const planDemandCount = plans.reduce((sum, item) => sum + item.count, 0);
   const hasData = series.some((item) => item.movimientos > 0);
@@ -327,7 +412,7 @@ export default function Dashboard() {
           )}
         </div>
         <div className="flex flex-wrap gap-2">
-          {PERIOD_OPTIONS.filter(([value]) => isAdmin || value === 'today').map(([value, label]) => (
+           {PERIOD_OPTIONS.map(([value, label]) => (
             <button
               key={value}
               type="button"
@@ -508,6 +593,15 @@ export default function Dashboard() {
                 </ChartCard>
               </section>
 
+              {productivity && (
+                <ProductivityPanel
+                  data={productivity}
+                  from={range.from}
+                  to={range.to}
+                  movementType={movementType}
+                />
+              )}
+
               <section className="grid gap-5 lg:grid-cols-2">
                 <ChartCard eyebrow="Origen de nuevos clientes" title="Canales de captación">
                   {channels.length ? (
@@ -567,32 +661,6 @@ export default function Dashboard() {
                       })}
                     </div>
                   ) : <EmptyChart message="No hay nuevos contratos en este período" />}
-                </ChartCard>
-                <ChartCard eyebrow="Tendencia del período" title="Evolución por canal">
-                  {channels.length ? (
-                    <div className="h-[300px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={channelSeries} margin={{ top: 4, right: 4, left: -18, bottom: 4 }}>
-                          <CartesianGrid stroke="#e8eee9" vertical={false} />
-                          <XAxis dataKey="date" tickFormatter={readableShortDate} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                          <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                          <Tooltip content={<ChartTooltip />} />
-                          <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
-                          {channels.map((channel, index) => (
-                            <Line
-                              key={channel.key}
-                              name={channel.name}
-                              dataKey={channel.key}
-                              type="monotone"
-                              stroke={CHANNEL_COLORS[index % CHANNEL_COLORS.length]}
-                              strokeWidth={2}
-                              dot={{ r: 3 }}
-                            />
-                          ))}
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  ) : <EmptyChart message="No hay nuevos contratos para mostrar" />}
                 </ChartCard>
               </section>
             </>
