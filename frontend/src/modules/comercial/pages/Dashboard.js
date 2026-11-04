@@ -37,7 +37,7 @@ const MOVEMENT_OPTIONS = [
   { value: 'retiros', label: 'Retiros' },
   { value: 'cambios_plan', label: 'Cambios de plan' },
   { value: 'adiciones', label: 'Adiciones' },
-  { value: 'otros', label: 'Otros' },
+  { value: 'otros', label: 'Traslado Externo' },
 ];
 
 const PERIOD_OPTIONS = [
@@ -404,7 +404,7 @@ export default function Dashboard() {
                     </ResponsiveContainer>
                   </div>
                 </ChartCard>
-                <ChartCard eyebrow="Solicitudes por zona" title="Zonas de mayor demanda">
+                <ChartCard eyebrow="Solicitudes por zona" title="Top de 5 Zonas de mayor demanda">
                   {zones.length ? (
                     <div className="space-y-4">
                       {zones.map((zone) => {
