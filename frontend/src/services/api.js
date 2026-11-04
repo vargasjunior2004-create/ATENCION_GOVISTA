@@ -53,6 +53,31 @@ const api = {
     const query = params.toString();
     return request(`/api/dashboard/stats${query ? `?${query}` : ''}`);
   },
+  getDashboardDrilldown: ({
+    indicator, category, from, to, movementType = 'all',
+    zoneName = '', planName = '', catalogLabel = '', planType = '',
+    channelKey = '',
+    search = '', page = 1, pageSize = 25,
+  }) => {
+    const params = new URLSearchParams({
+      indicator,
+      from,
+      to,
+      movement_type: movementType,
+      search,
+      page: String(page),
+      page_size: String(pageSize),
+    });
+    if (category) params.set('category', category);
+    if (zoneName) params.set('zone_name', zoneName);
+    if (indicator === 'plan') {
+      params.set('plan_name', planName);
+      params.set('catalog_label', catalogLabel);
+      params.set('plan_type', planType);
+    }
+    if (indicator === 'channel') params.set('channel_key', channelKey);
+    return request(`/api/dashboard/drilldown?${params.toString()}`);
+  },
 
   // Planes
   getPlans: () => request('/api/plans'),

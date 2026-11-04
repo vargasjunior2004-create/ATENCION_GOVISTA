@@ -3,7 +3,9 @@ from django.utils import timezone
 from decimal import Decimal
 from datetime import timedelta
 
-from .models import User, Plan, Sale, Motivo, Role, CoverageZone
+from .models import (
+    User, Plan, Sale, Motivo, Role, CoverageZone, CanalCaptacion,
+)
 
 
 def _json(response):
@@ -96,8 +98,56 @@ class SaleTests(TestCase):
             categoria='cambio', nombre='AUMENTO DE DISPOSITIVOS')
         self.motivo_retiro = Motivo.objects.create(
             categoria='retiro', nombre='MUDANZA')
+        self.canal_facebook = CanalCaptacion.objects.create(
+            nombre='Canal QA Facebook')
+        self.canal_tiktok = CanalCaptacion.objects.create(
+            nombre='Canal QA TikTok')
         self.coverage_zone_id = CoverageZone.objects.get(
             normalized_name='villa busch').id
+
+    def test_new_contract_requires_channel_and_other_types_reject_it(self):
+        token = self._token(self.admin, 'pass1')
+        new_contract = {
+            'clientCode': 'CHANNEL-REQUIRED',
+            'clientName': 'CHANNEL REQUIRED',
+            'serviceType': 'internet',
+            'requestType': 'nuevo_contrato',
+            'planId': self.plan.id,
+            'coverageZoneId': self.coverage_zone_id,
+        }
+        missing_channel = self.c.post(
+            '/api/sales', new_contract, content_type='application/json',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(missing_channel.status_code, 400)
+        new_contract['canalCaptacionId'] = self.canal_facebook.id
+        created = self.c.post(
+            '/api/sales', new_contract, content_type='application/json',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(created.status_code, 201, _json(created))
+
+        rehire_with_channel = {
+            **new_contract,
+            'clientCode': 'CHANNEL-REHIRE',
+            'clientName': 'CHANNEL REHIRE',
+            'requestType': 'recontratacion',
+            'equipmentRetained': True,
+            'requiresTechnicalVisit': False,
+            'debtApplies': False,
+            'debtAmount': 0,
+        }
+        rejected = self.c.post(
+            '/api/sales', rehire_with_channel,
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(rejected.status_code, 400)
+        rehire_with_channel.pop('canalCaptacionId')
+        rehire_with_channel['clientCode'] = 'CHANNEL-REHIRE-WITHOUT'
+        accepted = self.c.post(
+            '/api/sales', rehire_with_channel,
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(accepted.status_code, 201, _json(accepted))
+        self.assertIsNone(_json(accepted)['canalCaptacionId'])
 
     def _token(self, user, pw):
         r = self.c.post('/api/auth/login', {'name': user.name, 'password': pw},
@@ -109,7 +159,8 @@ class SaleTests(TestCase):
         r = self.c.post('/api/sales', {
             'clientCode': 'K001', 'clientName': 'CLIENTE TEST',
             'serviceType': 'internet', 'requestType': 'nuevo_contrato',
-            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id
+            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id,
+            'canalCaptacionId': self.canal_facebook.id,
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r.status_code, 201)
         data = _json(r)
@@ -121,7 +172,8 @@ class SaleTests(TestCase):
         r = self.c.post('/api/sales', {
             'clientCode': 'K002', 'clientName': 'CLIENTE 2',
             'serviceType': 'internet', 'requestType': 'nuevo_contrato',
-            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id
+            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id,
+            'canalCaptacionId': self.canal_facebook.id,
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r.status_code, 201)
 
@@ -144,7 +196,8 @@ class SaleTests(TestCase):
         self.c.post('/api/sales', {
             'clientCode': 'K010', 'clientName': 'L1',
             'serviceType': 'internet', 'requestType': 'nuevo_contrato',
-            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id
+            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id,
+            'canalCaptacionId': self.canal_facebook.id,
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         r = self.c.get('/api/sales', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r.status_code, 200)
@@ -186,7 +239,8 @@ class SaleTests(TestCase):
         r = self.c.post('/api/sales', {
             'clientCode': 'K040', 'clientName': 'EDIT ME',
             'serviceType': 'internet', 'requestType': 'nuevo_contrato',
-            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id
+            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id,
+            'canalCaptacionId': self.canal_facebook.id,
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         sale_id = _json(r)['id']
         r2 = self.c.put(f'/api/sales/{sale_id}', {
@@ -197,6 +251,7 @@ class SaleTests(TestCase):
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r2.status_code, 200)
         self.assertEqual(_json(r2)['clientName'], 'EDITED')
+        self.assertIsNone(_json(r2)['canalCaptacionId'])
 
     def test_edit_sale_ventas_user_forbidden(self):
         token_v = self._token(self.ventas_user, 'pass2')
@@ -204,7 +259,8 @@ class SaleTests(TestCase):
         r = self.c.post('/api/sales', {
             'clientCode': 'K050', 'clientName': 'NO EDIT',
             'serviceType': 'internet', 'requestType': 'nuevo_contrato',
-            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id
+            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id,
+            'canalCaptacionId': self.canal_facebook.id,
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token_a}')
         sale_id = _json(r)['id']
         r2 = self.c.put(f'/api/sales/{sale_id}', {'clientName': 'HACKED'},
@@ -216,7 +272,8 @@ class SaleTests(TestCase):
         r = self.c.post('/api/sales', {
             'clientCode': 'K060', 'clientName': 'TZ TEST',
             'serviceType': 'internet', 'requestType': 'nuevo_contrato',
-            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id
+            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id,
+            'canalCaptacionId': self.canal_facebook.id,
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(r.status_code, 201)
         data = _json(r)
@@ -233,6 +290,10 @@ class DashboardTests(TestCase):
             installation=Decimal('0'))
         self.motivo_retiro = Motivo.objects.create(
             categoria='retiro', nombre='MUDANZA')
+        self.canal_facebook = CanalCaptacion.objects.create(
+            nombre='Canal QA Facebook')
+        self.canal_tiktok = CanalCaptacion.objects.create(
+            nombre='Canal QA TikTok')
         self.coverage_zone_id = CoverageZone.objects.get(
             normalized_name='villa busch').id
 
@@ -256,7 +317,8 @@ class DashboardTests(TestCase):
         self.c.post('/api/sales', {
             'clientCode': 'D001', 'clientName': 'DASH1',
             'serviceType': 'internet', 'requestType': 'nuevo_contrato',
-            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id
+            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id,
+            'canalCaptacionId': self.canal_facebook.id,
         }, content_type='application/json', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.c.post('/api/sales', {
             'clientCode': 'D003', 'clientName': 'DASH3',
@@ -298,7 +360,7 @@ class DashboardTests(TestCase):
         self.assertEqual(r.status_code, 401)
 
     def _sale(self, code, request_type, movement_date, service='internet',
-              total=100, coverage_zone=None):
+              total=100, coverage_zone=None, canal_captacion=None):
         return Sale.objects.create(
             date=movement_date,
             clientCode=code,
@@ -309,6 +371,7 @@ class DashboardTests(TestCase):
             planName=self.plan.label,
             total=Decimal(str(total)),
             coverage_zone=coverage_zone,
+            canal_captacion=canal_captacion,
             createdBy=self.admin,
         )
 
@@ -349,6 +412,222 @@ class DashboardTests(TestCase):
             sum(item['count'] for item in analytics['categorias']),
             5,
         )
+
+    def test_dashboard_channels_include_unspecified_and_drilldown_only_new_contracts(self):
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+        self._sale(
+            'CHANNEL-FB-001', 'nuevo_contrato', today,
+            canal_captacion=self.canal_facebook)
+        self._sale(
+            'CHANNEL-FB-002', 'nuevo_contrato', today,
+            canal_captacion=self.canal_facebook)
+        self._sale(
+            'CHANNEL-FB-OLD', 'nuevo_contrato', yesterday,
+            canal_captacion=self.canal_facebook)
+        self._sale(
+            'CHANNEL-TT-001', 'nuevo_contrato', today,
+            canal_captacion=self.canal_tiktok)
+        unspecified_sale = self._sale(
+            'CHANNEL-NONE-001', 'nuevo_contrato', today)
+        self._sale(
+            'CHANNEL-REHIRE', 'recontratacion', today,
+            canal_captacion=self.canal_facebook)
+        self._sale('CHANNEL-CHANGE', 'cambio_plan', today)
+        self._sale('CHANNEL-RETIRE', 'retiro', today)
+
+        token = self._token()
+        headers = {'HTTP_AUTHORIZATION': f'Bearer {token}'}
+        params = {
+            'from': yesterday.isoformat(),
+            'to': today.isoformat(),
+        }
+        stats = self.c.get('/api/dashboard/stats', params, **headers)
+        self.assertEqual(stats.status_code, 200, _json(stats))
+        analytics = _json(stats)['analytics']
+        channels = analytics['canales_captacion']
+        items = {item['name']: item for item in channels['items']}
+        self.assertEqual(channels['total'], analytics['nuevo_contrato']['count'])
+        self.assertEqual(items['Canal QA Facebook']['count'], 3)
+        self.assertEqual(items['Canal QA TikTok']['count'], 1)
+        self.assertEqual(items['Sin especificar']['count'], 1)
+        self.assertEqual(
+            sum(item['percentage'] for item in channels['items']), 100)
+        self.assertEqual(channels['principal']['name'], 'Canal QA Facebook')
+        self.assertEqual(len(channels['series']), 2)
+        self.assertEqual(channels['series'][0][items['Canal QA Facebook']['key']], 1)
+        self.assertEqual(channels['series'][1][items['Canal QA Facebook']['key']], 2)
+
+        facebook_detail = self.c.get(
+            '/api/dashboard/drilldown',
+            {
+                **params,
+                'indicator': 'channel',
+                'channel_key': items['Canal QA Facebook']['key'],
+                'page_size': 2,
+            },
+            **headers)
+        self.assertEqual(facebook_detail.status_code, 200, _json(facebook_detail))
+        facebook_data = _json(facebook_detail)
+        self.assertEqual(facebook_data['channel_count'], 3)
+        self.assertEqual(facebook_data['indicator_count'], 3)
+        self.assertEqual(facebook_data['total'], 3)
+        self.assertTrue(all(
+            sale['canalCaptacionId'] == self.canal_facebook.id
+            and sale['requestType'] == 'nuevo_contrato'
+            for sale in facebook_data['items']))
+        self.assertEqual(facebook_data['total_pages'], 2)
+
+        unspecified_detail = self.c.get(
+            '/api/dashboard/drilldown',
+            {
+                **params,
+                'indicator': 'channel',
+                'channel_key': items['Sin especificar']['key'],
+            },
+            **headers)
+        self.assertEqual(unspecified_detail.status_code, 200)
+        unspecified_data = _json(unspecified_detail)
+        self.assertEqual(unspecified_data['channel_count'], 1)
+        self.assertEqual(unspecified_data['total'], 1)
+        self.assertEqual(
+            unspecified_data['items'][0]['id'], unspecified_sale.id)
+        self.assertIsNone(unspecified_data['items'][0]['canalCaptacionId'])
+
+        search = self.c.get(
+            '/api/dashboard/drilldown',
+            {
+                **params,
+                'indicator': 'channel',
+                'channel_key': items['Canal QA Facebook']['key'],
+                'search': 'CHANNEL-FB-002',
+            },
+            **headers)
+        self.assertEqual(search.status_code, 200)
+        self.assertEqual(_json(search)['channel_count'], 3)
+        self.assertEqual(_json(search)['total'], 1)
+
+        rehires_only = self.c.get(
+            '/api/dashboard/stats',
+            {**params, 'movement_type': 'recontrataciones'},
+            **headers)
+        self.assertEqual(
+            _json(rehires_only)['analytics']['canales_captacion']['total'], 0)
+
+    def test_dashboard_drilldown_matches_indicator_and_paginates_search(self):
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+        self._sale('DD001', 'nuevo_contrato', today)
+        self._sale('DD002', 'nuevo_contrato', today)
+        self._sale('DD004', 'nuevo_contrato', yesterday)
+        archived = self._sale('DD003', 'nuevo_contrato', today)
+        archived.deleted_at = timezone.now()
+        archived.save(update_fields=['deleted_at'])
+        token = self._token()
+
+        stats = self.c.get(
+            f'/api/dashboard/stats?from={today.isoformat()}&to={today.isoformat()}',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        params = (
+            f'from={today.isoformat()}&to={today.isoformat()}'
+            '&indicator=nuevo_contrato&category=nuevo_contrato'
+            '&search=DASH&page_size=1&page=1'
+        )
+        response = self.c.get(
+            f'/api/dashboard/drilldown?{params}',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(response.status_code, 200, _json(response))
+        data = _json(response)
+        self.assertEqual(data['indicator_count'], 2)
+        self.assertEqual(
+            data['indicator_count'],
+            _json(stats)['analytics']['nuevo_contrato']['count'])
+        self.assertEqual(data['total'], 2)
+        self.assertEqual(data['total_pages'], 2)
+        self.assertEqual(len(data['items']), 1)
+
+        next_page = self.c.get(
+            f'/api/dashboard/drilldown?{params.replace("page=1", "page=2")}',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(next_page.status_code, 200)
+        self.assertNotEqual(
+            _json(response)['items'][0]['id'],
+            _json(next_page)['items'][0]['id'])
+
+        by_code = self.c.get(
+            f'/api/dashboard/drilldown?from={today.isoformat()}&to={today.isoformat()}'
+            '&indicator=nuevo_contrato&category=nuevo_contrato&search=DD002',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(_json(by_code)['total'], 1)
+        self.assertEqual(_json(by_code)['items'][0]['clientCode'], 'DD002')
+
+    def test_dashboard_drilldown_group_breakdown_matches_balance(self):
+        today = timezone.localdate()
+        self._sale('DG001', 'nuevo_contrato', today)
+        self._sale('DG002', 'recontratacion', today)
+        self._sale('DG003', 'retiro', today)
+        token = self._token()
+        params = f'from={today.isoformat()}&to={today.isoformat()}'
+
+        stats = self.c.get(
+            f'/api/dashboard/stats?{params}',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        balance = self.c.get(
+            f'/api/dashboard/drilldown?{params}&indicator=balance_neto',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        altas = self.c.get(
+            f'/api/dashboard/drilldown?{params}&indicator=altas_comerciales',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        filtered_altas = self.c.get(
+            f'/api/dashboard/drilldown?{params}&indicator=altas_comerciales'
+            '&movement_type=recontrataciones',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(balance.status_code, 200)
+        self.assertEqual(altas.status_code, 200)
+        self.assertEqual(filtered_altas.status_code, 200)
+        self.assertEqual(
+            _json(balance)['indicator_count'],
+            _json(stats)['analytics']['balance_neto'])
+        self.assertEqual(_json(altas)['indicator_count'], 2)
+        self.assertEqual(_json(filtered_altas)['indicator_count'], 1)
+        self.assertEqual(
+            {item['category']: item['count'] for item in _json(balance)['breakdown']},
+            {'nuevo_contrato': 1, 'recontrataciones': 1, 'retiros': 1})
+
+    def test_dashboard_drilldown_requires_auth_and_limits_operator_to_today(self):
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+        self._sale('DO001', 'nuevo_contrato', yesterday)
+        self._sale('DO002', 'nuevo_contrato', today)
+        self.assertEqual(
+            self.c.get('/api/dashboard/drilldown?indicator=nuevo_contrato').status_code,
+            401)
+
+        operator = _create_user('drilldown-operator', 'pass1', 'ventas')
+        login = self.c.post(
+            '/api/auth/login',
+            {'name': operator.name, 'password': 'pass1'},
+            content_type='application/json')
+        token = _json(login)['token']
+        response = self.c.get(
+            '/api/dashboard/drilldown'
+            f'?from={yesterday.isoformat()}&to={today.isoformat()}'
+            '&indicator=nuevo_contrato&category=nuevo_contrato',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(_json(response)['period']['from'], today.isoformat())
+        self.assertEqual(_json(response)['total'], 1)
+
+    def test_dashboard_drilldown_rejects_invalid_filters(self):
+        token = self._token()
+        response = self.c.get(
+            '/api/dashboard/drilldown?indicator=incorrecto',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(response.status_code, 400)
+        response = self.c.get(
+            '/api/dashboard/drilldown?indicator=balance_neto&category=cambios_plan',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(response.status_code, 400)
 
     def test_dashboard_zones_rank_contracts_rehires_and_transfers(self):
         today = timezone.localdate()

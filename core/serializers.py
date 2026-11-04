@@ -734,11 +734,16 @@ class SaleCreateSerializer(serializers.Serializer):
         attrs['coverageZone'] = coverage_zone
 
         canal_captacion_id = attrs.get('canalCaptacionId')
+        is_new_contract = request_type == 'nuevo_contrato'
+        if is_new_contract and canal_captacion_id is None:
+            raise serializers.ValidationError(
+                {'canalCaptacionId':
+                 'Seleccione cómo nos conoció para registrar el nuevo contrato'})
+        if not is_new_contract and canal_captacion_id is not None:
+            raise serializers.ValidationError(
+                {'canalCaptacionId':
+                 'El canal de captación solo aplica a nuevos contratos'})
         if canal_captacion_id is not None:
-            if not contract_mode:
-                raise serializers.ValidationError(
-                    {'canalCaptacionId':
-                     'El canal de captacion solo aplica a contratos y recontrataciones'})
             canal_captacion = CanalCaptacion.objects.filter(
                 id=canal_captacion_id, activo=True).first()
             if canal_captacion is None:

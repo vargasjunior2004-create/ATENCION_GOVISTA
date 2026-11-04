@@ -1878,26 +1878,32 @@ class SaleDetailView(IsAdminMixin, APIView):
             if mode != MODO_ADICION:
                 data = {**data, 'additionType': ''}
 
-        canal_captacion = sale.canal_captacion
-        if 'canalCaptacionId' in data:
-            canal_captacion_id = data.get('canalCaptacionId')
-            if canal_captacion_id in (None, ''):
-                canal_captacion = None
-            elif str(canal_captacion_id) == str(sale.canal_captacion_id):
-                # Conserva el canal historico aunque ya este inactivo.
+        canal_captacion = None
+        if request_type == 'nuevo_contrato':
+            if 'canalCaptacionId' not in data:
+                if sale.requestType == 'nuevo_contrato':
+                    canal_captacion = sale.canal_captacion
+                else:
+                    return Response(
+                        {'error': 'Seleccione cómo nos conoció para registrar el nuevo contrato'},
+                        status=status.HTTP_400_BAD_REQUEST)
+            elif data.get('canalCaptacionId') in (None, ''):
+                return Response(
+                    {'error': 'Seleccione cómo nos conoció para registrar el nuevo contrato'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            elif str(data['canalCaptacionId']) == str(sale.canal_captacion_id):
                 canal_captacion = sale.canal_captacion
             else:
-                if not (mode == 'nuevo' or is_rehire):
-                    return Response(
-                        {'error': 'El canal de captacion solo aplica a contratos '
-                                  'y recontrataciones'},
-                        status=status.HTTP_400_BAD_REQUEST)
                 canal_captacion = CanalCaptacion.objects.filter(
-                    id=canal_captacion_id, activo=True).first()
+                    id=data['canalCaptacionId'], activo=True).first()
                 if canal_captacion is None:
                     return Response(
                         {'error': 'El canal de captacion no existe o esta inactivo'},
                         status=status.HTTP_400_BAD_REQUEST)
+        elif data.get('canalCaptacionId') not in (None, ''):
+            return Response(
+                {'error': 'El canal de captación solo aplica a nuevos contratos'},
+                status=status.HTTP_400_BAD_REQUEST)
 
         sale.date = data.get('date', sale.date)
         sale.clientCode = data.get('clientCode', sale.clientCode)
@@ -2232,6 +2238,34 @@ class DashboardStatsView(APIView):
             'total': cls._amount(data['total']),
         }
 
+    @staticmethod
+    def _selected_sales(categories, from_date, to_date, movement_type):
+        sales = Sale.objects.filter(
+            deleted_at__isnull=True,
+            date__gte=from_date,
+            date__lte=to_date,
+        )
+        if movement_type != 'all':
+            sales = sales.filter(requestType__in=categories[movement_type])
+        return sales
+
+    @staticmethod
+    def _zone_rows(queryset, categories):
+        zone_request_codes = (
+            categories['nuevo_contrato']
+            + categories['recontrataciones']
+            + categories['traslados'])
+        return list(
+            queryset.filter(
+                requestType__in=zone_request_codes,
+                coverage_zone__isnull=False,
+            ).values(
+                'coverage_zone_id', 'coverage_zone__name'
+            ).annotate(
+                count=Count('id')
+            ).order_by('-count', 'coverage_zone__name')
+        )
+
     @classmethod
     def _analytics(cls, queryset, categories, from_date, to_date,
                    movement_type):
@@ -2297,6 +2331,61 @@ class DashboardStatsView(APIView):
             for row in service_rows
         ]
 
+        channel_queryset = queryset.filter(
+            requestType__in=categories['nuevo_contrato'])
+        channel_rows = list(
+            channel_queryset.values(
+                'canal_captacion_id', 'canal_captacion__nombre'
+            ).annotate(count=Count('id'))
+        )
+        channel_rows.sort(
+            key=lambda row: (
+                -row['count'],
+                row['canal_captacion__nombre'] or 'Sin especificar',
+            ))
+        channel_total = sum(row['count'] for row in channel_rows)
+        channels = [
+            {
+                'id': row['canal_captacion_id'],
+                'key': (
+                    f"channel-{row['canal_captacion_id']}"
+                    if row['canal_captacion_id'] is not None
+                    else 'channel-none'
+                ),
+                'name': row['canal_captacion__nombre'] or 'Sin especificar',
+                'count': row['count'],
+                'percentage': (
+                    round(row['count'] * 100 / channel_total, 2)
+                    if channel_total else 0
+                ),
+            }
+            for row in channel_rows
+        ]
+        if channels:
+            channels[-1]['percentage'] = round(
+                channels[-1]['percentage']
+                + 100
+                - sum(channel['percentage'] for channel in channels),
+                2,
+            )
+
+        daily_channel_rows = channel_queryset.values(
+            'date', 'canal_captacion_id'
+        ).annotate(count=Count('id'))
+        daily_channel_counts = {
+            (row['date'], row['canal_captacion_id']): row['count']
+            for row in daily_channel_rows
+        }
+        channels_by_day = []
+        current = from_date
+        while current <= to_date:
+            day = {'date': current.isoformat()}
+            for channel in channels:
+                day[channel['key']] = daily_channel_counts.get(
+                    (current, channel['id']), 0)
+            channels_by_day.append(day)
+            current += timedelta(days=1)
+
         demand_codes = (
             categories['nuevo_contrato'] + categories['recontrataciones'])
         plan_rows = queryset.filter(
@@ -2323,20 +2412,7 @@ class DashboardStatsView(APIView):
             for row in plan_rows
         ]
 
-        zone_request_codes = (
-            categories['nuevo_contrato']
-            + categories['recontrataciones']
-            + categories['traslados'])
-        zone_rows = list(
-            queryset.filter(
-                requestType__in=zone_request_codes,
-                coverage_zone__isnull=False,
-            ).values(
-                'coverage_zone_id', 'coverage_zone__name'
-            ).annotate(
-                count=Count('id')
-            ).order_by('-count', 'coverage_zone__name')
-        )
+        zone_rows = cls._zone_rows(queryset, categories)
         zone_request_total = sum(row['count'] for row in zone_rows)
         top_zone_rows = zone_rows[:5]
         zones = [
@@ -2393,6 +2469,12 @@ class DashboardStatsView(APIView):
             'servicios': services,
             'planes': plans,
             'zonas': zones,
+            'canales_captacion': {
+                'total': channel_total,
+                'principal': channels[0] if channels else None,
+                'items': channels,
+                'series': channels_by_day,
+            },
             'categorias': movement_breakdown,
         }
 
@@ -2474,11 +2556,8 @@ class DashboardStatsView(APIView):
                 'role': request.user.role,
             }
 
-            selected_sales = all_sales.filter(
-                date__gte=from_date, date__lte=to_date)
-            if movement_type != 'all':
-                selected_sales = selected_sales.filter(
-                    requestType__in=categories[movement_type])
+            selected_sales = self._selected_sales(
+                categories, from_date, to_date, movement_type)
 
             return Response({
                 **legacy,
@@ -2492,6 +2571,247 @@ class DashboardStatsView(APIView):
             logger.exception('Error calculando estadisticas del dashboard')
             return Response(
                 {'error': 'No se pudieron calcular las estadísticas'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@extend_schema(responses={200: dict, 400: dict, 500: dict})
+class DashboardDrilldownView(APIView):
+    INDICATOR_CATEGORIES = {
+        'nuevo_contrato': ('nuevo_contrato',),
+        'recontrataciones': ('recontrataciones',),
+        'retiros': ('retiros',),
+        'cambios_plan': ('cambios_plan',),
+        'altas_comerciales': ('nuevo_contrato', 'recontrataciones'),
+        'balance_neto': (
+            'nuevo_contrato', 'recontrataciones', 'retiros'),
+        'zone': (),
+        'plan': (),
+        'channel': (),
+    }
+
+    def get(self, request):
+        indicator = request.query_params.get('indicator', '')
+        if indicator not in self.INDICATOR_CATEGORIES:
+            return Response(
+                {'error': {'indicator': 'Indicador no válido'}},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        dashboard = DashboardStatsView()
+        movement_type = request.query_params.get('movement_type', 'all')
+        if movement_type not in dashboard.MOVEMENT_TYPES:
+            return Response({
+                'error': 'movement_type no válido',
+                'allowed': sorted(dashboard.MOVEMENT_TYPES),
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        page, error = _query_int(request.query_params, 'page', 1)
+        if error:
+            return error
+        page_size, error = _query_int(
+            request.query_params, 'page_size', 25, maximum=100)
+        if error:
+            return error
+
+        search = request.query_params.get('search', '').strip()
+        if len(search) > 100:
+            return Response(
+                {'error': {'search': 'No puede superar 100 caracteres'}},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        today = timezone.localdate()
+        if getattr(request.user, 'role', '') == 'admin':
+            try:
+                from_date, to_date = dashboard._parse_range(
+                    request.query_params, today)
+            except ValueError as exc:
+                return Response(
+                    {'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            from_date = to_date = today
+
+        try:
+            catalog = request_type_catalog()
+            categories = dashboard._category_codes(catalog)
+            filtered_sales = dashboard._selected_sales(
+                categories, from_date, to_date, movement_type)
+            breakdown = []
+            zone_count = None
+            plan_count = None
+            channel_count = None
+            category = None
+            if indicator == 'zone':
+                zone_name = request.query_params.get('zone_name', '').strip()
+                if not zone_name or len(zone_name) > 120:
+                    return Response(
+                        {'error': {'zone_name': 'Zona no válida'}},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+                zone_rows = dashboard._zone_rows(filtered_sales, categories)
+                zone_request_codes = (
+                    categories['nuevo_contrato']
+                    + categories['recontrataciones']
+                    + categories['traslados'])
+                if zone_name == 'Otros barrios':
+                    other_rows = zone_rows[5:]
+                    zone_ids = [row['coverage_zone_id'] for row in other_rows]
+                    zone_count = sum(row['count'] for row in other_rows)
+                    selected_sales = filtered_sales.filter(
+                        requestType__in=zone_request_codes,
+                        coverage_zone_id__in=zone_ids)
+                else:
+                    selected_zone = next(
+                        (row for row in zone_rows
+                         if row['coverage_zone__name'] == zone_name),
+                        None)
+                    zone_count = selected_zone['count'] if selected_zone else 0
+                    selected_sales = (
+                        filtered_sales.filter(
+                            requestType__in=zone_request_codes,
+                            coverage_zone_id=selected_zone['coverage_zone_id'])
+                        if selected_zone else filtered_sales.none())
+            elif indicator == 'plan':
+                plan_name = request.query_params.get('plan_name', '')
+                catalog_label = request.query_params.get(
+                    'catalog_label', '').strip()
+                plan_type = request.query_params.get('plan_type', '').strip()
+                if (
+                        len(plan_name) > 120
+                        or not catalog_label or len(catalog_label) > 120
+                        or plan_type not in {'internet', 'tv', 'combo'}):
+                    return Response(
+                        {'error': {'plan': 'Plan no válido'}},
+                        status=status.HTTP_400_BAD_REQUEST)
+                demand_codes = (
+                    categories['nuevo_contrato']
+                    + categories['recontrataciones'])
+                selected_sales = filtered_sales.filter(
+                    requestType__in=demand_codes,
+                    plan__type=plan_type,
+                    planName=plan_name,
+                    plan__label=catalog_label,
+                )
+                plan_count = selected_sales.count()
+            elif indicator == 'channel':
+                channel_key = request.query_params.get('channel_key', '')
+                channel_codes = categories['nuevo_contrato']
+                if channel_key == 'channel-none':
+                    channel_name = 'Sin especificar'
+                    selected_sales = filtered_sales.filter(
+                        requestType__in=channel_codes,
+                        canal_captacion__isnull=True)
+                elif channel_key.startswith('channel-') and channel_key[8:].isdigit():
+                    channel_id = int(channel_key[8:])
+                    channel = CanalCaptacion.objects.filter(
+                        id=channel_id).first()
+                    if channel is None:
+                        return Response(
+                            {'error': {'channel_key': 'Canal no válido'}},
+                            status=status.HTTP_400_BAD_REQUEST)
+                    channel_name = channel.nombre
+                    selected_sales = filtered_sales.filter(
+                        requestType__in=channel_codes,
+                        canal_captacion_id=channel_id)
+                else:
+                    return Response(
+                        {'error': {'channel_key': 'Canal no válido'}},
+                        status=status.HTTP_400_BAD_REQUEST)
+                channel_count = selected_sales.count()
+            else:
+                relevant_categories = self.INDICATOR_CATEGORIES[indicator]
+                category = request.query_params.get(
+                    'category', relevant_categories[0])
+                if category not in relevant_categories:
+                    return Response(
+                        {'error': {'category': 'Categoría no válida para el indicador'}},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+                for name in relevant_categories:
+                    summary = dashboard._summary(
+                        filtered_sales.filter(requestType__in=categories[name]))
+                    breakdown.append({
+                        'category': name,
+                        'label': {
+                            'nuevo_contrato': 'Nuevos contratos',
+                            'recontrataciones': 'Recontrataciones',
+                            'retiros': 'Retiros',
+                            'cambios_plan': 'Cambios de plan',
+                        }[name],
+                        **summary,
+                    })
+
+                selected_sales = filtered_sales.filter(
+                    requestType__in=categories[category])
+
+            if search:
+                selected_sales = selected_sales.filter(
+                    Q(clientName__icontains=search)
+                    | Q(clientCode__icontains=search))
+
+            total = selected_sales.count()
+            start = (page - 1) * page_size
+            items = selected_sales.select_related(
+                'plan', 'planFromId', 'createdBy', 'coverage_zone',
+                'canal_captacion', 'motivo', 'traslado_externo',
+            ).order_by('-date', '-id')[start:start + page_size]
+
+            serialized_items = SaleSerializer(
+                items, many=True,
+                context={'catalog': catalog}).data
+            if indicator in {'zone', 'plan', 'channel'}:
+                for item in serialized_items:
+                    request_type = catalog.get(item['requestType'])
+                    item['requestTypeLabel'] = (
+                        request_type.nombre if request_type
+                        else item['requestType'])
+
+            if indicator == 'zone':
+                indicator_count = zone_count
+            elif indicator == 'plan':
+                indicator_count = plan_count
+            elif indicator == 'channel':
+                indicator_count = channel_count
+            elif indicator == 'balance_neto':
+                totals = {item['category']: item['count'] for item in breakdown}
+                indicator_count = (
+                    totals['nuevo_contrato'] + totals['recontrataciones']
+                    - totals['retiros'])
+            else:
+                indicator_count = sum(item['count'] for item in breakdown)
+
+            response_data = {
+                'indicator': indicator,
+                'category': category,
+                'period': {
+                    'from': from_date.isoformat(),
+                    'to': to_date.isoformat(),
+                    'movement_type': movement_type,
+                },
+                'indicator_count': indicator_count,
+                'breakdown': breakdown,
+                'items': serialized_items,
+                'total': total,
+                'page': page,
+                'page_size': page_size,
+                'total_pages': max(1, (total + page_size - 1) // page_size),
+            }
+            if indicator == 'zone':
+                response_data['zone_name'] = zone_name
+                response_data['zone_count'] = zone_count
+            elif indicator == 'plan':
+                response_data['plan_name'] = plan_name
+                response_data['catalog_label'] = catalog_label
+                response_data['plan_type'] = plan_type
+                response_data['plan_count'] = plan_count
+            elif indicator == 'channel':
+                response_data['channel_key'] = channel_key
+                response_data['channel_name'] = channel_name
+                response_data['channel_count'] = channel_count
+            return Response(response_data)
+        except Exception:
+            logger.exception(
+                'Error consultando detalle del dashboard comercial')
+            return Response(
+                {'error': 'No se pudo consultar el detalle comercial'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

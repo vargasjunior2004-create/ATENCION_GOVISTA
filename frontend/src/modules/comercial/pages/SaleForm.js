@@ -366,6 +366,10 @@ export default function SaleForm() {
     e.preventDefault();
     setError('');
     setSuccess('');
+    if (isNewContract && !form.canalCaptacionId) {
+      setError('Selecciona de dónde nos conociste para registrar el nuevo contrato.');
+      return;
+    }
     setLoading(true);
     try {
       const payload = {
@@ -612,24 +616,29 @@ export default function SaleForm() {
                 </Select>
               </div>
               {coverageZoneSelect}
-              <Select
-                label="¿Cómo nos conoció?"
-                name="canalCaptacionId"
-                value={form.canalCaptacionId}
-                onChange={handleChange}
-                disabled={canalesCaptacionLoading}
-              >
-                <option value="">
-                  {canalesCaptacionLoading
-                    ? 'Cargando canales...'
-                    : 'Seleccione un canal (opcional)'}
-                </option>
-                {canalesCaptacion.map((canal) => (
-                  <option key={canal.id} value={canal.id}>{canal.nombre}</option>
-                ))}
-              </Select>
-              {canalesCaptacionError && (
-                <p className="text-xs text-red-600">{canalesCaptacionError}</p>
+              {isNewContract && (
+                <>
+                  <Select
+                    label="¿De dónde nos conociste? *"
+                    name="canalCaptacionId"
+                    value={form.canalCaptacionId}
+                    onChange={handleChange}
+                    disabled={canalesCaptacionLoading}
+                    required
+                  >
+                    <option value="">
+                      {canalesCaptacionLoading
+                        ? 'Cargando canales...'
+                        : 'Seleccione un canal'}
+                    </option>
+                    {canalesCaptacion.map((canal) => (
+                      <option key={canal.id} value={canal.id}>{canal.nombre}</option>
+                    ))}
+                  </Select>
+                  {canalesCaptacionError && (
+                    <p className="text-xs text-red-600">{canalesCaptacionError}</p>
+                  )}
+                </>
               )}
               <div className="rounded-xl border border-sky-100 bg-white/80 px-4 py-3">
                 <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">

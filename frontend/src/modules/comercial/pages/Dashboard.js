@@ -18,6 +18,8 @@ import {
   CartesianGrid,
   Cell,
   Legend,
+  Line,
+  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -28,6 +30,7 @@ import {
 import api from '../../../services/api';
 import { Alert, Button, Card, Input, Select } from '../../../components/ui';
 import { useAuth } from '../../../context/AuthContext';
+import DashboardDrilldownModal from '../components/DashboardDrilldownModal';
 
 const MOVEMENT_OPTIONS = [
   { value: 'all', label: 'Todas las solicitudes comerciales' },
@@ -47,6 +50,7 @@ const PERIOD_OPTIONS = [
 ];
 
 const PLAN_COLORS = ['#fb923c', '#06b6d4', '#84cc16', '#f472b6', '#a78bfa'];
+const CHANNEL_COLORS = ['#0e7490', '#7c3aed', '#ea580c', '#16a34a', '#db2777', '#2563eb'];
 const SERVICE_COLORS = {
   internet: '#0e7490',
   tv: '#ca8a04',
@@ -192,6 +196,10 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [drilldownIndicator, setDrilldownIndicator] = useState(null);
+  const [drilldownZoneName, setDrilldownZoneName] = useState('');
+  const [drilldownPlan, setDrilldownPlan] = useState(null);
+  const [drilldownChannel, setDrilldownChannel] = useState(null);
   const requestId = useRef(0);
 
   const visiblePeriod = isAdmin ? period : 'today';
@@ -228,6 +236,9 @@ export default function Dashboard() {
   const services = analytics?.servicios || [];
   const plans = analytics?.planes || [];
   const zones = analytics?.zonas || [];
+  const channelAnalysis = analytics?.canales_captacion;
+  const channels = channelAnalysis?.items || [];
+  const channelSeries = channelAnalysis?.series || [];
   const topPlans = plans.slice(0, 5);
   const planDemandCount = plans.reduce((sum, item) => sum + item.count, 0);
   const hasData = series.some((item) => item.movimientos > 0);
@@ -470,6 +481,94 @@ export default function Dashboard() {
                   ) : <EmptyChart message="No hay altas comerciales con planes en este período" />}
                 </ChartCard>
               </section>
+
+              <section className="grid gap-5 lg:grid-cols-2">
+                <ChartCard eyebrow="Origen de nuevos clientes" title="Canales de captación">
+                  {channels.length ? (
+                    <div className="space-y-4">
+                      {channelAnalysis?.principal && (
+                        <p className="text-xs font-medium text-slate-500">
+                          Mayor captación:{' '}
+                          <strong className="text-slate-800">
+                            {channelAnalysis.principal.name}
+                          </strong>
+                        </p>
+                      )}
+                      {channels.map((channel, index) => {
+                        const width = Math.max(channel.percentage, channel.count ? 2 : 0);
+                        return (
+                          <button
+                            key={channel.key}
+                            type="button"
+                            aria-label={`Consultar nuevos contratos de ${channel.name}`}
+                            onClick={() => {
+                              setDrilldownChannel(channel);
+                              setDrilldownIndicator('channel');
+                            }}
+                            className="block w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/30"
+                          >
+                            <div className="mb-1.5 flex items-center justify-between gap-3 text-sm">
+                              <span className="flex min-w-0 items-center gap-2 font-semibold text-slate-600">
+                                <span
+                                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                  style={{ backgroundColor: CHANNEL_COLORS[index % CHANNEL_COLORS.length] }}
+                                />
+                                <span className="truncate">{channel.name}</span>
+                              </span>
+                              <span className="shrink-0 text-right">
+                                <strong className="font-black tabular-nums text-slate-800">{number(channel.count)}</strong>
+                                <span className="ml-2 text-xs font-medium tabular-nums text-slate-400">{channel.percentage}%</span>
+                              </span>
+                            </div>
+                            <div
+                              className="h-2 overflow-hidden rounded-full bg-slate-100"
+                              aria-label={`${channel.percentage}%`}
+                              role="progressbar"
+                              aria-valuenow={channel.percentage}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                            >
+                              <div
+                                className="h-full rounded-full transition-all"
+                                style={{
+                                  width: `${width}%`,
+                                  backgroundColor: CHANNEL_COLORS[index % CHANNEL_COLORS.length],
+                                }}
+                              />
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : <EmptyChart message="No hay nuevos contratos en este período" />}
+                </ChartCard>
+                <ChartCard eyebrow="Tendencia del período" title="Evolución por canal">
+                  {channels.length ? (
+                    <div className="h-[300px] w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={channelSeries} margin={{ top: 4, right: 4, left: -18, bottom: 4 }}>
+                          <CartesianGrid stroke="#e8eee9" vertical={false} />
+                          <XAxis dataKey="date" tickFormatter={readableShortDate} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                          <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                          <Tooltip content={<ChartTooltip />} />
+                          <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
+                          {channels.map((channel, index) => (
+                            <Line
+                              key={channel.key}
+                              name={channel.name}
+                              dataKey={channel.key}
+                              type="monotone"
+                              stroke={CHANNEL_COLORS[index % CHANNEL_COLORS.length]}
+                              strokeWidth={2}
+                              dot={{ r: 3 }}
+                            />
+                          ))}
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : <EmptyChart message="No hay nuevos contratos para mostrar" />}
+                </ChartCard>
+              </section>
             </>
           )}
 
@@ -485,6 +584,27 @@ export default function Dashboard() {
             </div>
           </Card>
         </>
+      )}
+      {drilldownIndicator && (
+        <DashboardDrilldownModal
+          indicator={drilldownIndicator}
+          zoneName={drilldownZoneName}
+          planName={drilldownPlan?.plan_name}
+          catalogLabel={drilldownPlan?.catalog_label}
+          planType={drilldownPlan?.type}
+          channelKey={drilldownChannel?.key}
+          channelName={drilldownChannel?.name}
+          from={range.from}
+          to={range.to}
+          movementType={movementType}
+          periodLabel={periodLabel}
+          onClose={() => {
+            setDrilldownIndicator(null);
+            setDrilldownZoneName('');
+            setDrilldownPlan(null);
+            setDrilldownChannel(null);
+          }}
+        />
       )}
     </div>
   );

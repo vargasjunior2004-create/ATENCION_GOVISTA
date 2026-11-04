@@ -3,7 +3,7 @@ from datetime import date
 
 from django.test import TestCase, Client
 
-from .models import Plan, Sale, User, CoverageZone
+from .models import Plan, Sale, User, CoverageZone, CanalCaptacion
 from .reports import (
     _sales_queryset, build_sales_pdf, build_sales_png, build_sales_xlsx,
 )
@@ -19,6 +19,8 @@ class RecontratacionTests(TestCase):
             monthly=200, installation=100, active=True)
         self.coverage_zone_id = CoverageZone.objects.get(
             normalized_name='villa busch').id
+        self.canal_captacion = CanalCaptacion.objects.filter(
+            activo=True).first()
 
     def _user(self, name, role):
         user = User(name=name, role=role)
@@ -58,6 +60,7 @@ class RecontratacionTests(TestCase):
                 'serviceType': 'internet', 'requestType': 'nuevo_contrato',
                 'planId': self.plan.id,
                 'coverageZoneId': self.coverage_zone_id,
+                'canalCaptacionId': self.canal_captacion.id,
             }, content_type='application/json',
             HTTP_AUTHORIZATION=f'Bearer {self._token(self.operator)}')
 
