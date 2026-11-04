@@ -6,6 +6,7 @@ from django.utils import timezone
 from .models import (
     Plan, Role, Sale, TemporaryAssignment, TemporaryFunction, User, UserRole,
     Contract, CoverageZone,
+    CanalCaptacion,
 )
 
 
@@ -22,6 +23,8 @@ class ExternalSellerTests(TestCase):
             monthly=100, installation=0, active=True)
         self.coverage_zone_id = CoverageZone.objects.get(
             normalized_name='villa busch').id
+        self.canal_captacion = CanalCaptacion.objects.filter(
+            activo=True).first()
         self.function = TemporaryFunction.objects.get(code='external_seller')
         self.login(self.registrar)
 
@@ -60,6 +63,7 @@ class ExternalSellerTests(TestCase):
             'requestType': 'nuevo_contrato',
             'planId': self.plan.id,
             'coverageZoneId': self.coverage_zone_id,
+            'canalCaptacionId': self.canal_captacion.id,
         }
         payload.update(extra)
         return self.client.post(

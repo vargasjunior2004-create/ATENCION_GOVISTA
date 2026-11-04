@@ -367,6 +367,10 @@ export default function SaleForm() {
     e.preventDefault();
     setError('');
     setSuccess('');
+    if (isNewContract && !form.canalCaptacionId) {
+      setError('Selecciona de dónde nos conociste para registrar el nuevo contrato.');
+      return;
+    }
     setLoading(true);
     try {
       const payload = {
@@ -616,16 +620,17 @@ export default function SaleForm() {
               {isNewContract && (
                 <>
                   <Select
-                    label="¿Cómo nos conoció?"
+                    label="¿De dónde nos conociste? *"
                     name="canalCaptacionId"
                     value={form.canalCaptacionId}
                     onChange={handleChange}
                     disabled={canalesCaptacionLoading}
+                    required
                   >
                     <option value="">
                       {canalesCaptacionLoading
                         ? 'Cargando canales...'
-                        : 'Seleccione un canal (opcional)'}
+                        : 'Seleccione un canal'}
                     </option>
                     {canalesCaptacion.map((canal) => (
                       <option key={canal.id} value={canal.id}>{canal.nombre}</option>

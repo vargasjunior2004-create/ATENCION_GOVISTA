@@ -56,6 +56,7 @@ const api = {
   getDashboardDrilldown: ({
     indicator, category, from, to, movementType = 'all',
     zoneName = '', planName = '', catalogLabel = '', planType = '',
+    channelKey = '',
     search = '', page = 1, pageSize = 25,
   }) => {
     const params = new URLSearchParams({
@@ -74,6 +75,7 @@ const api = {
       params.set('catalog_label', catalogLabel);
       params.set('plan_type', planType);
     }
+    if (indicator === 'channel') params.set('channel_key', channelKey);
     return request(`/api/dashboard/drilldown?${params.toString()}`);
   },
 

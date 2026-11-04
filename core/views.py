@@ -2067,26 +2067,32 @@ class SaleDetailView(IsAdminMixin, APIView):
             if mode != MODO_ADICION:
                 data = {**data, 'additionType': ''}
 
-        canal_captacion = sale.canal_captacion
-        if 'canalCaptacionId' in data:
-            canal_captacion_id = data.get('canalCaptacionId')
-            if canal_captacion_id in (None, ''):
-                canal_captacion = None
-            elif str(canal_captacion_id) == str(sale.canal_captacion_id):
-                # Conserva el canal historico aunque ya este inactivo.
+        canal_captacion = None
+        if request_type == 'nuevo_contrato':
+            if 'canalCaptacionId' not in data:
+                if sale.requestType == 'nuevo_contrato':
+                    canal_captacion = sale.canal_captacion
+                else:
+                    return Response(
+                        {'error': 'Seleccione cómo nos conoció para registrar el nuevo contrato'},
+                        status=status.HTTP_400_BAD_REQUEST)
+            elif data.get('canalCaptacionId') in (None, ''):
+                return Response(
+                    {'error': 'Seleccione cómo nos conoció para registrar el nuevo contrato'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            elif str(data['canalCaptacionId']) == str(sale.canal_captacion_id):
                 canal_captacion = sale.canal_captacion
             else:
-                if not (mode == 'nuevo' or is_rehire):
-                    return Response(
-                        {'error': 'El canal de captacion solo aplica a contratos '
-                                  'y recontrataciones'},
-                        status=status.HTTP_400_BAD_REQUEST)
                 canal_captacion = CanalCaptacion.objects.filter(
-                    id=canal_captacion_id, activo=True).first()
+                    id=data['canalCaptacionId'], activo=True).first()
                 if canal_captacion is None:
                     return Response(
                         {'error': 'El canal de captacion no existe o esta inactivo'},
                         status=status.HTTP_400_BAD_REQUEST)
+        elif data.get('canalCaptacionId') not in (None, ''):
+            return Response(
+                {'error': 'El canal de captación solo aplica a nuevos contratos'},
+                status=status.HTTP_400_BAD_REQUEST)
 
         sale.date = data.get('date', sale.date)
         sale.clientCode = data.get('clientCode', sale.clientCode)
@@ -2587,6 +2593,61 @@ class DashboardStatsView(APIView):
             for row in service_rows
         ]
 
+        channel_queryset = queryset.filter(
+            requestType__in=categories['nuevo_contrato'])
+        channel_rows = list(
+            channel_queryset.values(
+                'canal_captacion_id', 'canal_captacion__nombre'
+            ).annotate(count=Count('id'))
+        )
+        channel_rows.sort(
+            key=lambda row: (
+                -row['count'],
+                row['canal_captacion__nombre'] or 'Sin especificar',
+            ))
+        channel_total = sum(row['count'] for row in channel_rows)
+        channels = [
+            {
+                'id': row['canal_captacion_id'],
+                'key': (
+                    f"channel-{row['canal_captacion_id']}"
+                    if row['canal_captacion_id'] is not None
+                    else 'channel-none'
+                ),
+                'name': row['canal_captacion__nombre'] or 'Sin especificar',
+                'count': row['count'],
+                'percentage': (
+                    round(row['count'] * 100 / channel_total, 2)
+                    if channel_total else 0
+                ),
+            }
+            for row in channel_rows
+        ]
+        if channels:
+            channels[-1]['percentage'] = round(
+                channels[-1]['percentage']
+                + 100
+                - sum(channel['percentage'] for channel in channels),
+                2,
+            )
+
+        daily_channel_rows = channel_queryset.values(
+            'date', 'canal_captacion_id'
+        ).annotate(count=Count('id'))
+        daily_channel_counts = {
+            (row['date'], row['canal_captacion_id']): row['count']
+            for row in daily_channel_rows
+        }
+        channels_by_day = []
+        current = from_date
+        while current <= to_date:
+            day = {'date': current.isoformat()}
+            for channel in channels:
+                day[channel['key']] = daily_channel_counts.get(
+                    (current, channel['id']), 0)
+            channels_by_day.append(day)
+            current += timedelta(days=1)
+
         demand_codes = (
             categories['nuevo_contrato'] + categories['recontrataciones'])
         plan_rows = queryset.filter(
@@ -2672,6 +2733,12 @@ class DashboardStatsView(APIView):
             'servicios': services,
             'planes': plans,
             'zonas': zones,
+            'canales_captacion': {
+                'total': channel_total,
+                'principal': channels[0] if channels else None,
+                'items': channels,
+                'series': channels_by_day,
+            },
             'categorias': movement_breakdown,
         }
 
@@ -2783,6 +2850,7 @@ class DashboardDrilldownView(APIView):
             'nuevo_contrato', 'recontrataciones', 'retiros'),
         'zone': (),
         'plan': (),
+        'channel': (),
     }
 
     def get(self, request):
@@ -2833,6 +2901,7 @@ class DashboardDrilldownView(APIView):
             breakdown = []
             zone_count = None
             plan_count = None
+            channel_count = None
             category = None
             if indicator == 'zone':
                 zone_name = request.query_params.get('zone_name', '').strip()
@@ -2886,6 +2955,31 @@ class DashboardDrilldownView(APIView):
                     plan__label=catalog_label,
                 )
                 plan_count = selected_sales.count()
+            elif indicator == 'channel':
+                channel_key = request.query_params.get('channel_key', '')
+                channel_codes = categories['nuevo_contrato']
+                if channel_key == 'channel-none':
+                    channel_name = 'Sin especificar'
+                    selected_sales = filtered_sales.filter(
+                        requestType__in=channel_codes,
+                        canal_captacion__isnull=True)
+                elif channel_key.startswith('channel-') and channel_key[8:].isdigit():
+                    channel_id = int(channel_key[8:])
+                    channel = CanalCaptacion.objects.filter(
+                        id=channel_id).first()
+                    if channel is None:
+                        return Response(
+                            {'error': {'channel_key': 'Canal no válido'}},
+                            status=status.HTTP_400_BAD_REQUEST)
+                    channel_name = channel.nombre
+                    selected_sales = filtered_sales.filter(
+                        requestType__in=channel_codes,
+                        canal_captacion_id=channel_id)
+                else:
+                    return Response(
+                        {'error': {'channel_key': 'Canal no válido'}},
+                        status=status.HTTP_400_BAD_REQUEST)
+                channel_count = selected_sales.count()
             else:
                 relevant_categories = self.INDICATOR_CATEGORIES[indicator]
                 category = request.query_params.get(
@@ -2927,7 +3021,7 @@ class DashboardDrilldownView(APIView):
             serialized_items = SaleSerializer(
                 items, many=True,
                 context={'catalog': catalog}).data
-            if indicator in {'zone', 'plan'}:
+            if indicator in {'zone', 'plan', 'channel'}:
                 for item in serialized_items:
                     request_type = catalog.get(item['requestType'])
                     item['requestTypeLabel'] = (
@@ -2938,6 +3032,8 @@ class DashboardDrilldownView(APIView):
                 indicator_count = zone_count
             elif indicator == 'plan':
                 indicator_count = plan_count
+            elif indicator == 'channel':
+                indicator_count = channel_count
             elif indicator == 'balance_neto':
                 totals = {item['category']: item['count'] for item in breakdown}
                 indicator_count = (
@@ -2970,6 +3066,10 @@ class DashboardDrilldownView(APIView):
                 response_data['catalog_label'] = catalog_label
                 response_data['plan_type'] = plan_type
                 response_data['plan_count'] = plan_count
+            elif indicator == 'channel':
+                response_data['channel_key'] = channel_key
+                response_data['channel_name'] = channel_name
+                response_data['channel_count'] = channel_count
             return Response(response_data)
         except Exception:
             logger.exception(

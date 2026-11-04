@@ -15,6 +15,7 @@ const INDICATOR_LABELS = {
   altas_comerciales: 'Altas comerciales',
   balance_neto: 'Balance neto',
   zone: 'Detalle por zona',
+  channel: 'Canales de captación',
 };
 
 const SERVICE_LABELS = {
@@ -86,7 +87,9 @@ function ResultSummary({ breakdown, selectedCategory, onSelect }) {
   );
 }
 
-function RowDetails({ sale, isRetirement, isPlanChange, isZone, isPlan }) {
+function RowDetails({
+  sale, isRetirement, isPlanChange, isZone, isPlan, isChannel,
+}) {
   return (
     <span className="grid gap-2 text-sm">
       <span>
@@ -120,6 +123,14 @@ function RowDetails({ sale, isRetirement, isPlanChange, isZone, isPlan }) {
         )}
         <span className="text-slate-500">Registró</span>
         <span className="text-right text-slate-700">{sale.creator?.name || '—'}</span>
+        {isChannel && (
+          <>
+            <span className="text-slate-500">Canal de captación</span>
+            <span className="text-right text-slate-700">
+              {sale.canalCaptacion?.nombre || 'Sin especificar'}
+            </span>
+          </>
+        )}
         {isPlan && (
           <>
             <span className="text-slate-500">Zona / barrio</span>
@@ -141,11 +152,14 @@ export default function DashboardDrilldownModal({
   planName,
   catalogLabel,
   planType,
+  channelKey,
+  channelName,
   onClose,
 }) {
   const isZone = indicator === 'zone';
   const isPlan = indicator === 'plan';
-  const relevantCategories = isZone || isPlan
+  const isChannel = indicator === 'channel';
+  const relevantCategories = isZone || isPlan || isChannel
     ? []
     : indicator === 'altas_comerciales'
     ? ['nuevo_contrato', 'recontrataciones']
@@ -182,6 +196,7 @@ export default function DashboardDrilldownModal({
     const timer = setTimeout(() => {
       api.getDashboardDrilldown({
         indicator, category, zoneName, planName, catalogLabel, planType,
+        channelKey,
         from, to, movementType, search, page,
       })
         .then((data) => {
@@ -199,6 +214,7 @@ export default function DashboardDrilldownModal({
     return () => clearTimeout(timer);
   }, [
     indicator, category, zoneName, planName, catalogLabel, planType,
+    channelKey,
     from, to, movementType, search, page,
   ]);
 
@@ -211,13 +227,17 @@ export default function DashboardDrilldownModal({
   const isPlanChange = category === 'cambios_plan';
   const sales = result?.items || [];
   const breakdown = result?.breakdown || [];
-  const selectedLabel = isZone || isPlan
+  const selectedLabel = isZone || isPlan || isChannel
     ? 'Solicitudes registradas'
     : CATEGORY_LABELS[category] || INDICATOR_LABELS[indicator];
   const resultCount = Number(result?.total || 0);
-  const selectedCount = Number(
-    isZone ? result?.zone_count : result?.plan_count || 0,
-  );
+  const selectedCount = Number(isZone
+    ? result?.zone_count
+    : isPlan
+      ? result?.plan_count
+      : isChannel
+        ? result?.channel_count
+        : 0);
   const totalPages = result?.total_pages || 1;
 
   return (
@@ -240,7 +260,13 @@ export default function DashboardDrilldownModal({
                 Detalle comercial
               </p>
               <h2 id="dashboard-drilldown-title" className="mt-1 text-xl font-black text-slate-900 sm:text-2xl">
-                {(isZone ? zoneName : isPlan ? planName || catalogLabel : null)
+                {(isZone
+                  ? zoneName
+                  : isPlan
+                    ? planName || catalogLabel
+                    : isChannel
+                      ? channelName
+                      : null)
                   || INDICATOR_LABELS[indicator]}
               </h2>
               <p className="mt-1 text-xs font-medium text-slate-500 sm:text-sm">
@@ -282,7 +308,7 @@ export default function DashboardDrilldownModal({
                 <p className="mt-1 text-xs text-slate-500" aria-live="polite">
                   {loading && !result
                     ? 'Consultando registros…'
-                    : isZone || isPlan
+                    : isZone || isPlan || isChannel
                       ? `${selectedCount.toLocaleString('es-BO')} solicitudes · ${resultCount.toLocaleString('es-BO')} registros encontrados`
                       : `${resultCount.toLocaleString('es-BO')} registros encontrados`}
                 </p>
@@ -338,6 +364,7 @@ export default function DashboardDrilldownModal({
                         {isRetirement && <th className="px-4 py-3">Motivo</th>}
                         <th className="px-4 py-3">Registró</th>
                         {isPlan && <th className="px-4 py-3">Zona / barrio</th>}
+                        {isChannel && <th className="px-4 py-3">Canal de captación</th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -368,6 +395,7 @@ export default function DashboardDrilldownModal({
                           {isRetirement && <td className="px-4 py-3 text-slate-600">{sale.changeReason || sale.motivoNombre || '—'}</td>}
                           <td className="px-4 py-3 text-slate-600">{sale.creator?.name || '—'}</td>
                           {isPlan && <td className="px-4 py-3 text-slate-600">{sale.coverageZone?.name || '—'}</td>}
+                          {isChannel && <td className="px-4 py-3 text-slate-600">{sale.canalCaptacion?.nombre || 'Sin especificar'}</td>}
                         </tr>
                       ))}
                     </tbody>
@@ -387,6 +415,7 @@ export default function DashboardDrilldownModal({
                         isPlanChange={isPlanChange}
                         isZone={isZone}
                         isPlan={isPlan}
+                        isChannel={isChannel}
                       />
                     </button>
                   ))}
