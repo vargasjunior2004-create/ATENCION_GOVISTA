@@ -55,7 +55,8 @@ const api = {
   },
   getDashboardDrilldown: ({
     indicator, category, from, to, movementType = 'all',
-    zoneName = '', search = '', page = 1, pageSize = 25,
+    zoneName = '', planName = '', catalogLabel = '', planType = '',
+    search = '', page = 1, pageSize = 25,
   }) => {
     const params = new URLSearchParams({
       indicator,
@@ -68,6 +69,11 @@ const api = {
     });
     if (category) params.set('category', category);
     if (zoneName) params.set('zone_name', zoneName);
+    if (indicator === 'plan') {
+      params.set('plan_name', planName);
+      params.set('catalog_label', catalogLabel);
+      params.set('plan_type', planType);
+    }
     return request(`/api/dashboard/drilldown?${params.toString()}`);
   },
 

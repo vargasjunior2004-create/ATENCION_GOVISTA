@@ -2604,6 +2604,8 @@ class DashboardStatsView(APIView):
         plans = [
             {
                 'label': row['planName'] or row['plan__label'],
+                'plan_name': row['planName'],
+                'catalog_label': row['plan__label'],
                 'type': row['plan__type'],
                 'type_label': plan_type_labels.get(
                     row['plan__type'], row['plan__type']),
@@ -2780,6 +2782,7 @@ class DashboardDrilldownView(APIView):
         'balance_neto': (
             'nuevo_contrato', 'recontrataciones', 'retiros'),
         'zone': (),
+        'plan': (),
     }
 
     def get(self, request):
@@ -2829,6 +2832,7 @@ class DashboardDrilldownView(APIView):
                 categories, from_date, to_date, movement_type)
             breakdown = []
             zone_count = None
+            plan_count = None
             category = None
             if indicator == 'zone':
                 zone_name = request.query_params.get('zone_name', '').strip()
@@ -2860,6 +2864,28 @@ class DashboardDrilldownView(APIView):
                             requestType__in=zone_request_codes,
                             coverage_zone_id=selected_zone['coverage_zone_id'])
                         if selected_zone else filtered_sales.none())
+            elif indicator == 'plan':
+                plan_name = request.query_params.get('plan_name', '')
+                catalog_label = request.query_params.get(
+                    'catalog_label', '').strip()
+                plan_type = request.query_params.get('plan_type', '').strip()
+                if (
+                        len(plan_name) > 120
+                        or not catalog_label or len(catalog_label) > 120
+                        or plan_type not in {'internet', 'tv', 'combo'}):
+                    return Response(
+                        {'error': {'plan': 'Plan no válido'}},
+                        status=status.HTTP_400_BAD_REQUEST)
+                demand_codes = (
+                    categories['nuevo_contrato']
+                    + categories['recontrataciones'])
+                selected_sales = filtered_sales.filter(
+                    requestType__in=demand_codes,
+                    plan__type=plan_type,
+                    planName=plan_name,
+                    plan__label=catalog_label,
+                )
+                plan_count = selected_sales.count()
             else:
                 relevant_categories = self.INDICATOR_CATEGORIES[indicator]
                 category = request.query_params.get(
@@ -2901,7 +2927,7 @@ class DashboardDrilldownView(APIView):
             serialized_items = SaleSerializer(
                 items, many=True,
                 context={'catalog': catalog}).data
-            if indicator == 'zone':
+            if indicator in {'zone', 'plan'}:
                 for item in serialized_items:
                     request_type = catalog.get(item['requestType'])
                     item['requestTypeLabel'] = (
@@ -2910,6 +2936,8 @@ class DashboardDrilldownView(APIView):
 
             if indicator == 'zone':
                 indicator_count = zone_count
+            elif indicator == 'plan':
+                indicator_count = plan_count
             elif indicator == 'balance_neto':
                 totals = {item['category']: item['count'] for item in breakdown}
                 indicator_count = (
@@ -2937,6 +2965,11 @@ class DashboardDrilldownView(APIView):
             if indicator == 'zone':
                 response_data['zone_name'] = zone_name
                 response_data['zone_count'] = zone_count
+            elif indicator == 'plan':
+                response_data['plan_name'] = plan_name
+                response_data['catalog_label'] = catalog_label
+                response_data['plan_type'] = plan_type
+                response_data['plan_count'] = plan_count
             return Response(response_data)
         except Exception:
             logger.exception(
