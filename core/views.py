@@ -9,7 +9,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import ProtectedError
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Max, Q, Sum
 from django.http import FileResponse
 from django.utils import timezone
 from rest_framework import status
@@ -44,7 +44,7 @@ from .domain import (
     MODO_SIMPLE, MODO_TRASLADO,
 )
 from .reports import build_sales_pdf, build_sales_xlsx
-from .rbac import has_permission, is_system_admin
+from .rbac import can_supervise_productivity, has_permission, is_system_admin
 from .audit import record_audit
 
 # Evita que dos respaldos corran a la vez. Con gunicorn --workers 2 este
@@ -2755,18 +2755,17 @@ class DashboardStatsView(APIView):
                     'allowed': sorted(self.MOVEMENT_TYPES),
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            is_admin = getattr(request.user, 'role', '') == 'admin'
-            if is_admin:
-                try:
-                    from_date, to_date = self._parse_range(
-                        request.query_params, today)
-                except ValueError as exc:
-                    return Response({'error': str(exc)},
-                                    status=status.HTTP_400_BAD_REQUEST)
-            else:
-                from_date = to_date = today
+            is_admin = can_supervise_productivity(request.user)
+            try:
+                from_date, to_date = self._parse_range(
+                    request.query_params, today)
+            except ValueError as exc:
+                return Response({'error': str(exc)},
+                                status=status.HTTP_400_BAD_REQUEST)
 
             all_sales = Sale.objects.filter(deleted_at__isnull=True)
+            if not is_admin:
+                all_sales = all_sales.filter(createdBy=request.user)
             # Retiros y cambios se derivan del MODO del catálogo. Los dos
             # tipos de alta comerciales se separan por su código histórico.
             catalog = request_type_catalog()
@@ -2883,21 +2882,20 @@ class DashboardDrilldownView(APIView):
                 status=status.HTTP_400_BAD_REQUEST)
 
         today = timezone.localdate()
-        if getattr(request.user, 'role', '') == 'admin':
-            try:
-                from_date, to_date = dashboard._parse_range(
-                    request.query_params, today)
-            except ValueError as exc:
-                return Response(
-                    {'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        else:
-            from_date = to_date = today
+        try:
+            from_date, to_date = dashboard._parse_range(
+                request.query_params, today)
+        except ValueError as exc:
+            return Response(
+                {'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             catalog = request_type_catalog()
             categories = dashboard._category_codes(catalog)
             filtered_sales = dashboard._selected_sales(
                 categories, from_date, to_date, movement_type)
+            if not can_supervise_productivity(request.user):
+                filtered_sales = filtered_sales.filter(createdBy=request.user)
             breakdown = []
             zone_count = None
             plan_count = None
@@ -3077,6 +3075,162 @@ class DashboardDrilldownView(APIView):
             return Response(
                 {'error': 'No se pudo consultar el detalle comercial'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class CommercialProductivityView(APIView):
+    """Productividad comercial con alcance decidido exclusivamente en backend.
+
+    ``Sale.createdBy`` representa quién registró la solicitud. El modelo no
+    tiene una relación confiable de atención/completado, por lo que esas
+    métricas se exponen explícitamente como no disponibles.
+    """
+
+    def get(self, request):
+        user = request.user
+        if not (
+            has_permission(user, 'dashboard.view')
+            or has_permission(user, 'comercial.view')
+        ):
+            return Response(
+                {'error': 'No tienes permiso para consultar productividad'},
+                status=status.HTTP_403_FORBIDDEN)
+
+        today = timezone.localdate()
+        try:
+            from_date, to_date = DashboardStatsView._parse_range(
+                request.query_params, today)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        movement_type = request.query_params.get('movement_type', 'all')
+        if movement_type not in DashboardStatsView.MOVEMENT_TYPES:
+            return Response(
+                {'error': 'movement_type no válido'},
+                status=status.HTTP_400_BAD_REQUEST)
+        page, error = _query_int(request.query_params, 'page', 1)
+        if error:
+            return error
+        page_size, error = _query_int(
+            request.query_params, 'page_size', 25, maximum=100)
+        if error:
+            return error
+
+        catalog = request_type_catalog()
+        categories = DashboardStatsView._category_codes(catalog)
+        sales = Sale.objects.filter(
+            deleted_at__isnull=True,
+            created_at__date__gte=from_date,
+            created_at__date__lte=to_date,
+        )
+        if movement_type != 'all':
+            sales = sales.filter(requestType__in=categories[movement_type])
+
+        supervisor = can_supervise_productivity(user)
+        requested_user_id = request.query_params.get('user_id')
+        if requested_user_id not in (None, ''):
+            try:
+                requested_user_id = int(requested_user_id)
+            except (TypeError, ValueError):
+                return Response({'error': 'user_id no válido'}, status=status.HTTP_400_BAD_REQUEST)
+            if not supervisor and requested_user_id != user.id:
+                return Response(
+                    {'error': 'Solo puedes consultar tu propia productividad'},
+                    status=status.HTTP_403_FORBIDDEN)
+            sales = sales.filter(createdBy_id=requested_user_id)
+        if not supervisor:
+            # Nunca se toma un user_id enviado por el cliente: el alcance
+            # personal siempre se deriva de request.user.
+            sales = sales.filter(createdBy=user)
+
+        grouped = list(sales.values(
+            'createdBy_id', 'createdBy__name',
+        ).annotate(
+            registered=Count('id'),
+            last_activity=Max('created_at'),
+        ).order_by('-registered', 'createdBy__name', 'createdBy_id'))
+
+        if not supervisor:
+            # La respuesta personal no filtra por nombres del cliente ni por
+            # IDs externos; solo devuelve la cuenta autenticada.
+            grouped = [{
+                'createdBy_id': user.id,
+                'createdBy__name': user.name,
+                'registered': grouped[0]['registered'] if grouped else 0,
+                'last_activity': grouped[0]['last_activity'] if grouped else None,
+            }]
+
+        total_registered = sales.count()
+        active_users = len([row for row in grouped if row['registered']])
+        total = sales.count()
+        start = (page - 1) * page_size
+        items = sales.select_related(
+            'plan', 'createdBy', 'motivo', 'customer',
+        ).order_by('-created_at', '-id')[start:start + page_size]
+        serialized = SaleSerializer(items, many=True, context={'catalog': catalog}).data
+        for payload, item in zip(serialized, items):
+            payload['createdAt'] = item.created_at.isoformat() if item.created_at else None
+            payload['registeredBy'] = {
+                'id': item.createdBy_id,
+                'name': item.createdBy.name,
+            }
+            # No existe actualmente un responsable/fecha de atención fiable.
+            payload['attendedBy'] = None
+            payload['attendedAt'] = None
+            payload['status'] = None
+
+        def user_row(row):
+            return {
+                'userId': row['createdBy_id'],
+                'userName': row['createdBy__name'],
+                'registered': row['registered'],
+                'attended': None,
+                'lastActivity': (
+                    row['last_activity'].isoformat()
+                    if row['last_activity'] else None
+                ),
+            }
+
+        rows = [user_row(row) for row in grouped]
+        daily = sales.values('created_at__date').annotate(
+            registered=Count('id'),
+        ).order_by('created_at__date')
+        daily_map = {row['created_at__date']: row['registered'] for row in daily}
+        series = []
+        current = from_date
+        while current <= to_date:
+            series.append({
+                'date': current.isoformat(),
+                'registered': daily_map.get(current, 0),
+                'attended': None,
+            })
+            current += timedelta(days=1)
+
+        return Response({
+            'scope': 'general' if supervisor else 'personal',
+            'viewer': {
+                'id': user.id,
+                'name': user.name,
+                'role': user.role,
+            },
+            'period': {
+                'from': from_date.isoformat(),
+                'to': to_date.isoformat(),
+                'movement_type': movement_type,
+            },
+            'summary': {
+                'registered': total_registered,
+                'activeUsers': active_users,
+                'attended': None,
+                'attendedAvailable': False,
+            },
+            'users': rows if supervisor else rows[:1],
+            'series': series,
+            'items': serialized,
+            'page': page,
+            'page_size': page_size,
+            'total': total,
+            'total_pages': max(1, (total + page_size - 1) // page_size),
+        })
 
 
 def _first_error(serializer):

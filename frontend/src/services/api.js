@@ -53,6 +53,11 @@ const api = {
     const query = params.toString();
     return request(`/api/dashboard/stats${query ? `?${query}` : ''}`);
   },
+  getCommercialProductivity: (from = '', to = '', movementType = 'all', page = 1, pageSize = 25, userId = '') => {
+    const params = new URLSearchParams({ from, to, movement_type: movementType, page: String(page), page_size: String(pageSize) });
+    if (userId) params.set('user_id', String(userId));
+    return request(`/api/dashboard/productivity?${params.toString()}`);
+  },
   getDashboardDrilldown: ({
     indicator, category, from, to, movementType = 'all',
     zoneName = '', planName = '', catalogLabel = '', planType = '',

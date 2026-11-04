@@ -6,6 +6,9 @@ from django.utils import timezone
 from .models import RolePermission, TemporaryAssignment
 
 
+PRODUCTIVITY_SUPERVISOR_ROLES = {'gerente', 'jefe-comercial'}
+
+
 def _role_queryset(user):
     return user.role_assignments.filter(
         active=True,
@@ -24,6 +27,17 @@ def is_system_admin(user):
     if getattr(user, 'role', None) == 'admin':
         return True
     return _role_queryset(user).filter(role__grants_full_access=True).exists()
+
+
+def can_supervise_productivity(user):
+    """Indica si puede consultar la actividad comercial de todo el equipo."""
+    if not user or not getattr(user, 'is_authenticated', False):
+        return False
+    if is_system_admin(user):
+        return True
+    return _role_queryset(user).filter(
+        role__code__in=PRODUCTIVITY_SUPERVISOR_ROLES,
+    ).exists()
 
 
 def parse_permission_code(code):
