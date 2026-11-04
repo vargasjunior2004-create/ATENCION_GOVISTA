@@ -53,6 +53,7 @@ function previewData(sale) {
     transferHasSketch: sale.traslado?.hasPhysicalSketch,
     equipmentDelivered: sale.equipmentDelivered,
     equipmentSerial: sale.equipmentSerial,
+    equipmentRecoveryRequired: sale.equipmentRecoveryRequired,
   };
 }
 

@@ -1,5 +1,5 @@
 from decimal import Decimal
-from django.db import connection
+from django.db import DatabaseError, connection
 
 from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_field
@@ -594,6 +594,10 @@ class SaleSerializer(serializers.ModelSerializer):
         source='equipment_delivered', read_only=True)
     equipmentSerial = serializers.CharField(
         source='equipment_serial', read_only=True)
+    equipmentRecoveryRequired = serializers.BooleanField(
+        source='equipment_recovery_required', read_only=True)
+    equipmentRecoveryStatus = serializers.CharField(
+        source='equipment_recovery_status', read_only=True)
     debtAmount = serializers.DecimalField(
         source='debt_amount', max_digits=12, decimal_places=2, read_only=True)
     totalToCollect = serializers.SerializerMethodField()
@@ -616,7 +620,8 @@ class SaleSerializer(serializers.ModelSerializer):
                    'applied_installation', 'applied_monthly', 'previousPlan']
         fields = fields + [
             'equipmentRetained', 'requiresTechnicalVisit', 'debtApplies',
-            'equipmentDelivered', 'equipmentSerial', 'debtAmount',
+             'equipmentDelivered', 'equipmentSerial', 'equipmentRecoveryRequired',
+             'equipmentRecoveryStatus', 'debtAmount',
             'totalToCollect', 'version']
         fields = fields + ['traslado', 'coverageZoneId', 'coverageZone',
                            'canalCaptacionId', 'canalCaptacion']
@@ -755,6 +760,8 @@ class SaleCreateSerializer(serializers.Serializer):
         source='equipment_delivered', required=False, allow_null=True)
     equipmentSerial = serializers.CharField(
         source='equipment_serial', required=False, allow_blank=True, max_length=255)
+    equipmentRecoveryRequired = serializers.BooleanField(
+        source='equipment_recovery_required', required=False)
 
     def validate(self, attrs):
         editable_origin_fields = {'contractOrigin', 'externalSeller'}
@@ -866,31 +873,44 @@ class SaleCreateSerializer(serializers.Serializer):
                 if not equipment_serial:
                     raise serializers.ValidationError(
                         {'equipmentSerial': 'Ingrese la serie del equipo entregado'})
-                with connection.cursor() as cursor:
-                    cursor.execute(
-                        """
-                        SELECT o.serie
-                        FROM public.onu AS o
-                        WHERE LOWER(TRIM(o.serie)) = LOWER(TRIM(%s))
-                        LIMIT 1
-                        """,
-                        [equipment_serial],
-                    )
-                    registered = cursor.fetchone()
-                if registered is None:
-                    raise serializers.ValidationError(
-                        {'equipmentSerial': 'La serie no está registrada en inventario'})
-                if InventarioMovimiento.objects.filter(
-                        serie__iexact=registered[0],
+                try:
+                    with connection.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            SELECT o.serie
+                            FROM public.onu AS o
+                            WHERE LOWER(TRIM(o.serie)) = LOWER(TRIM(%s))
+                            LIMIT 1
+                            """,
+                            [equipment_serial],
+                        )
+                        registered = cursor.fetchone()
+                except DatabaseError:
+                    # Inventario puede no estar disponible; el retiro
+                    # comercial conserva la serie como pendiente de
+                    # identificación en vez de bloquear el registro.
+                    registered = None
+                normalized_serial = registered[0] if registered else equipment_serial
+                if registered and InventarioMovimiento.objects.filter(
+                        serie__iexact=normalized_serial,
                         estado=InventarioMovimiento.ESTADO_PENDIENTE).exists():
                     raise serializers.ValidationError(
                         {'equipmentSerial': 'La serie ya tiene una recepción pendiente'})
-                attrs['equipment_serial'] = registered[0]
+                # La serie puede ser nueva para Inventario. Se conserva como
+                # declaración pendiente de identificación, sin bloquear el
+                # retiro comercial.
+                attrs['equipment_serial'] = normalized_serial
+                attrs['equipment_recovery_required'] = False
+                attrs['equipment_recovery_status'] = 'not_required'
             else:
                 attrs['equipment_serial'] = ''
+                attrs['equipment_recovery_required'] = True
+                attrs['equipment_recovery_status'] = 'pending'
         else:
             attrs['equipment_delivered'] = None
             attrs['equipment_serial'] = ''
+            attrs['equipment_recovery_required'] = False
+            attrs['equipment_recovery_status'] = 'not_required'
 
         if is_rehire:
             if equipment_retained is None:
@@ -1107,6 +1127,10 @@ class SaleCreateSerializer(serializers.Serializer):
             debt_amount=validated_data.get('debt_amount', Decimal('0')),
             equipment_delivered=validated_data.get('equipment_delivered'),
             equipment_serial=validated_data.get('equipment_serial', ''),
+            equipment_recovery_required=validated_data.get(
+                'equipment_recovery_required', False),
+            equipment_recovery_status=validated_data.get(
+                'equipment_recovery_status', 'not_required'),
             seller_user=validated_data.get('sellerUser'),
             seller_name=validated_data.get('sellerName', ''),
             createdBy=user,

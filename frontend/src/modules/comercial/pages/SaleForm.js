@@ -66,7 +66,7 @@ export default function SaleForm() {
     planId: '', coverageZoneId: '',
     canalCaptacionId: '',
     equipmentRetained: null, requiresTechnicalVisit: null,
-    equipmentDelivered: null, equipmentSerial: '',
+     equipmentDelivered: null, equipmentSerial: '', equipmentRecoveryRequired: false,
     meterNumber: '', sellerUserId: '',
     debtApplies: false, debtAmount: '',
     transferCurrentAddress: '', transferNewAddress: '',
@@ -324,6 +324,7 @@ export default function SaleForm() {
         if (nuevoModo !== 'retiro') {
           next.equipmentDelivered = null;
           next.equipmentSerial = '';
+          next.equipmentRecoveryRequired = false;
           setEquipmentLookup(null);
           setEquipmentLookupError('');
         }
@@ -409,6 +410,7 @@ export default function SaleForm() {
       if (isRetiro) {
         payload.equipmentDelivered = form.equipmentDelivered;
         payload.equipmentSerial = form.equipmentDelivered ? form.equipmentSerial : '';
+        payload.equipmentRecoveryRequired = form.equipmentRecoveryRequired;
       }
       if (isTransfer) {
         const family = SERVICE_TYPE_TO_PLAN_TYPE[form.serviceType];
@@ -424,7 +426,7 @@ export default function SaleForm() {
       }
       await api.createSale(payload);
       setSuccess('Registro guardado correctamente');
-       setForm({ date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', coverageZoneId: '', canalCaptacionId: '', equipmentRetained: null, requiresTechnicalVisit: null, equipmentDelivered: null, equipmentSerial: '', meterNumber: '', sellerUserId: '', debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferReferences: '', transferHasSketch: null });
+        setForm({ date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', coverageZoneId: '', canalCaptacionId: '', equipmentRetained: null, requiresTechnicalVisit: null, equipmentDelivered: null, equipmentSerial: '', equipmentRecoveryRequired: false, meterNumber: '', sellerUserId: '', debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferReferences: '', transferHasSketch: null });
        setEquipmentLookup(null); setEquipmentLookupError('');
       setSelectedPlan(null); setSelectedCustomer(null); setQuery(''); setCustomers([]);
       setPromotions([]); setSelectedPromotion(null); setPriceMode('normal');
@@ -515,6 +517,9 @@ export default function SaleForm() {
     transferReferences: isTransfer ? form.transferReferences : null,
     transferHasSketch: isTransfer ? form.transferHasSketch : null,
     motivo: getMotivoLabel(),
+    equipmentDelivered: isRetiro ? form.equipmentDelivered : null,
+    equipmentSerial: isRetiro && form.equipmentDelivered ? form.equipmentSerial : '',
+    equipmentRecoveryRequired: isRetiro && form.equipmentRecoveryRequired,
     notes: form.notes,
   };
 
@@ -794,17 +799,22 @@ export default function SaleForm() {
                 label="Entrega de equipo"
                 name="equipmentDelivered"
                 value={form.equipmentDelivered === null ? '' : String(form.equipmentDelivered)}
-                onChange={(event) => setForm((prev) => ({ ...prev, equipmentDelivered: event.target.value === 'true', equipmentSerial: event.target.value === 'true' ? prev.equipmentSerial : '' }))}
+                 onChange={(event) => setForm((prev) => ({
+                   ...prev,
+                   equipmentDelivered: event.target.value === 'true',
+                   equipmentRecoveryRequired: event.target.value !== 'true',
+                   equipmentSerial: event.target.value === 'true' ? prev.equipmentSerial : '',
+                 }))}
                 options={[
                   { value: 'true', label: 'Sí, trae equipo', description: 'Se enviará a recepción pendiente de Inventario.', icon: <Package size={15} /> },
-                  { value: 'false', label: 'No trae equipo', description: 'El retiro continúa sin devolución física.', icon: <Check size={15} /> },
+                   { value: 'false', label: 'No, requiere retiro de equipo', description: 'Se generará una orden de retiro de equipo para su posterior gestión operativa.', icon: <Check size={15} /> },
                 ]}
               />
               {form.equipmentDelivered && (
                 <div className="space-y-2">
                   <Input label="Serie del equipo *" value={form.equipmentSerial} onChange={(event) => { setForm((prev) => ({ ...prev, equipmentSerial: event.target.value.toUpperCase() })); setEquipmentLookup(null); setEquipmentLookupError(''); }} onBlur={(event) => lookupEquipment(event.target.value)} placeholder="Escanea o escribe la serie" autoComplete="off" required />
                   {equipmentLookup && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">Equipo identificado: <strong>{equipmentLookup.articulo.marca} {equipmentLookup.articulo.modelo}</strong> · {equipmentLookup.articulo.tipo.nombre}. No se creará otro registro.</div>}
-                  {equipmentLookupError && <p className="text-xs font-semibold text-red-600">{equipmentLookupError}</p>}
+                   {equipmentLookupError && <p className="text-xs font-semibold text-amber-700">{equipmentLookupError} Puedes registrar el retiro; la serie quedará pendiente de identificación.</p>}
                 </div>
               )}
             </div>
@@ -988,7 +998,7 @@ export default function SaleForm() {
             </div>
           )}
 
-          <Button type="submit" size="lg" className="w-full" disabled={!form.planId || samePlanSelected || (requiresCoverageZone && (!form.coverageZoneId || coverageZonesLoading || coverageZoneSelectionError)) || ((isCambio || isRetiro) && !form.motivoId) || (isRetiro && (form.equipmentDelivered === null || (form.equipmentDelivered && (!form.equipmentSerial.trim() || !equipmentLookup)))) || (isRecontratacion && (form.equipmentRetained === null || form.requiresTechnicalVisit === null || (form.debtApplies && (!form.debtAmount || Number(form.debtAmount) <= 0)))) || (isTransfer && (!form.transferNewAddress.trim() || form.transferHasSketch === null || !transferTariffs.some((item) => item.service_type === SERVICE_TYPE_TO_PLAN_TYPE[form.serviceType])))}>
+          <Button type="submit" size="lg" className="w-full" disabled={!form.planId || samePlanSelected || (requiresCoverageZone && (!form.coverageZoneId || coverageZonesLoading || coverageZoneSelectionError)) || ((isCambio || isRetiro) && !form.motivoId) || (isRetiro && (form.equipmentDelivered === null || (form.equipmentDelivered && !form.equipmentSerial.trim()))) || (isRecontratacion && (form.equipmentRetained === null || form.requiresTechnicalVisit === null || (form.debtApplies && (!form.debtAmount || Number(form.debtAmount) <= 0)))) || (isTransfer && (!form.transferNewAddress.trim() || form.transferHasSketch === null || !transferTariffs.some((item) => item.service_type === SERVICE_TYPE_TO_PLAN_TYPE[form.serviceType])))}>
             Revisar Registro
           </Button>
         </form>

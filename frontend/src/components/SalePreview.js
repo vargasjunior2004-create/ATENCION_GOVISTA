@@ -75,6 +75,9 @@ export function SalePreviewDetails({ sale }) {
         <PreviewRow label="Equipo entregado" value={sale.equipmentDelivered ? 'Sí' : 'No'} />
       )}
       {sale.equipmentSerial && <PreviewRow label="Serie del equipo" value={sale.equipmentSerial} />}
+      {sale.equipmentRecoveryRequired && (
+        <PreviewRow label="Recuperación de equipo" value="Pendiente de gestión operativa" />
+      )}
       {sale.motivo && <PreviewRow label="Motivo" value={sale.motivo} />}
       {sale.notes && <PreviewRow label="Comentarios" value={sale.notes} />}
       {sale.creatorName && <PreviewRow label="Registró" value={sale.creatorName} />}
