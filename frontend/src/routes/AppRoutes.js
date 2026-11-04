@@ -2,12 +2,10 @@ import React from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import Login from '../components/Login';
 import ModuleSelector from '../components/modules/ModuleSelector';
-import BackupModule from '../components/BackupModule';
 import CanalesCaptacionModule from '../components/CanalesCaptacionModule';
 import MotivosModule from '../components/MotivosModule';
 import PlansModule from '../components/PlansModule';
 import PromotionsModule from '../components/PromotionsModule';
-import UsersModule from '../components/UsersModule';
 import ComercialLayout from '../modules/comercial/ComercialLayout';
 import Dashboard from '../modules/comercial/pages/Dashboard';
 import SaleForm from '../modules/comercial/pages/SaleForm';
@@ -23,6 +21,12 @@ import RegisterCoverageZone from '../modules/cobertura/pages/RegisterCoverageZon
 import { AdminRoute, ProtectedRoute, PublicRoute } from './guards';
 import LegacyRedirect from './LegacyRedirect';
 import EquipmentPage from '../modules/equipos/EquipmentPage';
+import AdministracionLayout from '../modules/administracion/AdministracionLayout';
+import UsersPage from '../modules/administracion/pages/UsersPage';
+import RolesPage from '../modules/administracion/pages/RolesPage';
+import AuditPage from '../modules/administracion/pages/AuditPage';
+import BackupsPage from '../modules/administracion/pages/BackupsPage';
+import SecurityPage from '../modules/administracion/pages/SecurityPage';
 
 export default function AppRoutes() {
   return (
@@ -34,6 +38,14 @@ export default function AppRoutes() {
       <Route element={<ProtectedRoute />}>
         <Route path="/" element={<ModuleSelector />} />
         <Route path="/equipos" element={<EquipmentPage />} />
+        <Route path="/administracion" element={<AdminRoute permission="sistema.acceso.view"><AdministracionLayout /></AdminRoute>}>
+          <Route index element={<Navigate to="usuarios" replace />} />
+          <Route path="usuarios" element={<AdminRoute permission="usuarios.accounts.view"><UsersPage /></AdminRoute>} />
+          <Route path="roles" element={<AdminRoute permission="roles.roles.view"><RolesPage /></AdminRoute>} />
+          <Route path="auditoria" element={<AdminRoute permission="auditoria.eventos.view"><AuditPage /></AdminRoute>} />
+          <Route path="respaldos" element={<AdminRoute permission="respaldos.backups.view"><BackupsPage /></AdminRoute>} />
+          <Route path="seguridad" element={<AdminRoute permission="seguridad.politicas.view"><SecurityPage /></AdminRoute>} />
+        </Route>
         <Route
           path="/cobertura"
           element={<AdminRoute permission="coverage.view"><CoverageLayout /></AdminRoute>}
@@ -76,21 +88,8 @@ export default function AppRoutes() {
             element={<AdminRoute permission="commercial_config.manage"><PromotionsModule /></AdminRoute>}
           />
           <Route
-            path="usuarios"
-            element={<AdminRoute permission="users.manage"><UsersModule /></AdminRoute>}
-          />
-          <Route path="backups" element={<AdminRoute><BackupModule /></AdminRoute>} />
-          <Route
             path="tarifas-traslados"
             element={<AdminRoute permission="commercial_config.manage"><TransferTariffs /></AdminRoute>}
-          />
-          <Route
-            path="seguridad"
-            element={(
-              <AdminRoute permission="users.manage">
-                <Navigate to="/comercial/usuarios?seccion=seguridad" replace />
-              </AdminRoute>
-            )}
           />
         </Route>
 
@@ -100,8 +99,8 @@ export default function AppRoutes() {
         <Route path="/motivos" element={<LegacyRedirect to="/comercial/motivos" />} />
         <Route path="/canales-captacion" element={<LegacyRedirect to="/comercial/canales-captacion" />} />
         <Route path="/promociones" element={<LegacyRedirect to="/comercial/promociones" />} />
-        <Route path="/usuarios" element={<LegacyRedirect to="/comercial/usuarios" />} />
-        <Route path="/backups" element={<LegacyRedirect to="/comercial/backups" />} />
+        <Route path="/usuarios" element={<LegacyRedirect to="/administracion/usuarios" />} />
+        <Route path="/backups" element={<LegacyRedirect to="/administracion/respaldos" />} />
         <Route
           path="/comercial/cobertura/zonas"
           element={<LegacyRedirect to="/cobertura/consultar" />}

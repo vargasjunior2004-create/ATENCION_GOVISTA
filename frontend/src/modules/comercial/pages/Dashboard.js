@@ -39,7 +39,7 @@ const MOVEMENT_OPTIONS = [
   { value: 'retiros', label: 'Retiros' },
   { value: 'cambios_plan', label: 'Cambios de plan' },
   { value: 'adiciones', label: 'Adiciones' },
-  { value: 'otros', label: 'Otros' },
+  { value: 'otros', label: 'Traslado Externo' },
 ];
 
 const PERIOD_OPTIONS = [
@@ -140,7 +140,7 @@ function EmptyChart({ message = 'No hay solicitudes comerciales en este período
   );
 }
 
-function MetricCard({ label, count, total, icon: Icon, tone, detail }) {
+function MetricCard({ label, count, total, icon: Icon, tone, detail, onClick }) {
   const tones = {
     green: 'border-brand-200 bg-brand-50/60 text-brand-700',
     red: 'border-red-200 bg-red-50/70 text-red-700',
@@ -148,7 +148,12 @@ function MetricCard({ label, count, total, icon: Icon, tone, detail }) {
     slate: 'border-slate-200 bg-slate-50 text-slate-700',
   };
   return (
-    <Card className="relative overflow-hidden p-5">
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`Consultar ${label.toLowerCase()}: ${number(count)} registros`}
+      className="card-modern group relative w-full cursor-pointer appearance-none overflow-hidden p-5 text-left transition-shadow hover:border-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+    >
       <div className="mb-5 flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">{label}</p>
@@ -166,7 +171,7 @@ function MetricCard({ label, count, total, icon: Icon, tone, detail }) {
       ) : (
         <p className="border-t border-slate-100 pt-3 text-xs font-medium text-slate-400">{detail}</p>
       )}
-    </Card>
+    </button>
   );
 }
 
@@ -370,12 +375,20 @@ export default function Dashboard() {
         </Card>
       ) : stats && (
         <>
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <MetricCard label="Nuevos contratos" count={analytics?.nuevo_contrato?.count} total={analytics?.nuevo_contrato?.total} icon={ArrowUpRight} tone="green" />
-            <MetricCard label="Recontrataciones" count={analytics?.recontrataciones?.count} total={analytics?.recontrataciones?.total} icon={RefreshCw} tone="blue" />
-            <MetricCard label="Retiros" count={analytics?.retiros?.count} total={analytics?.retiros?.total} icon={ArrowDownRight} tone="red" />
-            <MetricCard label="Cambios de plan" count={analytics?.cambios_plan?.count} total={analytics?.cambios_plan?.total} icon={RefreshCw} tone="blue" />
-            <MetricCard label="Balance neto" count={analytics?.balance_neto} icon={Activity} tone="slate" detail="Nuevos contratos + recontrataciones - retiros" />
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+            <MetricCard label="Nuevos contratos" count={analytics?.nuevo_contrato?.count} total={analytics?.nuevo_contrato?.total} icon={ArrowUpRight} tone="green" onClick={() => setDrilldownIndicator('nuevo_contrato')} />
+            <MetricCard label="Recontrataciones" count={analytics?.recontrataciones?.count} total={analytics?.recontrataciones?.total} icon={RefreshCw} tone="blue" onClick={() => setDrilldownIndicator('recontrataciones')} />
+            <MetricCard label="Retiros" count={analytics?.retiros?.count} total={analytics?.retiros?.total} icon={ArrowDownRight} tone="red" onClick={() => setDrilldownIndicator('retiros')} />
+            <MetricCard
+              label="Altas comerciales"
+              count={(analytics?.nuevo_contrato?.count || 0) + (analytics?.recontrataciones?.count || 0)}
+              icon={TrendingUp}
+              tone="green"
+              detail="Nuevos contratos + recontrataciones"
+              onClick={() => setDrilldownIndicator('altas_comerciales')}
+            />
+            <MetricCard label="Cambios de plan" count={analytics?.cambios_plan?.count} total={analytics?.cambios_plan?.total} icon={RefreshCw} tone="blue" onClick={() => setDrilldownIndicator('cambios_plan')} />
+            <MetricCard label="Balance neto" count={analytics?.balance_neto} icon={Activity} tone="slate" detail="Altas comerciales - retiros" onClick={() => setDrilldownIndicator('balance_neto')} />
           </section>
 
           {!hasData ? (
@@ -399,19 +412,25 @@ export default function Dashboard() {
                     </ResponsiveContainer>
                   </div>
                 </ChartCard>
-                <ChartCard eyebrow="Solicitudes por zona" title="Zonas de mayor demanda">
+                <ChartCard eyebrow="Solicitudes por zona" title="Top de 5 Zonas de mayor demanda">
                   {zones.length ? (
                     <div className="space-y-4">
-                      {zones.map((zone, index) => {
+                      {zones.map((zone) => {
                         const width = Math.max(zone.percentage, zone.count ? 2 : 0);
                         return (
-                          <div key={zone.name}>
+                          <button
+                            key={zone.name}
+                            type="button"
+                            aria-label={`Consultar solicitudes de ${zone.name}`}
+                            onClick={() => {
+                              setDrilldownZoneName(zone.name);
+                              setDrilldownIndicator('zone');
+                            }}
+                            className="block w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/30"
+                          >
                             <div className="mb-1.5 flex items-center justify-between gap-3 text-sm">
-                              <span className="flex min-w-0 items-center gap-2 font-semibold text-slate-600">
-                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-[11px] font-black text-brand-700">
-                                  {zone.name === 'Otros barrios' ? '…' : index + 1}
-                                </span>
-                                <span className="truncate">{zone.name}</span>
+                              <span className="min-w-0 truncate font-semibold text-slate-600">
+                                {zone.name}
                               </span>
                               <span className="shrink-0 text-right">
                                 <strong className="font-black tabular-nums text-slate-800">{number(zone.count)}</strong>
@@ -431,12 +450,10 @@ export default function Dashboard() {
                                 style={{ width: `${width}%` }}
                               />
                             </div>
-                          </div>
+                          </button>
                         );
                       })}
-                      <p className="border-t border-slate-100 pt-3 text-xs text-slate-400">
-                        Altas comerciales - retiros.
-                      </p>
+
                     </div>
                   ) : (
                     <EmptyChart message="No hay solicitudes con zona para estos filtros" />
@@ -464,7 +481,16 @@ export default function Dashboard() {
                   {topPlans.length ? (
                     <div className="space-y-4 pt-2">
                       {topPlans.map((item, index) => (
-                        <div key={`${item.label}-${item.type}`}>
+                        <button
+                          key={`${item.label}-${item.type}-${item.plan_name}-${item.catalog_label}`}
+                          type="button"
+                          aria-label={`Consultar solicitudes del plan ${item.label}`}
+                          onClick={() => {
+                            setDrilldownPlan(item);
+                            setDrilldownIndicator('plan');
+                          }}
+                          className="block w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/30"
+                        >
                           <div className="mb-1.5 flex items-center justify-between gap-3 text-sm">
                             <span className="flex min-w-0 items-center gap-2 font-semibold text-slate-600">
                               <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: PLAN_COLORS[index % PLAN_COLORS.length] }} />
@@ -475,7 +501,7 @@ export default function Dashboard() {
                           <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                             <div className="h-full rounded-full" style={{ width: `${(item.count / planDemandCount) * 100}%`, backgroundColor: PLAN_COLORS[index % PLAN_COLORS.length] }} />
                           </div>
-                        </div>
+                        </button>
                       ))}
                     </div>
                   ) : <EmptyChart message="No hay altas comerciales con planes en este período" />}

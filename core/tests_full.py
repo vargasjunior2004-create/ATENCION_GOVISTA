@@ -706,6 +706,110 @@ class DashboardTests(TestCase):
         self.assertEqual(ranking[-1]['name'], 'Otros barrios')
         self.assertEqual(ranking[-1]['count'], 2)
 
+    def test_dashboard_zone_drilldown_matches_ranking_and_filters(self):
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+        zones = list(CoverageZone.objects.order_by('name')[:7])
+        selected_zone = zones[0]
+        self._sale(
+            'ZONE-DETAIL-001', 'nuevo_contrato', today,
+            coverage_zone=selected_zone)
+        self._sale(
+            'ZONE-DETAIL-002', 'recontratacion', today,
+            coverage_zone=selected_zone)
+        self._sale(
+            'ZONE-DETAIL-OLD', 'nuevo_contrato', yesterday,
+            coverage_zone=selected_zone)
+        self._sale(
+            'ZONE-DETAIL-RETIRO', 'retiro', today,
+            coverage_zone=selected_zone)
+        for index, zone in enumerate(zones[1:]):
+            self._sale(
+                f'ZONE-DETAIL-OTHER-{index}', 'nuevo_contrato', today,
+                coverage_zone=zone)
+
+        token = self._token()
+        headers = {'HTTP_AUTHORIZATION': f'Bearer {token}'}
+        period_params = {
+            'from': today.isoformat(),
+            'to': today.isoformat(),
+        }
+        stats = self.c.get(
+            '/api/dashboard/stats', period_params, **headers)
+        self.assertEqual(stats.status_code, 200)
+        ranking = _json(stats)['analytics']['zonas']
+        self.assertEqual(ranking[0]['name'], selected_zone.name)
+        self.assertEqual(ranking[0]['count'], 2)
+        self.assertEqual(ranking[-1]['name'], 'Otros barrios')
+        self.assertEqual(ranking[-1]['count'], 2)
+
+        params = {
+            **period_params,
+            'indicator': 'zone',
+            'zone_name': selected_zone.name,
+            'page_size': 1,
+        }
+        first_page = self.c.get(
+            '/api/dashboard/drilldown', params, **headers)
+        self.assertEqual(first_page.status_code, 200, _json(first_page))
+        first_data = _json(first_page)
+        self.assertEqual(first_data['zone_count'], ranking[0]['count'])
+        self.assertEqual(first_data['total'], ranking[0]['count'])
+        self.assertEqual(first_data['indicator_count'], ranking[0]['count'])
+        self.assertEqual(first_data['total_pages'], 2)
+        first_sale = first_data['items'][0]
+        for field in (
+                'clientName', 'clientCode', 'date', 'requestType',
+                'requestTypeLabel', 'serviceType', 'Plan', 'creator'):
+            self.assertIn(field, first_sale)
+
+        second_page = self.c.get(
+            '/api/dashboard/drilldown',
+            {**params, 'page': 2},
+            **headers)
+        self.assertEqual(second_page.status_code, 200)
+        self.assertNotEqual(
+            first_data['items'][0]['id'],
+            _json(second_page)['items'][0]['id'])
+
+        searched = self.c.get(
+            '/api/dashboard/drilldown',
+            {**params, 'page_size': 25, 'search': 'ZONE-DETAIL-002'},
+            **headers)
+        self.assertEqual(searched.status_code, 200)
+        self.assertEqual(_json(searched)['zone_count'], 2)
+        self.assertEqual(_json(searched)['total'], 1)
+
+        other_zone_params = {
+            **period_params,
+            'indicator': 'zone',
+            'zone_name': 'Otros barrios',
+        }
+        other_zones = self.c.get(
+            '/api/dashboard/drilldown', other_zone_params, **headers)
+        self.assertEqual(other_zones.status_code, 200)
+        self.assertEqual(_json(other_zones)['zone_count'], ranking[-1]['count'])
+        self.assertEqual(_json(other_zones)['total'], ranking[-1]['count'])
+
+        filtered_stats = self.c.get(
+            '/api/dashboard/stats',
+            {**period_params, 'movement_type': 'nuevo_contrato'},
+            **headers)
+        filtered_ranking = _json(filtered_stats)['analytics']['zonas']
+        filtered_detail = self.c.get(
+            '/api/dashboard/drilldown',
+            {
+                **params,
+                'movement_type': 'nuevo_contrato',
+                'page_size': 25,
+            },
+            **headers)
+        self.assertEqual(filtered_detail.status_code, 200)
+        self.assertEqual(
+            _json(filtered_detail)['zone_count'],
+            filtered_ranking[0]['count'])
+        self.assertEqual(_json(filtered_detail)['total'], 1)
+
     def test_dashboard_plan_demand_is_ordered_within_selected_range(self):
         today = timezone.localdate()
         yesterday = today - timedelta(days=1)
@@ -740,6 +844,108 @@ class DashboardTests(TestCase):
             [(item['label'], item['type_label'], item['count']) for item in plans],
             [('Plan 200', 'Internet', 2), ('Plan TV 50', 'TV', 1)],
         )
+
+    def test_dashboard_plan_drilldown_matches_plan_demand_and_paginates(self):
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+        first = self._sale(
+            'PLAN-DETAIL-001', 'nuevo_contrato', today,
+            coverage_zone=CoverageZone.objects.get(
+                id=self.coverage_zone_id))
+        second = self._sale(
+            'PLAN-DETAIL-002', 'recontratacion', today,
+            coverage_zone=CoverageZone.objects.get(
+                id=self.coverage_zone_id))
+        self._sale('PLAN-DETAIL-RETIRO', 'retiro', today)
+        self._sale('PLAN-DETAIL-OLD', 'nuevo_contrato', yesterday)
+
+        other_plan = Plan.objects.create(
+            type='internet', code='TEST-PLAN-DETAIL', label='Plan Alternativo',
+            monthly=100, speed='10', active=True,
+            installation=Decimal('0'))
+        Sale.objects.create(
+            date=today, clientCode='PLAN-DETAIL-OTHER',
+            clientName='DASH_PLAN-DETAIL-OTHER',
+            serviceType='internet', requestType='nuevo_contrato',
+            plan=other_plan, planName=other_plan.label,
+            total=Decimal('100'), createdBy=self.admin)
+
+        token = self._token()
+        headers = {'HTTP_AUTHORIZATION': f'Bearer {token}'}
+        params = {
+            'from': today.isoformat(),
+            'to': today.isoformat(),
+        }
+        stats = self.c.get('/api/dashboard/stats', params, **headers)
+        self.assertEqual(stats.status_code, 200)
+        plan = next(
+            item for item in _json(stats)['analytics']['planes']
+            if item['label'] == self.plan.label)
+        self.assertEqual(plan['count'], 2)
+
+        detail_params = {
+            **params,
+            'indicator': 'plan',
+            'plan_name': plan['plan_name'],
+            'catalog_label': plan['catalog_label'],
+            'plan_type': plan['type'],
+            'page_size': 1,
+        }
+        first_page = self.c.get(
+            '/api/dashboard/drilldown', detail_params, **headers)
+        self.assertEqual(first_page.status_code, 200, _json(first_page))
+        first_data = _json(first_page)
+        self.assertEqual(first_data['plan_count'], plan['count'])
+        self.assertEqual(first_data['indicator_count'], plan['count'])
+        self.assertEqual(first_data['total'], plan['count'])
+        self.assertEqual(first_data['total_pages'], 2)
+        self.assertIn(
+            first_data['items'][0]['id'], {first.id, second.id})
+        self.assertEqual(
+            first_data['items'][0]['coverageZone']['name'],
+            CoverageZone.objects.get(id=self.coverage_zone_id).name)
+        self.assertIn('requestTypeLabel', first_data['items'][0])
+
+        next_page = self.c.get(
+            '/api/dashboard/drilldown',
+            {**detail_params, 'page': 2},
+            **headers)
+        self.assertEqual(next_page.status_code, 200)
+        self.assertNotEqual(
+            first_data['items'][0]['id'],
+            _json(next_page)['items'][0]['id'])
+
+        searched = self.c.get(
+            '/api/dashboard/drilldown',
+            {
+                **detail_params,
+                'page_size': 25,
+                'search': 'PLAN-DETAIL-002',
+            },
+            **headers)
+        self.assertEqual(searched.status_code, 200)
+        self.assertEqual(_json(searched)['plan_count'], plan['count'])
+        self.assertEqual(_json(searched)['total'], 1)
+
+        filtered_stats = self.c.get(
+            '/api/dashboard/stats',
+            {**params, 'movement_type': 'nuevo_contrato'},
+            **headers)
+        filtered_plan = next(
+            item for item in _json(filtered_stats)['analytics']['planes']
+            if item['label'] == self.plan.label)
+        filtered_detail = self.c.get(
+            '/api/dashboard/drilldown',
+            {
+                **detail_params,
+                'movement_type': 'nuevo_contrato',
+                'page_size': 25,
+            },
+            **headers)
+        self.assertEqual(filtered_detail.status_code, 200)
+        self.assertEqual(
+            _json(filtered_detail)['plan_count'], filtered_plan['count'])
+        self.assertEqual(_json(filtered_detail)['total'], filtered_plan['count'])
 
     def test_dashboard_analytics_movement_filter_excludes_other_categories(self):
         today = timezone.localdate()

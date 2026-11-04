@@ -170,6 +170,7 @@ export default function SaleForm() {
   const isCambio = modo === 'cambio_plan';
   const isAdicion = modo === 'adicion';
   const isRecontratacion = form.requestType === 'recontratacion';
+  const isNewContract = form.requestType === 'nuevo_contrato';
   const isContract = modo === 'nuevo' || isRecontratacion;
   const isTransfer = form.requestType === 'traslado_externo';
   const requiresCoverageZone = isContract || isTransfer;
@@ -308,7 +309,7 @@ export default function SaleForm() {
         next.motivoId = '';
         next.coverageZoneId = '';
         const nuevoModo = modoOf(value);
-        if (nuevoModo !== 'nuevo') next.canalCaptacionId = '';
+        if (value !== 'nuevo_contrato') next.canalCaptacionId = '';
         if (nuevoModo !== 'adicion') next.additionType = '';
         if (nuevoModo !== 'cambio_plan') {
           next.planFromId = '';
@@ -392,7 +393,7 @@ export default function SaleForm() {
         payload.clientCi = form.clientCi;
         payload.clientPhone = form.clientPhone;
         payload.meterNumber = form.meterNumber;
-        if (form.canalCaptacionId) {
+        if (isNewContract && form.canalCaptacionId) {
           payload.canalCaptacionId = Number(form.canalCaptacionId);
         }
         if (form.sellerUserId) {
@@ -509,7 +510,7 @@ export default function SaleForm() {
     transferNewAddress: isTransfer ? form.transferNewAddress : null,
     transferZone: isTransfer ? selectedCoverageZone?.name : null,
     coverageZoneName: requiresCoverageZone ? selectedCoverageZone?.name : null,
-    canalCaptacionNombre: isContract
+    canalCaptacionNombre: isNewContract
       ? canalCaptacionNombreOf(Number(form.canalCaptacionId)) : null,
     transferReferences: isTransfer ? form.transferReferences : null,
     transferHasSketch: isTransfer ? form.transferHasSketch : null,
