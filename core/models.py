@@ -628,6 +628,17 @@ class Sale(models.Model):
     equipment_serial = models.CharField(
         max_length=255, blank=True, default='',
         help_text='Serie del equipo declarado en el retiro')
+    equipment_recovery_required = models.BooleanField(
+        default=False,
+        help_text='Indica que el equipo debe recuperarse posteriormente del domicilio')
+    equipment_recovery_status = models.CharField(
+        max_length=24,
+        choices=[
+            ('not_required', 'No requiere recuperación'),
+            ('pending', 'Pendiente de recuperación'),
+        ],
+        default='not_required',
+        help_text='Estado inicial preparado para la futura gestión operativa')
     createdBy = models.ForeignKey(
         User, on_delete=models.PROTECT, related_name='sales_created')
     seller_user = models.ForeignKey(
