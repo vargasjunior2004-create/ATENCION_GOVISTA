@@ -445,9 +445,7 @@ export default function Dashboard() {
                           </button>
                         );
                       })}
-                      <p className="border-t border-slate-100 pt-3 text-xs text-slate-400">
-                        Altas comerciales - retiros.
-                      </p>
+                      
                     </div>
                   ) : (
                     <EmptyChart message="No hay solicitudes con zona para estos filtros" />
