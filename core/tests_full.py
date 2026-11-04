@@ -681,6 +681,108 @@ class DashboardTests(TestCase):
             [('Plan 200', 'Internet', 2), ('Plan TV 50', 'TV', 1)],
         )
 
+    def test_dashboard_plan_drilldown_matches_plan_demand_and_paginates(self):
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+        first = self._sale(
+            'PLAN-DETAIL-001', 'nuevo_contrato', today,
+            coverage_zone=CoverageZone.objects.get(
+                id=self.coverage_zone_id))
+        second = self._sale(
+            'PLAN-DETAIL-002', 'recontratacion', today,
+            coverage_zone=CoverageZone.objects.get(
+                id=self.coverage_zone_id))
+        self._sale('PLAN-DETAIL-RETIRO', 'retiro', today)
+        self._sale('PLAN-DETAIL-OLD', 'nuevo_contrato', yesterday)
+
+        other_plan = Plan.objects.create(
+            type='internet', code='TEST-PLAN-DETAIL', label='Plan Alternativo',
+            monthly=100, speed='10', active=True,
+            installation=Decimal('0'))
+        Sale.objects.create(
+            date=today, clientCode='PLAN-DETAIL-OTHER',
+            clientName='DASH_PLAN-DETAIL-OTHER',
+            serviceType='internet', requestType='nuevo_contrato',
+            plan=other_plan, planName=other_plan.label,
+            total=Decimal('100'), createdBy=self.admin)
+
+        token = self._token()
+        headers = {'HTTP_AUTHORIZATION': f'Bearer {token}'}
+        params = {
+            'from': today.isoformat(),
+            'to': today.isoformat(),
+        }
+        stats = self.c.get('/api/dashboard/stats', params, **headers)
+        self.assertEqual(stats.status_code, 200)
+        plan = next(
+            item for item in _json(stats)['analytics']['planes']
+            if item['label'] == self.plan.label)
+        self.assertEqual(plan['count'], 2)
+
+        detail_params = {
+            **params,
+            'indicator': 'plan',
+            'plan_name': plan['plan_name'],
+            'catalog_label': plan['catalog_label'],
+            'plan_type': plan['type'],
+            'page_size': 1,
+        }
+        first_page = self.c.get(
+            '/api/dashboard/drilldown', detail_params, **headers)
+        self.assertEqual(first_page.status_code, 200, _json(first_page))
+        first_data = _json(first_page)
+        self.assertEqual(first_data['plan_count'], plan['count'])
+        self.assertEqual(first_data['indicator_count'], plan['count'])
+        self.assertEqual(first_data['total'], plan['count'])
+        self.assertEqual(first_data['total_pages'], 2)
+        self.assertIn(
+            first_data['items'][0]['id'], {first.id, second.id})
+        self.assertEqual(
+            first_data['items'][0]['coverageZone']['name'],
+            CoverageZone.objects.get(id=self.coverage_zone_id).name)
+        self.assertIn('requestTypeLabel', first_data['items'][0])
+
+        next_page = self.c.get(
+            '/api/dashboard/drilldown',
+            {**detail_params, 'page': 2},
+            **headers)
+        self.assertEqual(next_page.status_code, 200)
+        self.assertNotEqual(
+            first_data['items'][0]['id'],
+            _json(next_page)['items'][0]['id'])
+
+        searched = self.c.get(
+            '/api/dashboard/drilldown',
+            {
+                **detail_params,
+                'page_size': 25,
+                'search': 'PLAN-DETAIL-002',
+            },
+            **headers)
+        self.assertEqual(searched.status_code, 200)
+        self.assertEqual(_json(searched)['plan_count'], plan['count'])
+        self.assertEqual(_json(searched)['total'], 1)
+
+        filtered_stats = self.c.get(
+            '/api/dashboard/stats',
+            {**params, 'movement_type': 'nuevo_contrato'},
+            **headers)
+        filtered_plan = next(
+            item for item in _json(filtered_stats)['analytics']['planes']
+            if item['label'] == self.plan.label)
+        filtered_detail = self.c.get(
+            '/api/dashboard/drilldown',
+            {
+                **detail_params,
+                'movement_type': 'nuevo_contrato',
+                'page_size': 25,
+            },
+            **headers)
+        self.assertEqual(filtered_detail.status_code, 200)
+        self.assertEqual(
+            _json(filtered_detail)['plan_count'], filtered_plan['count'])
+        self.assertEqual(_json(filtered_detail)['total'], filtered_plan['count'])
+
     def test_dashboard_analytics_movement_filter_excludes_other_categories(self):
         today = timezone.localdate()
         self._sale('B001', 'nuevo_contrato', today)

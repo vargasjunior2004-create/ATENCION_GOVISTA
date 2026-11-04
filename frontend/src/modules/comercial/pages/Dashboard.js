@@ -200,6 +200,7 @@ export default function Dashboard() {
   const [error, setError] = useState('');
   const [drilldownIndicator, setDrilldownIndicator] = useState(null);
   const [drilldownZoneName, setDrilldownZoneName] = useState('');
+  const [drilldownPlan, setDrilldownPlan] = useState(null);
   const requestId = useRef(0);
 
   const visiblePeriod = isAdmin ? period : 'today';
@@ -473,7 +474,16 @@ export default function Dashboard() {
                   {topPlans.length ? (
                     <div className="space-y-4 pt-2">
                       {topPlans.map((item, index) => (
-                        <div key={`${item.label}-${item.type}`}>
+                        <button
+                          key={`${item.label}-${item.type}-${item.plan_name}-${item.catalog_label}`}
+                          type="button"
+                          aria-label={`Consultar solicitudes del plan ${item.label}`}
+                          onClick={() => {
+                            setDrilldownPlan(item);
+                            setDrilldownIndicator('plan');
+                          }}
+                          className="block w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/30"
+                        >
                           <div className="mb-1.5 flex items-center justify-between gap-3 text-sm">
                             <span className="flex min-w-0 items-center gap-2 font-semibold text-slate-600">
                               <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: PLAN_COLORS[index % PLAN_COLORS.length] }} />
@@ -484,7 +494,7 @@ export default function Dashboard() {
                           <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                             <div className="h-full rounded-full" style={{ width: `${(item.count / planDemandCount) * 100}%`, backgroundColor: PLAN_COLORS[index % PLAN_COLORS.length] }} />
                           </div>
-                        </div>
+                        </button>
                       ))}
                     </div>
                   ) : <EmptyChart message="No hay altas comerciales con planes en este período" />}
@@ -510,6 +520,9 @@ export default function Dashboard() {
         <DashboardDrilldownModal
           indicator={drilldownIndicator}
           zoneName={drilldownZoneName}
+          planName={drilldownPlan?.plan_name}
+          catalogLabel={drilldownPlan?.catalog_label}
+          planType={drilldownPlan?.type}
           from={range.from}
           to={range.to}
           movementType={movementType}
@@ -517,6 +530,7 @@ export default function Dashboard() {
           onClose={() => {
             setDrilldownIndicator(null);
             setDrilldownZoneName('');
+            setDrilldownPlan(null);
           }}
         />
       )}

@@ -86,7 +86,7 @@ function ResultSummary({ breakdown, selectedCategory, onSelect }) {
   );
 }
 
-function RowDetails({ sale, isRetirement, isPlanChange, isZone }) {
+function RowDetails({ sale, isRetirement, isPlanChange, isZone, isPlan }) {
   return (
     <span className="grid gap-2 text-sm">
       <span>
@@ -94,7 +94,7 @@ function RowDetails({ sale, isRetirement, isPlanChange, isZone }) {
         <span className="text-xs text-slate-500">{sale.clientCode}</span>
       </span>
       <span className="grid grid-cols-2 gap-2 text-xs">
-        {isZone && (
+        {(isZone || isPlan) && (
           <>
             <span className="text-slate-500">Tipo de solicitud</span>
             <span className="text-right text-slate-700">{sale.requestTypeLabel || sale.requestType || '—'}</span>
@@ -120,6 +120,12 @@ function RowDetails({ sale, isRetirement, isPlanChange, isZone }) {
         )}
         <span className="text-slate-500">Registró</span>
         <span className="text-right text-slate-700">{sale.creator?.name || '—'}</span>
+        {isPlan && (
+          <>
+            <span className="text-slate-500">Zona / barrio</span>
+            <span className="text-right text-slate-700">{sale.coverageZone?.name || '—'}</span>
+          </>
+        )}
       </span>
     </span>
   );
@@ -132,10 +138,14 @@ export default function DashboardDrilldownModal({
   movementType,
   periodLabel,
   zoneName,
+  planName,
+  catalogLabel,
+  planType,
   onClose,
 }) {
   const isZone = indicator === 'zone';
-  const relevantCategories = isZone
+  const isPlan = indicator === 'plan';
+  const relevantCategories = isZone || isPlan
     ? []
     : indicator === 'altas_comerciales'
     ? ['nuevo_contrato', 'recontrataciones']
@@ -171,7 +181,8 @@ export default function DashboardDrilldownModal({
     setResult(null);
     const timer = setTimeout(() => {
       api.getDashboardDrilldown({
-        indicator, category, zoneName, from, to, movementType, search, page,
+        indicator, category, zoneName, planName, catalogLabel, planType,
+        from, to, movementType, search, page,
       })
         .then((data) => {
           if (currentRequest === requestId.current) setResult(data);
@@ -186,7 +197,10 @@ export default function DashboardDrilldownModal({
         });
     }, search ? 250 : 0);
     return () => clearTimeout(timer);
-  }, [indicator, category, zoneName, from, to, movementType, search, page]);
+  }, [
+    indicator, category, zoneName, planName, catalogLabel, planType,
+    from, to, movementType, search, page,
+  ]);
 
   const selectCategory = (value) => {
     setCategory(value);
@@ -197,11 +211,13 @@ export default function DashboardDrilldownModal({
   const isPlanChange = category === 'cambios_plan';
   const sales = result?.items || [];
   const breakdown = result?.breakdown || [];
-  const selectedLabel = isZone
+  const selectedLabel = isZone || isPlan
     ? 'Solicitudes registradas'
     : CATEGORY_LABELS[category] || INDICATOR_LABELS[indicator];
   const resultCount = Number(result?.total || 0);
-  const zoneCount = Number(result?.zone_count || 0);
+  const selectedCount = Number(
+    isZone ? result?.zone_count : result?.plan_count || 0,
+  );
   const totalPages = result?.total_pages || 1;
 
   return (
@@ -224,7 +240,8 @@ export default function DashboardDrilldownModal({
                 Detalle comercial
               </p>
               <h2 id="dashboard-drilldown-title" className="mt-1 text-xl font-black text-slate-900 sm:text-2xl">
-                {zoneName || INDICATOR_LABELS[indicator]}
+                {(isZone ? zoneName : isPlan ? planName || catalogLabel : null)
+                  || INDICATOR_LABELS[indicator]}
               </h2>
               <p className="mt-1 text-xs font-medium text-slate-500 sm:text-sm">
                 Período: {periodLabel}
@@ -265,8 +282,8 @@ export default function DashboardDrilldownModal({
                 <p className="mt-1 text-xs text-slate-500" aria-live="polite">
                   {loading && !result
                     ? 'Consultando registros…'
-                    : isZone
-                      ? `${zoneCount.toLocaleString('es-BO')} solicitudes en esta zona · ${resultCount.toLocaleString('es-BO')} registros encontrados`
+                    : isZone || isPlan
+                      ? `${selectedCount.toLocaleString('es-BO')} solicitudes · ${resultCount.toLocaleString('es-BO')} registros encontrados`
                       : `${resultCount.toLocaleString('es-BO')} registros encontrados`}
                 </p>
               </div>
@@ -313,13 +330,14 @@ export default function DashboardDrilldownModal({
                     <thead className="sticky top-0 bg-slate-50 text-[11px] font-bold uppercase tracking-wide text-slate-500">
                       <tr>
                         <th className="px-4 py-3">Cliente</th>
-                        {isZone && <th className="px-4 py-3">Tipo de solicitud</th>}
+                        {(isZone || isPlan) && <th className="px-4 py-3">Tipo de solicitud</th>}
                         <th className="px-4 py-3">Fecha</th>
                         <th className="px-4 py-3">Servicio</th>
                         {isPlanChange && <th className="px-4 py-3">Plan anterior</th>}
                         <th className="px-4 py-3">Plan</th>
                         {isRetirement && <th className="px-4 py-3">Motivo</th>}
                         <th className="px-4 py-3">Registró</th>
+                        {isPlan && <th className="px-4 py-3">Zona / barrio</th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -342,13 +360,14 @@ export default function DashboardDrilldownModal({
                             <span className="block font-bold text-slate-800">{sale.clientName}</span>
                             <span className="text-xs text-slate-500">{sale.clientCode}</span>
                           </td>
-                          {isZone && <td className="px-4 py-3 text-slate-600">{sale.requestTypeLabel || sale.requestType || '—'}</td>}
+                          {(isZone || isPlan) && <td className="px-4 py-3 text-slate-600">{sale.requestTypeLabel || sale.requestType || '—'}</td>}
                           <td className="px-4 py-3 text-slate-600">{displayDate(sale.date)}</td>
                           <td className="px-4 py-3 text-slate-600">{SERVICE_LABELS[sale.serviceType] || sale.serviceType || '—'}</td>
                           {isPlanChange && <td className="px-4 py-3 text-slate-600">{sale.planFrom || sale.previousPlan?.label || '—'}</td>}
                           <td className="px-4 py-3 text-slate-600">{sale.Plan?.label || '—'}</td>
                           {isRetirement && <td className="px-4 py-3 text-slate-600">{sale.changeReason || sale.motivoNombre || '—'}</td>}
                           <td className="px-4 py-3 text-slate-600">{sale.creator?.name || '—'}</td>
+                          {isPlan && <td className="px-4 py-3 text-slate-600">{sale.coverageZone?.name || '—'}</td>}
                         </tr>
                       ))}
                     </tbody>
@@ -362,7 +381,13 @@ export default function DashboardDrilldownModal({
                       onClick={() => setPreviewSale(sale)}
                       className="w-full rounded-xl border border-slate-200 p-4 text-left transition-colors hover:border-brand-300 hover:bg-brand-50/40 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
                     >
-                      <RowDetails sale={sale} isRetirement={isRetirement} isPlanChange={isPlanChange} isZone={isZone} />
+                      <RowDetails
+                        sale={sale}
+                        isRetirement={isRetirement}
+                        isPlanChange={isPlanChange}
+                        isZone={isZone}
+                        isPlan={isPlan}
+                      />
                     </button>
                   ))}
                 </div>
