@@ -190,10 +190,10 @@ SIMPLE_JWT = {
 }
 
 # Política de seguridad administrativa.
-PASSWORD_MIN_LENGTH = int(os.environ.get('PASSWORD_MIN_LENGTH', '10'))
+PASSWORD_MIN_LENGTH = int(os.environ.get('PASSWORD_MIN_LENGTH', '8'))
 LOGIN_MAX_ATTEMPTS = int(os.environ.get('LOGIN_MAX_ATTEMPTS', '5'))
 LOGIN_WINDOW_MINUTES = int(os.environ.get('LOGIN_WINDOW_MINUTES', '15'))
-LOGIN_LOCKOUT_MINUTES = int(os.environ.get('LOGIN_LOCKOUT_MINUTES', '15'))
+LOGIN_LOCKOUT_MINUTES = int(os.environ.get('LOGIN_LOCKOUT_MINUTES', '5'))
 # Render entrega la IP real en X-Forwarded-For. Solo activar detrás de un
 # proxy confiable; en desarrollo se usa REMOTE_ADDR.
 TRUST_PROXY_HEADERS = os.environ.get(

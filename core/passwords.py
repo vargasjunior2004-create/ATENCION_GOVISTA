@@ -22,7 +22,7 @@ COMMON_PASSWORDS = {
 
 
 def _min_length():
-    return int(getattr(settings, 'PASSWORD_MIN_LENGTH', 10))
+    return int(getattr(settings, 'PASSWORD_MIN_LENGTH', 8))
 
 
 def validate_password(raw, user=None):

@@ -31,7 +31,7 @@ def _max_attempts():
 
 
 def _lockout_minutes():
-    return int(getattr(settings, 'LOGIN_LOCKOUT_MINUTES', 15))
+    return int(getattr(settings, 'LOGIN_LOCKOUT_MINUTES', 5))
 
 
 def lockout_remaining(username, ip=None):
