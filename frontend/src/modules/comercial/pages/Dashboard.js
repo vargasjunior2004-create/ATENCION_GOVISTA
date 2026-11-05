@@ -11,8 +11,11 @@ import {
   RefreshCw,
   SlidersHorizontal,
   TrendingUp,
+  CalendarClock,
+  ClipboardList,
+  Clock3,
   UserCheck,
-  Users,
+  UserRound,
 } from 'lucide-react';
 import {
   Bar,
@@ -188,12 +191,60 @@ function ChartCard({ eyebrow, title, children, className = '' }) {
   );
 }
 
+function ProductivityTable({ items, title, onClose, loading }) {
+  return (
+    <div className="mt-6 border-t border-slate-100 pt-6">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h3 className="text-base font-black tracking-tight text-slate-900">{title}</h3>
+        {onClose && (
+          <button type="button" onClick={onClose} className="text-xs font-bold text-brand-700 hover:text-brand-900">
+            Cerrar detalle
+          </button>
+        )}
+      </div>
+      {loading ? <p className="text-sm text-slate-400">Cargando solicitudes...</p> : items.length ? (
+        <div className="overflow-x-auto rounded-xl border border-slate-100">
+          <table className="w-full min-w-[720px] text-left text-xs">
+            <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-400">
+              <tr>
+                <th className="px-4 py-3">Fecha y hora</th>
+                <th className="px-4 py-3">Cliente</th>
+                <th className="px-4 py-3">Tipo de solicitud</th>
+                <th className="px-4 py-3">Plan o servicio</th>
+                <th className="px-4 py-3">Estado</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {items.map((item) => (
+                <tr key={item.id} className="text-slate-600 transition-colors hover:bg-brand-50/30">
+                  <td className="whitespace-nowrap px-4 py-3 font-medium">{item.createdAt ? new Date(item.createdAt).toLocaleString('es-BO') : item.date || '—'}</td>
+                  <td className="px-4 py-3"><span className="font-semibold text-slate-800">{item.clientName || '—'}</span><span className="ml-1 text-slate-400">{item.clientCode ? `(${item.clientCode})` : ''}</span></td>
+                  <td className="px-4 py-3">{item.requestType || '—'}</td>
+                  <td className="px-4 py-3">{item.Plan?.label || item.serviceType || '—'}</td>
+                  <td className="px-4 py-3">{item.status || 'No registrado'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : <p className="rounded-xl bg-slate-50 px-4 py-5 text-sm text-slate-400">No hay solicitudes en este periodo.</p>}
+    </div>
+  );
+}
+
 function ProductivityPanel({ data, from, to, movementType }) {
   const [selectedUser, setSelectedUser] = useState(null);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const summary = data?.summary || {};
   const users = data?.users || [];
+  const isPersonal = data?.scope === 'personal';
+  const series = data?.series || [];
+  const today = todayInBolivia();
+  const activityToday = series.find((item) => item.date === today)?.registered || 0;
+  const latestActivity = users.reduce((latest, item) => (
+    item.lastActivity && (!latest || item.lastActivity > latest) ? item.lastActivity : latest
+  ), null);
 
   useEffect(() => {
     if (!selectedUser) {
@@ -210,62 +261,78 @@ function ProductivityPanel({ data, from, to, movementType }) {
   }, [selectedUser, from, to, movementType]);
 
   const maxRegistered = Math.max(...users.map((item) => item.registered || 0), 1);
-  const isPersonal = data?.scope === 'personal';
   const visibleItems = detail?.items || data?.items || [];
+
+  if (isPersonal) {
+    return (
+      <section className="space-y-5 rounded-[1.35rem] border border-slate-200/80 bg-slate-50/70 p-4 shadow-sm sm:p-6">
+        <div className="flex flex-col gap-1">
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-brand-700">Mi productividad</p>
+          <h2 className="text-2xl font-black tracking-tight text-slate-900">Mi productividad</h2>
+          <p className="text-sm text-slate-500">Resumen de tu actividad comercial.</p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wider text-blue-700">Solicitudes registradas</p><p className="mt-3 text-4xl font-black tracking-tight text-slate-900">{number(summary.registered)}</p></div><div className="rounded-xl bg-white/80 p-3 text-blue-700"><ClipboardList className="h-5 w-5" /></div></div>
+            <p className="mt-3 text-xs text-blue-700/70">Durante el periodo seleccionado</p>
+          </div>
+          <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wider text-emerald-700">Actividad de hoy</p><p className="mt-3 text-4xl font-black tracking-tight text-slate-900">{number(activityToday)}</p></div><div className="rounded-xl bg-white/80 p-3 text-emerald-700"><CalendarClock className="h-5 w-5" /></div></div>
+            <p className="mt-3 text-xs text-emerald-700/70">Solicitudes registradas hoy</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="rounded-xl bg-slate-100 p-3 text-slate-600"><Clock3 className="h-5 w-5" /></div>
+          <div><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Mi última actividad</p><p className="mt-1 text-base font-black text-slate-800">{latestActivity ? new Date(latestActivity).toLocaleString('es-BO') : 'Sin registros en este periodo'}</p></div>
+        </div>
+
+        <div className="grid gap-5 xl:grid-cols-[1.35fr_1fr]">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-700">Evolución personal</p><h3 className="mt-1 text-base font-black text-slate-900">Solicitudes registradas</h3></div>
+            <div className="h-[220px] w-full"><ResponsiveContainer width="100%" height="100%"><LineChart data={series} margin={{ top: 8, right: 4, left: -18, bottom: 4 }}><CartesianGrid stroke="#e8eee9" vertical={false} /><XAxis dataKey="date" tickFormatter={readableShortDate} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} /><YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} /><Tooltip content={<ChartTooltip />} /><Line name="Registradas" dataKey="registered" stroke="#15803d" strokeWidth={2.5} dot={{ r: 3, fill: '#15803d' }} /></LineChart></ResponsiveContainer></div>
+          </div>
+          <div className="rounded-2xl border border-emerald-100 bg-emerald-50/45 p-5 shadow-sm"><div className="flex items-center gap-3"><UserRound className="h-5 w-5 text-emerald-700" /><div><p className="text-sm font-black text-slate-800">{data?.viewer?.name}</p><p className="text-xs text-slate-500">{data?.viewer?.role || 'Usuario comercial'}</p></div></div><p className="mt-6 text-xs leading-5 text-emerald-800/70">Esta vista muestra únicamente tus registros. Los filtros actuales se aplican a toda la información personal.</p></div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <ProductivityTable items={visibleItems} title="Mis solicitudes recientes" loading={detailLoading} />
+        </div>
+      </section>
+    );
+  }
+
   return (
-    <ChartCard
-      eyebrow={isPersonal ? 'Mi productividad' : 'Supervisión comercial'}
-      title={isPersonal ? 'Mi actividad de solicitudes' : 'Actividad de solicitudes por usuario'}
-      className="lg:col-span-2"
-    >
-      <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        {isPersonal && <div className="sm:col-span-3 rounded-xl border border-brand-100 bg-brand-50/50 px-4 py-3"><p className="text-sm font-black text-slate-800">{data?.viewer?.name}</p><p className="mt-1 text-xs text-slate-500">Rol: {data?.viewer?.role || '—'}</p></div>}
-        <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Solicitudes registradas</p>
-          <p className="mt-2 text-2xl font-black text-slate-900">{number(summary.registered)}</p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{isPersonal ? 'Actividad personal' : 'Usuarios con actividad'}</p>
-          <p className="mt-2 text-2xl font-black text-slate-900">{isPersonal ? (summary.registered ? 'Activa' : 'Sin actividad') : number(summary.activeUsers)}</p>
-          {isPersonal && <p className="mt-1 text-[11px] text-slate-400">Basada en tus registros del periodo.</p>}
-        </div>
-        <div className="rounded-xl border border-amber-100 bg-amber-50/60 p-4">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Solicitudes atendidas</p>
-          <p className="mt-2 text-lg font-black text-slate-700">No disponible</p>
-          <p className="mt-1 text-[11px] text-amber-700">El sistema no registra responsable de atención.</p>
-        </div>
+    <section className="space-y-5 rounded-[1.35rem] border border-slate-200/80 bg-slate-50/70 p-4 shadow-sm sm:p-6">
+      <div><p className="text-[10px] font-black uppercase tracking-[0.22em] text-brand-700">Supervisión comercial</p><h2 className="mt-1 text-2xl font-black tracking-tight text-slate-900">Actividad de solicitudes por usuario</h2><p className="mt-1 text-sm text-slate-500">Comparativa del equipo durante el periodo seleccionado.</p></div>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-5 shadow-sm"><p className="text-xs font-bold uppercase tracking-wider text-blue-700">Solicitudes registradas</p><p className="mt-3 text-3xl font-black tracking-tight text-slate-900">{number(summary.registered)}</p><p className="mt-2 text-xs text-blue-700/70">Total del equipo</p></div>
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-5 shadow-sm"><p className="text-xs font-bold uppercase tracking-wider text-emerald-700">Usuarios con actividad</p><p className="mt-3 text-3xl font-black tracking-tight text-slate-900">{number(summary.activeUsers)}</p><p className="mt-2 text-xs text-emerald-700/70">Con registros en el periodo</p></div>
+        <div className="rounded-2xl border border-violet-100 bg-violet-50/70 p-5 shadow-sm"><p className="text-xs font-bold uppercase tracking-wider text-violet-700">Última actividad</p><p className="mt-3 text-base font-black leading-7 text-slate-900">{latestActivity ? new Date(latestActivity).toLocaleString('es-BO') : 'Sin registros'}</p><p className="mt-1 text-xs text-violet-700/70">Registro más reciente del equipo</p></div>
       </div>
-      {!isPersonal ? (
-        <div className="space-y-3">
+      <div>
+        <div className="mb-3 flex items-center justify-between"><h3 className="text-base font-black text-slate-900">Actividad por usuario</h3><span className="text-xs text-slate-400">Ordenado por solicitudes</span></div>
+        <div className="grid gap-3 md:grid-cols-2">
           {users.length ? users.map((item) => (
             <button
               type="button"
               key={item.userId}
               onClick={() => setSelectedUser((current) => (current === item.userId ? null : item.userId))}
-              className={`block w-full rounded-xl p-3 text-left ${selectedUser === item.userId ? 'bg-brand-50 ring-1 ring-brand-200' : 'hover:bg-slate-50'}`}
+              className={`block w-full rounded-2xl border p-4 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 ${selectedUser === item.userId ? 'border-brand-300 bg-brand-50 shadow-sm' : 'border-emerald-100 bg-emerald-50/45 hover:border-emerald-200 hover:bg-emerald-50'}`}
             >
               <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="flex min-w-0 items-center gap-2 font-bold text-slate-700"><UserCheck className="h-4 w-4 shrink-0 text-brand-600" />{item.userName}</span>
-                <strong className="tabular-nums text-slate-900">{number(item.registered)}</strong>
+                <span className="flex min-w-0 items-center gap-2 font-bold text-slate-800"><span className="rounded-lg bg-white p-2 text-emerald-700 shadow-sm"><UserCheck className="h-4 w-4" /></span><span className="truncate">{item.userName}</span></span>
+                <strong className="shrink-0 text-lg tabular-nums text-slate-900">{number(item.registered)}</strong>
               </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-brand-600" style={{ width: `${(item.registered / maxRegistered) * 100}%` }} /></div>
-              <p className="mt-1 text-[11px] text-slate-400">Última actividad: {item.lastActivity ? new Date(item.lastActivity).toLocaleString('es-BO') : '—'}</p>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-emerald-600 transition-all" style={{ width: `${(item.registered / maxRegistered) * 100}%` }} /></div>
+              <p className="mt-2 text-[11px] text-slate-500">Última actividad: {item.lastActivity ? new Date(item.lastActivity).toLocaleString('es-BO') : '—'}</p>
             </button>
           )) : <p className="py-6 text-center text-sm text-slate-400">No hay usuarios con actividad en este periodo.</p>}
         </div>
-      ) : (
-        <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr]">
-          <div className="h-[240px] w-full"><ResponsiveContainer width="100%" height="100%"><LineChart data={data?.series || []} margin={{ top: 4, right: 4, left: -18, bottom: 4 }}><CartesianGrid stroke="#e8eee9" vertical={false} /><XAxis dataKey="date" tickFormatter={readableShortDate} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} /><YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} /><Tooltip content={<ChartTooltip />} /><Legend iconType="circle" wrapperStyle={{ fontSize: 11, paddingTop: 12 }} /><Line name="Registradas" dataKey="registered" stroke="#0e7490" strokeWidth={2} dot={{ r: 3 }} /></LineChart></ResponsiveContainer></div>
-          <div className="flex items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-6 text-center"><div><Users className="mx-auto mb-2 h-7 w-7 text-slate-300" /><p className="text-sm font-semibold text-slate-600">Actividad personal</p><p className="mt-1 text-xs text-slate-400">La evolución muestra únicamente tus solicitudes registradas.</p></div></div>
-        </div>
-      )}
-      {(selectedUser || isPersonal) && (
-        <div className="mt-5 border-t border-slate-100 pt-4">
-          <div className="mb-3 flex items-center justify-between"><p className="text-sm font-black text-slate-800">{isPersonal ? 'Mi actividad reciente' : 'Solicitudes del usuario seleccionado'}</p>{selectedUser && <button type="button" className="text-xs font-bold text-brand-700" onClick={() => setSelectedUser(null)}>Cerrar detalle</button>}</div>
-          {detailLoading ? <p className="text-sm text-slate-400">Cargando solicitudes...</p> : visibleItems.length ? <div className="overflow-x-auto"><table className="w-full min-w-[820px] text-left text-xs"><thead><tr className="text-slate-400"><th className="p-2">Fecha</th><th className="p-2">Cliente</th><th className="p-2">Solicitud</th><th className="p-2">Servicio</th><th className="p-2">Plan</th><th className="p-2">Registró</th><th className="p-2">Estado</th></tr></thead><tbody>{visibleItems.map((item) => <tr key={item.id} className="border-t border-slate-100"><td className="p-2">{item.createdAt ? new Date(item.createdAt).toLocaleString('es-BO') : item.date}</td><td className="p-2">{item.clientName} <span className="text-slate-400">({item.clientCode})</span></td><td className="p-2">{item.requestType}</td><td className="p-2">{item.serviceType}</td><td className="p-2">{item.Plan?.label || '—'}</td><td className="p-2">{item.registeredBy?.name || '—'}</td><td className="p-2">{item.status || 'No registrado'}</td></tr>)}</tbody></table></div> : <p className="text-sm text-slate-400">No hay solicitudes en este periodo.</p>}
-        </div>
-      )}
-    </ChartCard>
+      </div>
+      {selectedUser && <ProductivityTable items={visibleItems} title="Solicitudes del usuario seleccionado" onClose={() => setSelectedUser(null)} loading={detailLoading} />}
+    </section>
   );
 }
 
@@ -476,7 +543,16 @@ export default function Dashboard() {
             <MetricCard label="Balance neto" count={analytics?.balance_neto} icon={Activity} tone="slate" detail="Altas comerciales - retiros" onClick={() => setDrilldownIndicator('balance_neto')} />
           </section>
 
-          {!hasData ? (
+           {productivity && (
+             <ProductivityPanel
+               data={productivity}
+               from={range.from}
+               to={range.to}
+               movementType={movementType}
+             />
+           )}
+
+           {!hasData ? (
             <Card className="p-5 sm:p-6"><EmptyChart message="No hay solicitudes comerciales para analizar" /></Card>
           ) : (
             <>
@@ -592,15 +668,6 @@ export default function Dashboard() {
                   ) : <EmptyChart message="No hay altas comerciales con planes en este período" />}
                 </ChartCard>
               </section>
-
-              {productivity && (
-                <ProductivityPanel
-                  data={productivity}
-                  from={range.from}
-                  to={range.to}
-                  movementType={movementType}
-                />
-              )}
 
               <section className="grid gap-5 lg:grid-cols-2">
                 <ChartCard eyebrow="Origen de nuevos clientes" title="Canales de captación">
