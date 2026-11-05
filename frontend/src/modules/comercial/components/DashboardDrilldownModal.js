@@ -32,6 +32,12 @@ function displayDate(value) {
   return `${day}/${month}/${year}`;
 }
 
+function equipmentDescription(sale) {
+  if (sale.equipmentSerial) return `Serie: ${sale.equipmentSerial}`;
+  if (sale.equipmentRecoveryRequired) return 'Pendiente de recuperación';
+  return 'No declarada';
+}
+
 function previewData(sale) {
   return {
     ...sale,
@@ -120,6 +126,8 @@ function RowDetails({
           <>
             <span className="text-slate-500">Motivo</span>
             <span className="text-right text-slate-700">{sale.changeReason || sale.motivoNombre || '—'}</span>
+            <span className="text-slate-500">Equipo retirado</span>
+            <span className="text-right text-slate-700">{equipmentDescription(sale)}</span>
           </>
         )}
         <span className="text-slate-500">Registró</span>
@@ -363,6 +371,7 @@ export default function DashboardDrilldownModal({
                         {isPlanChange && <th className="px-4 py-3">Plan anterior</th>}
                         <th className="px-4 py-3">Plan</th>
                         {isRetirement && <th className="px-4 py-3">Motivo</th>}
+                        {isRetirement && <th className="px-4 py-3">Equipo / serie</th>}
                         <th className="px-4 py-3">Registró</th>
                         {isPlan && <th className="px-4 py-3">Zona / barrio</th>}
                         {isChannel && <th className="px-4 py-3">Canal de captación</th>}
@@ -394,6 +403,7 @@ export default function DashboardDrilldownModal({
                           {isPlanChange && <td className="px-4 py-3 text-slate-600">{sale.planFrom || sale.previousPlan?.label || '—'}</td>}
                           <td className="px-4 py-3 text-slate-600">{sale.Plan?.label || '—'}</td>
                           {isRetirement && <td className="px-4 py-3 text-slate-600">{sale.changeReason || sale.motivoNombre || '—'}</td>}
+                          {isRetirement && <td className="px-4 py-3 font-mono text-xs text-slate-600">{equipmentDescription(sale)}</td>}
                           <td className="px-4 py-3 text-slate-600">{sale.creator?.name || '—'}</td>
                           {isPlan && <td className="px-4 py-3 text-slate-600">{sale.coverageZone?.name || '—'}</td>}
                           {isChannel && <td className="px-4 py-3 text-slate-600">{sale.canalCaptacion?.nombre || 'Sin especificar'}</td>}
