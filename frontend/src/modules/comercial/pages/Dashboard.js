@@ -369,7 +369,10 @@ export default function Dashboard() {
     : { value: 'productivity', label: 'Mi productividad', icon: UserRound };
   const ProductivityIcon = productivityTab.icon;
 
-  const visiblePeriod = period;
+  const canUseHistoricalFilters = productivity?.scope
+    ? productivity.scope === 'general'
+    : canSupervise;
+  const visiblePeriod = canUseHistoricalFilters ? period : 'today';
   const range = useMemo(
     () => (visiblePeriod === 'custom' ? appliedCustomRange : getPresetRange(visiblePeriod)),
     [visiblePeriod, appliedCustomRange],
@@ -508,40 +511,54 @@ export default function Dashboard() {
             </span>
           )}
         </div>
-        <div className="flex flex-wrap gap-2">
-           {PERIOD_OPTIONS.map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => { setPeriod(value); setCustomError(''); }}
-              className={`rounded-xl px-3.5 py-2 text-xs font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500/30 ${period === value ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_1.2fr_auto] md:items-end">
-          {visiblePeriod === 'custom' ? (
-            <>
-              <Input label="Desde" type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} error={customError} />
-              <Input label="Hasta" type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)} />
-              <Select label="Tipo de solicitud" value={movementType} onChange={(event) => setMovementType(event.target.value)}>
-                {MOVEMENT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </Select>
-              <Button type="button" size="md" onClick={applyCustomRange}>Aplicar rango</Button>
-            </>
-          ) : (
-            <div className="md:col-span-2">
-              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Período consultado</p>
-              <div className="flex h-[46px] items-center rounded-xl bg-slate-50 px-4 text-sm font-semibold text-slate-700">{periodLabel}</div>
+        {canUseHistoricalFilters ? (
+          <>
+            <div className="flex flex-wrap gap-2">
+              {PERIOD_OPTIONS.map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => { setPeriod(value); setCustomError(''); }}
+                  className={`rounded-xl px-3.5 py-2 text-xs font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500/30 ${period === value ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
-          )}
-          {visiblePeriod !== 'custom' && (
+            <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_1.2fr_auto] md:items-end">
+              {visiblePeriod === 'custom' ? (
+                <>
+                  <Input label="Desde" type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} error={customError} />
+                  <Input label="Hasta" type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)} />
+                  <Select label="Tipo de solicitud" value={movementType} onChange={(event) => setMovementType(event.target.value)}>
+                    {MOVEMENT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </Select>
+                  <Button type="button" size="md" onClick={applyCustomRange}>Aplicar rango</Button>
+                </>
+              ) : (
+                <div className="md:col-span-2">
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Período consultado</p>
+                  <div className="flex h-[46px] items-center rounded-xl bg-slate-50 px-4 text-sm font-semibold text-slate-700">{periodLabel}</div>
+                </div>
+              )}
+              {visiblePeriod !== 'custom' && (
+                <Select label="Tipo de solicitud" value={movementType} onChange={(event) => setMovementType(event.target.value)}>
+                  {MOVEMENT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </Select>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-[1fr_1fr] md:items-end">
+            <div>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Período consultado</p>
+              <div className="flex h-[46px] items-center rounded-xl bg-slate-50 px-4 text-sm font-semibold text-slate-700">Hoy · {readableDate(range.from)}</div>
+            </div>
             <Select label="Tipo de solicitud" value={movementType} onChange={(event) => setMovementType(event.target.value)}>
               {MOVEMENT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </Select>
-          )}
-        </div>
+          </div>
+        )}
         {customError && visiblePeriod !== 'custom' && <p className="mt-2 text-xs font-semibold text-red-600">{customError}</p>}
         <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-400"><Filter className="h-3.5 w-3.5" /> Mostrando {selectedMovementLabel?.toLowerCase()} entre {periodLabel}.</p>
       </Card>

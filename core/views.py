@@ -2756,12 +2756,17 @@ class DashboardStatsView(APIView):
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             is_admin = can_supervise_productivity(request.user)
-            try:
-                from_date, to_date = self._parse_range(
-                    request.query_params, today)
-            except ValueError as exc:
-                return Response({'error': str(exc)},
-                                status=status.HTTP_400_BAD_REQUEST)
+            if is_admin:
+                try:
+                    from_date, to_date = self._parse_range(
+                        request.query_params, today)
+                except ValueError as exc:
+                    return Response({'error': str(exc)},
+                                    status=status.HTTP_400_BAD_REQUEST)
+            else:
+                # El período personal siempre es hoy. No se confía en
+                # from/to enviados por el cliente.
+                from_date = to_date = today
 
             all_sales = Sale.objects.filter(deleted_at__isnull=True)
             if not is_admin:
@@ -2882,20 +2887,22 @@ class DashboardDrilldownView(APIView):
                 status=status.HTTP_400_BAD_REQUEST)
 
         today = timezone.localdate()
-        try:
-            from_date, to_date = dashboard._parse_range(
-                request.query_params, today)
-        except ValueError as exc:
-            return Response(
-                {'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        if can_supervise_productivity(request.user):
+            try:
+                from_date, to_date = dashboard._parse_range(
+                    request.query_params, today)
+            except ValueError as exc:
+                return Response(
+                    {'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            # El detalle respeta la misma regla que los indicadores: solo hoy.
+            from_date = to_date = today
 
         try:
             catalog = request_type_catalog()
             categories = dashboard._category_codes(catalog)
             filtered_sales = dashboard._selected_sales(
                 categories, from_date, to_date, movement_type)
-            if not can_supervise_productivity(request.user):
-                filtered_sales = filtered_sales.filter(createdBy=request.user)
             breakdown = []
             zone_count = None
             plan_count = None
@@ -3096,11 +3103,15 @@ class CommercialProductivityView(APIView):
                 status=status.HTTP_403_FORBIDDEN)
 
         today = timezone.localdate()
-        try:
-            from_date, to_date = DashboardStatsView._parse_range(
-                request.query_params, today)
-        except ValueError as exc:
-            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        if can_supervise_productivity(user):
+            try:
+                from_date, to_date = DashboardStatsView._parse_range(
+                    request.query_params, today)
+            except ValueError as exc:
+                return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            # La productividad personal no admite consultas históricas.
+            from_date = to_date = today
 
         movement_type = request.query_params.get('movement_type', 'all')
         if movement_type not in DashboardStatsView.MOVEMENT_TYPES:
