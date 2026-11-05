@@ -225,6 +225,8 @@ export default function SalesList() {
   });
 
   const showMotivosColumn = showMotivos === 'si';
+  const showEquipmentColumn = requestType === 'all'
+    || sales.some((sale) => requestMode(sale.requestType) === 'retiro');
   const listReady = requestType !== '' && serviceType !== '';
   const reportReady = listReady && reportFormat !== '' && showMotivos !== '';
 
@@ -639,7 +641,7 @@ export default function SalesList() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100">
-                  {['Fecha', 'Cod.', 'Nombre', 'Solicitud', 'Plan', ...(showMotivosColumn ? ['Motivo'] : []), ...(sales.some((s) => requestMode(s.requestType) === 'retiro') ? ['Equipo / serie'] : []), 'Total cobro', 'Por', ''].map((h) => (
+                  {['Fecha', 'Cod.', 'Nombre', 'Solicitud', 'Plan', ...(showMotivosColumn ? ['Motivo'] : []), ...(showEquipmentColumn ? ['Equipo / serie'] : []), 'Total cobro', 'Por', ''].map((h) => (
                     <th key={h} className="text-left px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">{h}</th>
                   ))}
                 </tr>
@@ -659,7 +661,7 @@ export default function SalesList() {
                     {showMotivosColumn && (
                       <td className="px-5 py-3.5 text-slate-500 text-xs">{s.changeReason || '—'}</td>
                     )}
-                    {sales.some((item) => requestMode(item.requestType) === 'retiro') && (
+                    {showEquipmentColumn && (
                       <td className="px-5 py-3.5 text-slate-500 text-xs font-mono">
                         {requestMode(s.requestType) === 'retiro' ? equipmentDescription(s) : '—'}
                       </td>
