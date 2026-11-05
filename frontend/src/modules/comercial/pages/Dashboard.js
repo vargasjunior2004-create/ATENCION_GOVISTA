@@ -8,7 +8,9 @@ import {
   FileText,
   Filter,
   Image,
+  LayoutDashboard,
   RefreshCw,
+  ShieldCheck,
   SlidersHorizontal,
   TrendingUp,
   CalendarClock,
@@ -34,6 +36,7 @@ import {
 } from 'recharts';
 import api from '../../../services/api';
 import { Alert, Button, Card, Input, Select } from '../../../components/ui';
+import { useAuth } from '../../../context/AuthContext';
 import DashboardDrilldownModal from '../components/DashboardDrilldownModal';
 
 const MOVEMENT_OPTIONS = [
@@ -337,6 +340,8 @@ function ProductivityPanel({ data, from, to, movementType }) {
 }
 
 export default function Dashboard() {
+  const { isAdmin, user } = useAuth();
+  const [activeTab, setActiveTab] = useState('overview');
   const [period, setPeriod] = useState('today');
   const [movementType, setMovementType] = useState('all');
   const [customFrom, setCustomFrom] = useState(todayInBolivia);
@@ -355,6 +360,14 @@ export default function Dashboard() {
   const [drilldownPlan, setDrilldownPlan] = useState(null);
   const [drilldownChannel, setDrilldownChannel] = useState(null);
   const requestId = useRef(0);
+  const canSupervise = isAdmin || (user?.roles || []).some(
+    (role) => ['gerente', 'jefe-comercial'].includes(role.code),
+  );
+  const showSupervisionTab = productivity?.scope === 'general' || (productivity == null && canSupervise);
+  const productivityTab = showSupervisionTab
+    ? { value: 'productivity', label: 'Supervisión comercial', icon: ShieldCheck }
+    : { value: 'productivity', label: 'Mi productividad', icon: UserRound };
+  const ProductivityIcon = productivityTab.icon;
 
   const visiblePeriod = period;
   const range = useMemo(
@@ -466,6 +479,23 @@ export default function Dashboard() {
         </div>
       </header>
 
+      <nav aria-label="Secciones del dashboard" className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+        <button
+          type="button"
+          onClick={() => setActiveTab('overview')}
+          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500/30 ${activeTab === 'overview' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
+        >
+          <LayoutDashboard className="h-4 w-4" /> Dashboard general
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab(productivityTab.value)}
+          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500/30 ${activeTab === productivityTab.value ? 'bg-brand-700 text-white shadow-sm' : 'text-slate-500 hover:bg-brand-50 hover:text-brand-800'}`}
+        >
+          <ProductivityIcon className="h-4 w-4" /> {productivityTab.label}
+        </button>
+      </nav>
+
       <Card className="p-4 sm:p-5">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -526,6 +556,20 @@ export default function Dashboard() {
           </div>
         </Card>
       ) : stats && (
+        activeTab === 'productivity' ? (
+          productivity ? (
+            <ProductivityPanel
+              data={productivity}
+              from={range.from}
+              to={range.to}
+              movementType={movementType}
+            />
+          ) : (
+            <Card className="flex min-h-[280px] items-center justify-center p-8">
+              <p className="text-sm font-semibold text-slate-500">No se pudo cargar la productividad.</p>
+            </Card>
+          )
+        ) : (
         <>
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
             <MetricCard label="Nuevos contratos" count={analytics?.nuevo_contrato?.count} total={analytics?.nuevo_contrato?.total} icon={ArrowUpRight} tone="green" onClick={() => setDrilldownIndicator('nuevo_contrato')} />
@@ -542,15 +586,6 @@ export default function Dashboard() {
             <MetricCard label="Cambios de plan" count={analytics?.cambios_plan?.count} total={analytics?.cambios_plan?.total} icon={RefreshCw} tone="blue" onClick={() => setDrilldownIndicator('cambios_plan')} />
             <MetricCard label="Balance neto" count={analytics?.balance_neto} icon={Activity} tone="slate" detail="Altas comerciales - retiros" onClick={() => setDrilldownIndicator('balance_neto')} />
           </section>
-
-           {productivity && (
-             <ProductivityPanel
-               data={productivity}
-               from={range.from}
-               to={range.to}
-               movementType={movementType}
-             />
-           )}
 
            {!hasData ? (
             <Card className="p-5 sm:p-6"><EmptyChart message="No hay solicitudes comerciales para analizar" /></Card>
@@ -745,6 +780,7 @@ export default function Dashboard() {
             </div>
           </Card>
         </>
+        )
       )}
       {drilldownIndicator && (
         <DashboardDrilldownModal
