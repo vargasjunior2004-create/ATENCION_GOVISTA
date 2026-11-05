@@ -1,6 +1,8 @@
 from decimal import Decimal
 
 from django.test import Client, TestCase
+from datetime import timedelta
+
 from django.utils import timezone
 
 from .models import Plan, Role, Sale, User, UserRole
@@ -32,9 +34,9 @@ class CommercialProductivityTests(TestCase):
         role = Role.objects.get(code=code)
         UserRole.objects.create(user=user, role=role, assigned_by=self.supervisor)
 
-    def _sale(self, user, code):
+    def _sale(self, user, code, sale_date=None):
         return Sale.objects.create(
-            date=timezone.localdate(), clientCode=code, clientName=f'Cliente {code}',
+            date=sale_date or timezone.localdate(), clientCode=code, clientName=f'Cliente {code}',
             serviceType='internet', requestType='nuevo_contrato', plan=self.plan,
             planName=self.plan.label, total=Decimal('100'), createdBy=user,
         )
@@ -82,3 +84,45 @@ class CommercialProductivityTests(TestCase):
             f'/api/dashboard/productivity?user_id={self.other.id}',
             HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(forbidden.status_code, 403)
+
+    def test_normal_user_cannot_expand_productivity_period(self):
+        yesterday = timezone.localdate() - timedelta(days=1)
+        old_sale = self._sale(self.agent, 'PROD-OLD', yesterday)
+        Sale.objects.filter(pk=old_sale.pk).update(
+            created_at=timezone.now() - timedelta(days=1))
+        token = self._token(self.agent)
+        response = self.client.get(
+            f'/api/dashboard/productivity?from={yesterday.isoformat()}&to={timezone.localdate().isoformat()}',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(response.status_code, 200, response.content)
+        data = response.json()
+        self.assertEqual(data['period']['from'], timezone.localdate().isoformat())
+        self.assertEqual(data['period']['to'], timezone.localdate().isoformat())
+        self.assertEqual(data['summary']['registered'], 2)
+        self.assertEqual(len(data['series']), 1)
+
+    def test_normal_user_dashboard_stats_forces_today(self):
+        yesterday = timezone.localdate() - timedelta(days=1)
+        self._sale(self.agent, 'PROD-STATS-OLD', yesterday)
+        token = self._token(self.agent)
+        response = self.client.get(
+            f'/api/dashboard/stats?from={yesterday.isoformat()}&to={timezone.localdate().isoformat()}',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(response.status_code, 200, response.content)
+        data = response.json()
+        self.assertEqual(data['analytics']['period']['from'], timezone.localdate().isoformat())
+        self.assertEqual(data['analytics']['period']['to'], timezone.localdate().isoformat())
+        self.assertEqual(data['analytics']['series'][0]['movimientos'], 3)
+
+    def test_normal_user_drilldown_forces_today(self):
+        yesterday = timezone.localdate() - timedelta(days=1)
+        self._sale(self.agent, 'PROD-DETAIL-OLD', yesterday)
+        token = self._token(self.agent)
+        response = self.client.get(
+            f'/api/dashboard/drilldown?indicator=nuevo_contrato&from={yesterday.isoformat()}&to={timezone.localdate().isoformat()}',
+            HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(response.status_code, 200, response.content)
+        data = response.json()
+        self.assertEqual(data['period']['from'], timezone.localdate().isoformat())
+        self.assertEqual(data['period']['to'], timezone.localdate().isoformat())
+        self.assertEqual(data['total'], 3)
