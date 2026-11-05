@@ -62,6 +62,12 @@ const formatDate = (date) => {
 
 const formatDateTime = (value) => value ? new Date(value).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' }) : '—';
 
+const equipmentDescription = (sale) => {
+  if (sale.equipmentSerial) return sale.equipmentSerial;
+  if (sale.equipmentRecoveryRequired) return 'Pendiente de recuperación';
+  return 'No declarada';
+};
+
 function EyeButton({ onClick }) {
   return (
     <button
@@ -120,12 +126,17 @@ function SaleCard({ sale, isAdmin, archived, onPreview, onEdit, onDelete, onRest
               <span className="font-semibold text-slate-600">Motivo:</span> {sale.changeReason}
             </div>
           )}
-          {sale.canalCaptacion?.nombre && (
+           {sale.canalCaptacion?.nombre && (
             <div className="text-xs text-slate-500">
               <span className="font-semibold text-slate-600">¿Cómo nos conoció?</span>{' '}
               {sale.canalCaptacion.nombre}
             </div>
-          )}
+           )}
+           {requestMode(sale.requestType) === 'retiro' && (
+             <div className="text-xs text-slate-500">
+               <span className="font-semibold text-slate-600">Equipo / serie:</span> {equipmentDescription(sale)}
+             </div>
+           )}
           <div className="flex items-center justify-between">
             <span className="text-xs text-slate-400">por {sale.creator?.name || '-'}</span>
             <div className="flex items-center gap-1">
@@ -628,7 +639,7 @@ export default function SalesList() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100">
-                  {['Fecha', 'Cod.', 'Nombre', 'Solicitud', 'Plan', ...(showMotivosColumn ? ['Motivo'] : []), 'Total cobro', 'Por', ''].map((h) => (
+                  {['Fecha', 'Cod.', 'Nombre', 'Solicitud', 'Plan', ...(showMotivosColumn ? ['Motivo'] : []), ...(sales.some((s) => requestMode(s.requestType) === 'retiro') ? ['Equipo / serie'] : []), 'Total cobro', 'Por', ''].map((h) => (
                     <th key={h} className="text-left px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">{h}</th>
                   ))}
                 </tr>
@@ -647,6 +658,11 @@ export default function SalesList() {
                     </td>
                     {showMotivosColumn && (
                       <td className="px-5 py-3.5 text-slate-500 text-xs">{s.changeReason || '—'}</td>
+                    )}
+                    {sales.some((item) => requestMode(item.requestType) === 'retiro') && (
+                      <td className="px-5 py-3.5 text-slate-500 text-xs font-mono">
+                        {requestMode(s.requestType) === 'retiro' ? equipmentDescription(s) : '—'}
+                      </td>
                     )}
                     <td className="px-5 py-3.5 text-right font-bold text-brand-700 tabular-nums">{parseFloat(s.totalToCollect ?? s.total).toFixed(2)} Bs</td>
                     <td className="px-5 py-3.5 text-slate-500 text-xs">{s.creator?.name || '-'}</td>
