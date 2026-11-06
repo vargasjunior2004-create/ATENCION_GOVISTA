@@ -4,7 +4,7 @@ import api from '../services/api';
 import { Alert, Badge, Button, Card, Input } from './ui';
 import SecurityModule from '../modules/comercial/pages/SecurityModule';
 
-const emptyUser = { name: '', password: '', roleIds: [] };
+const emptyUser = { name: '', password: '', password_confirm: '', roleIds: [] };
 
 export default function UsersModule() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -59,6 +59,7 @@ export default function UsersModule() {
     setForm({
       name: user.name,
       password: '',
+      password_confirm: '',
       roleIds: (user.roles || [])
         .filter((role) => !role.is_system_role)
         .map((role) => role.id),
@@ -90,6 +91,10 @@ export default function UsersModule() {
       setError('La contraseña es requerida para nuevos usuarios.');
       return;
     }
+    if (form.password && form.password !== form.password_confirm) {
+      setError('Las contraseñas no coinciden.');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -98,6 +103,7 @@ export default function UsersModule() {
         roleIds: form.roleIds,
       };
       if (form.password) payload.password = form.password;
+      if (form.password) payload.password_confirm = form.password_confirm;
       if (editingId) {
         await api.updateUser(editingId, payload);
         setSuccess('Usuario y roles actualizados correctamente.');
@@ -226,6 +232,15 @@ export default function UsersModule() {
                     value={form.name}
                     onChange={handleChange}
                     required
+                  />
+                  <Input
+                    label="Confirmar contraseña"
+                    name="password_confirm"
+                    type="password"
+                    value={form.password_confirm}
+                    onChange={handleChange}
+                    autoComplete="new-password"
+                    {...(form.password && { required: true })}
                   />
                   <Input
                     label={editingId

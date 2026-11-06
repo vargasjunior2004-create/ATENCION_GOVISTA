@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../../../services/api';
 import { Button, Input, Select, RadioChoiceGroup, Card, Alert, TotalDisplay } from '../../../components/ui';
-import { Check, MapPin, Route, Wrench, Package, ReceiptText } from 'lucide-react';
+import { Check, ExternalLink, MapPin, Route, Wrench, Package, ReceiptText } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import useRequestTypes from '../../../hooks/useRequestTypes';
 import useMotivos from '../../../hooks/useMotivos';
+import useCanalesCaptacion from '../../../hooks/useCanalesCaptacion';
 import SalePreviewModal from '../../../components/SalePreview';
 
 const SERVICE_TYPES = [
@@ -55,21 +56,31 @@ export default function SaleForm() {
   };
   const today = getToday();
   const [plans, setPlans] = useState([]);
+  const [coverageZones, setCoverageZones] = useState([]);
+  const [coverageZonesLoading, setCoverageZonesLoading] = useState(true);
+  const [coverageZonesError, setCoverageZonesError] = useState('');
   const [form, setForm] = useState({
     date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet',
     requestType: 'nuevo_contrato', additionType: '', planFromId: '',
     serviceTypeFrom: '', motivoId: '', notes: '',
-    planId: '',
+    planId: '', coverageZoneId: '',
+    canalCaptacionId: '',
     equipmentRetained: null, requiresTechnicalVisit: null,
-    equipmentDelivered: null, equipmentSerial: '',
+     equipmentDelivered: null, equipmentSerial: '', equipmentRecoveryRequired: false,
     meterNumber: '', sellerUserId: '',
     debtApplies: false, debtAmount: '',
-    transferCurrentAddress: '', transferNewAddress: '', transferZone: '',
+    transferCurrentAddress: '', transferNewAddress: '',
     transferReferences: '', transferHasSketch: null,
   });
   const { tipos: requestTypes, modoOf, nombreOf } = useRequestTypes();
   const { user } = useAuth();
   const { porCategoria, nombreOf: motivoNombreOf } = useMotivos();
+  const {
+    canales: canalesCaptacion,
+    loading: canalesCaptacionLoading,
+    error: canalesCaptacionError,
+    nombreOf: canalCaptacionNombreOf,
+  } = useCanalesCaptacion();
   const modo = modoOf(form.requestType);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [error, setError] = useState('');
@@ -100,6 +111,25 @@ export default function SaleForm() {
       .catch((err) => setError(
         err.error || 'No se pudieron cargar los vendedores externos activos.',
       ));
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    api.getActiveCoverageZones()
+      .then((zones) => {
+        if (active) setCoverageZones(zones);
+      })
+      .catch((err) => {
+        if (active) {
+          setCoverageZonesError(
+            err?.error || 'No se pudieron cargar las zonas de cobertura.',
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setCoverageZonesLoading(false);
+      });
+    return () => { active = false; };
   }, []);
 
   // El tipo por defecto viene sembrado, pero si un administrador lo
@@ -140,8 +170,18 @@ export default function SaleForm() {
   const isCambio = modo === 'cambio_plan';
   const isAdicion = modo === 'adicion';
   const isRecontratacion = form.requestType === 'recontratacion';
+  const isNewContract = form.requestType === 'nuevo_contrato';
   const isContract = modo === 'nuevo' || isRecontratacion;
   const isTransfer = form.requestType === 'traslado_externo';
+  const requiresCoverageZone = isContract || isTransfer;
+  const coverageZoneSelectionError = coverageZonesError || (
+    !coverageZonesLoading && coverageZones.length === 0
+      ? 'No hay zonas activas disponibles. Contacte al administrador.'
+      : ''
+  );
+  const selectedCoverageZone = coverageZones.find(
+    (zone) => String(zone.id) === String(form.coverageZoneId),
+  );
   const isCallCenter = (user?.roles || []).some(
     (role) => role.code === 'call-center',
   );
@@ -267,7 +307,9 @@ export default function SaleForm() {
       if (name === 'requestType') {
         next.planId = '';
         next.motivoId = '';
+        next.coverageZoneId = '';
         const nuevoModo = modoOf(value);
+        if (value !== 'nuevo_contrato') next.canalCaptacionId = '';
         if (nuevoModo !== 'adicion') next.additionType = '';
         if (nuevoModo !== 'cambio_plan') {
           next.planFromId = '';
@@ -282,13 +324,13 @@ export default function SaleForm() {
         if (nuevoModo !== 'retiro') {
           next.equipmentDelivered = null;
           next.equipmentSerial = '';
+          next.equipmentRecoveryRequired = false;
           setEquipmentLookup(null);
           setEquipmentLookupError('');
         }
         if (value !== 'traslado_externo') {
           next.transferCurrentAddress = '';
           next.transferNewAddress = '';
-          next.transferZone = '';
           next.transferReferences = '';
           next.transferHasSketch = null;
         }
@@ -326,6 +368,10 @@ export default function SaleForm() {
     e.preventDefault();
     setError('');
     setSuccess('');
+    if (isNewContract && !form.canalCaptacionId) {
+      setError('Selecciona de dónde nos conociste para registrar el nuevo contrato.');
+      return;
+    }
     setLoading(true);
     try {
       const payload = {
@@ -341,10 +387,16 @@ export default function SaleForm() {
         notes: form.notes,
         planId: Number(form.planId),
       };
+      if (requiresCoverageZone) {
+        payload.coverageZoneId = Number(form.coverageZoneId);
+      }
       if (isContract) {
         payload.clientCi = form.clientCi;
         payload.clientPhone = form.clientPhone;
         payload.meterNumber = form.meterNumber;
+        if (isNewContract && form.canalCaptacionId) {
+          payload.canalCaptacionId = Number(form.canalCaptacionId);
+        }
         if (form.sellerUserId) {
           payload.sellerUserId = Number(form.sellerUserId);
         }
@@ -358,6 +410,7 @@ export default function SaleForm() {
       if (isRetiro) {
         payload.equipmentDelivered = form.equipmentDelivered;
         payload.equipmentSerial = form.equipmentDelivered ? form.equipmentSerial : '';
+        payload.equipmentRecoveryRequired = form.equipmentRecoveryRequired;
       }
       if (isTransfer) {
         const family = SERVICE_TYPE_TO_PLAN_TYPE[form.serviceType];
@@ -365,7 +418,6 @@ export default function SaleForm() {
         payload.transferTariffId = tariff?.id;
         payload.transferCurrentAddress = form.transferCurrentAddress;
         payload.transferNewAddress = form.transferNewAddress;
-        payload.transferZone = form.transferZone;
         payload.transferReferences = form.transferReferences;
         payload.transferHasSketch = form.transferHasSketch;
       }
@@ -374,7 +426,7 @@ export default function SaleForm() {
       }
       await api.createSale(payload);
       setSuccess('Registro guardado correctamente');
-       setForm({ date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', equipmentRetained: null, requiresTechnicalVisit: null, equipmentDelivered: null, equipmentSerial: '', meterNumber: '', sellerUserId: '', debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferZone: '', transferReferences: '', transferHasSketch: null });
+        setForm({ date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', coverageZoneId: '', canalCaptacionId: '', equipmentRetained: null, requiresTechnicalVisit: null, equipmentDelivered: null, equipmentSerial: '', equipmentRecoveryRequired: false, meterNumber: '', sellerUserId: '', debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferReferences: '', transferHasSketch: null });
        setEquipmentLookup(null); setEquipmentLookupError('');
       setSelectedPlan(null); setSelectedCustomer(null); setQuery(''); setCustomers([]);
       setPromotions([]); setSelectedPromotion(null); setPriceMode('normal');
@@ -405,6 +457,36 @@ export default function SaleForm() {
   };
 
   const getMotivoLabel = () => motivoNombreOf(form.motivoId);
+  const coverageZoneSelect = (
+    <div className="space-y-2">
+      <Select
+        label="Zona de cobertura / Barrio *"
+        name="coverageZoneId"
+        value={form.coverageZoneId}
+        onChange={handleChange}
+        required
+        error={coverageZoneSelectionError}
+      >
+        <option value="">
+          {coverageZonesLoading ? 'Cargando zonas...' : 'Seleccione una zona'}
+        </option>
+        {coverageZones.map((zone) => (
+          <option key={zone.id} value={zone.id}>{zone.name}</option>
+        ))}
+      </Select>
+      {selectedCoverageZone?.google_maps_url && (
+        <a
+          href={selectedCoverageZone.google_maps_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-xs font-semibold text-brand-700 underline-offset-2 hover:underline focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+        >
+          Ver cobertura en el mapa
+          <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+        </a>
+      )}
+    </div>
+  );
 
   const previewSale = {
     date: formatDate(form.date),
@@ -428,10 +510,16 @@ export default function SaleForm() {
     requiresTechnicalVisit: isRecontratacion ? form.requiresTechnicalVisit : null,
     transferCurrentAddress: isTransfer ? form.transferCurrentAddress : null,
     transferNewAddress: isTransfer ? form.transferNewAddress : null,
-    transferZone: isTransfer ? form.transferZone : null,
+    transferZone: isTransfer ? selectedCoverageZone?.name : null,
+    coverageZoneName: requiresCoverageZone ? selectedCoverageZone?.name : null,
+    canalCaptacionNombre: isNewContract
+      ? canalCaptacionNombreOf(Number(form.canalCaptacionId)) : null,
     transferReferences: isTransfer ? form.transferReferences : null,
     transferHasSketch: isTransfer ? form.transferHasSketch : null,
     motivo: getMotivoLabel(),
+    equipmentDelivered: isRetiro ? form.equipmentDelivered : null,
+    equipmentSerial: isRetiro && form.equipmentDelivered ? form.equipmentSerial : '',
+    equipmentRecoveryRequired: isRetiro && form.equipmentRecoveryRequired,
     notes: form.notes,
   };
 
@@ -533,6 +621,31 @@ export default function SaleForm() {
                   ))}
                 </Select>
               </div>
+              {coverageZoneSelect}
+              {isNewContract && (
+                <>
+                  <Select
+                    label="¿De dónde nos conociste? *"
+                    name="canalCaptacionId"
+                    value={form.canalCaptacionId}
+                    onChange={handleChange}
+                    disabled={canalesCaptacionLoading}
+                    required
+                  >
+                    <option value="">
+                      {canalesCaptacionLoading
+                        ? 'Cargando canales...'
+                        : 'Seleccione un canal'}
+                    </option>
+                    {canalesCaptacion.map((canal) => (
+                      <option key={canal.id} value={canal.id}>{canal.nombre}</option>
+                    ))}
+                  </Select>
+                  {canalesCaptacionError && (
+                    <p className="text-xs text-red-600">{canalesCaptacionError}</p>
+                  )}
+                </>
+              )}
               <div className="rounded-xl border border-sky-100 bg-white/80 px-4 py-3">
                 <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Origen automático
@@ -556,7 +669,7 @@ export default function SaleForm() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Input label="Domicilio actual" name="transferCurrentAddress" value={form.transferCurrentAddress} onChange={handleChange} placeholder="Si está disponible" />
                 <Input label="Nuevo domicilio *" name="transferNewAddress" value={form.transferNewAddress} onChange={handleChange} placeholder="Calle y número" required />
-                <Input label="Barrio / zona" name="transferZone" value={form.transferZone} onChange={handleChange} placeholder="Zona del nuevo domicilio" />
+                {coverageZoneSelect}
                 <Input label="Referencias" name="transferReferences" value={form.transferReferences} onChange={handleChange} placeholder="Puntos de referencia" />
               </div>
               <RadioChoiceGroup
@@ -686,17 +799,22 @@ export default function SaleForm() {
                 label="Entrega de equipo"
                 name="equipmentDelivered"
                 value={form.equipmentDelivered === null ? '' : String(form.equipmentDelivered)}
-                onChange={(event) => setForm((prev) => ({ ...prev, equipmentDelivered: event.target.value === 'true', equipmentSerial: event.target.value === 'true' ? prev.equipmentSerial : '' }))}
+                 onChange={(event) => setForm((prev) => ({
+                   ...prev,
+                   equipmentDelivered: event.target.value === 'true',
+                   equipmentRecoveryRequired: event.target.value !== 'true',
+                   equipmentSerial: event.target.value === 'true' ? prev.equipmentSerial : '',
+                 }))}
                 options={[
                   { value: 'true', label: 'Sí, trae equipo', description: 'Se enviará a recepción pendiente de Inventario.', icon: <Package size={15} /> },
-                  { value: 'false', label: 'No trae equipo', description: 'El retiro continúa sin devolución física.', icon: <Check size={15} /> },
+                   { value: 'false', label: 'No, requiere retiro de equipo', description: 'Se generará una orden de retiro de equipo para su posterior gestión operativa.', icon: <Check size={15} /> },
                 ]}
               />
               {form.equipmentDelivered && (
                 <div className="space-y-2">
                   <Input label="Serie del equipo *" value={form.equipmentSerial} onChange={(event) => { setForm((prev) => ({ ...prev, equipmentSerial: event.target.value.toUpperCase() })); setEquipmentLookup(null); setEquipmentLookupError(''); }} onBlur={(event) => lookupEquipment(event.target.value)} placeholder="Escanea o escribe la serie" autoComplete="off" required />
                   {equipmentLookup && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">Equipo identificado: <strong>{equipmentLookup.articulo.marca} {equipmentLookup.articulo.modelo}</strong> · {equipmentLookup.articulo.tipo.nombre}. No se creará otro registro.</div>}
-                  {equipmentLookupError && <p className="text-xs font-semibold text-red-600">{equipmentLookupError}</p>}
+                   {equipmentLookupError && <p className="text-xs font-semibold text-amber-700">{equipmentLookupError} Puedes registrar el retiro; la serie quedará pendiente de identificación.</p>}
                 </div>
               )}
             </div>
@@ -880,7 +998,7 @@ export default function SaleForm() {
             </div>
           )}
 
-          <Button type="submit" size="lg" className="w-full" disabled={!form.planId || samePlanSelected || ((isCambio || isRetiro) && !form.motivoId) || (isRetiro && (form.equipmentDelivered === null || (form.equipmentDelivered && (!form.equipmentSerial.trim() || !equipmentLookup)))) || (isRecontratacion && (form.equipmentRetained === null || form.requiresTechnicalVisit === null || (form.debtApplies && (!form.debtAmount || Number(form.debtAmount) <= 0)))) || (isTransfer && (!form.transferNewAddress.trim() || form.transferHasSketch === null || !transferTariffs.some((item) => item.service_type === SERVICE_TYPE_TO_PLAN_TYPE[form.serviceType])))}>
+          <Button type="submit" size="lg" className="w-full" disabled={!form.planId || samePlanSelected || (requiresCoverageZone && (!form.coverageZoneId || coverageZonesLoading || coverageZoneSelectionError)) || ((isCambio || isRetiro) && !form.motivoId) || (isRetiro && (form.equipmentDelivered === null || (form.equipmentDelivered && !form.equipmentSerial.trim()))) || (isRecontratacion && (form.equipmentRetained === null || form.requiresTechnicalVisit === null || (form.debtApplies && (!form.debtAmount || Number(form.debtAmount) <= 0)))) || (isTransfer && (!form.transferNewAddress.trim() || form.transferHasSketch === null || !transferTariffs.some((item) => item.service_type === SERVICE_TYPE_TO_PLAN_TYPE[form.serviceType])))}>
             Revisar Registro
           </Button>
         </form>

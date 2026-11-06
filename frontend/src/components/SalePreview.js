@@ -19,6 +19,12 @@ export function SalePreviewDetails({ sale }) {
   const isChange = Boolean(sale.previousPlanLabel);
   const isRehire = sale.requestType === 'recontratacion';
   const isTransfer = sale.requestType === 'traslado_externo';
+  const showsCoverageZone = (
+    sale.requestType === 'nuevo_contrato' || isRehire || isTransfer
+  );
+  const canalNombre = sale.canalCaptacionNombre
+    || sale.canalCaptacion?.nombre
+    || '';
 
   return (
     <div className="bg-slate-50 rounded-2xl p-4 space-y-2 text-sm">
@@ -36,11 +42,16 @@ export function SalePreviewDetails({ sale }) {
         <PreviewRow label="Servicio" value={sale.serviceLabel} />
       )}
       <PreviewRow label="Plan" value={sale.planLabel} />
+      {showsCoverageZone && sale.coverageZoneName && (
+        <PreviewRow label="Zona de cobertura / Barrio" value={sale.coverageZoneName} />
+      )}
+      {canalNombre && (
+        <PreviewRow label="¿Cómo nos conoció?" value={canalNombre} />
+      )}
       {isTransfer && (
         <>
           <PreviewRow label="Domicilio actual" value={sale.transferCurrentAddress} />
           <PreviewRow label="Nuevo domicilio" value={sale.transferNewAddress} />
-          <PreviewRow label="Zona" value={sale.transferZone} />
           <PreviewRow label="Referencias" value={sale.transferReferences} />
           <PreviewRow label="Croquis físico" value={sale.transferHasSketch ? 'Sí' : 'No'} />
         </>
@@ -60,8 +71,16 @@ export function SalePreviewDetails({ sale }) {
       {isRehire && sale.requiresTechnicalVisit != null && (
         <PreviewRow label="Requiere visita técnica" value={sale.requiresTechnicalVisit ? 'Sí' : 'No'} />
       )}
+      {sale.equipmentDelivered != null && (
+        <PreviewRow label="Equipo entregado" value={sale.equipmentDelivered ? 'Sí' : 'No'} />
+      )}
+      {sale.equipmentSerial && <PreviewRow label="Serie del equipo" value={sale.equipmentSerial} />}
+      {sale.equipmentRecoveryRequired && (
+        <PreviewRow label="Recuperación de equipo" value="Pendiente de gestión operativa" />
+      )}
       {sale.motivo && <PreviewRow label="Motivo" value={sale.motivo} />}
       {sale.notes && <PreviewRow label="Comentarios" value={sale.notes} />}
+      {sale.creatorName && <PreviewRow label="Registró" value={sale.creatorName} />}
     </div>
   );
 }

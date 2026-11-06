@@ -1,14 +1,13 @@
 import {
-  Database,
   FilePlus2,
   History,
   LayoutDashboard,
   LayoutGrid,
+  Megaphone,
   Package,
   Percent,
   Tag,
   SlidersHorizontal,
-  Users,
   UserRoundSearch,
 } from 'lucide-react';
 
@@ -51,34 +50,34 @@ export const commercialAdminNavigation = [
     label: 'Planes',
     icon: Package,
     permission: 'commercial_config.manage',
+    group: 'Configuración comercial',
   },
   {
     to: '/comercial/motivos',
     label: 'Motivos',
     icon: Tag,
     permission: 'commercial_config.manage',
+    group: 'Configuración comercial',
+  },
+  {
+    to: '/comercial/canales-captacion',
+    label: 'Canales de captación',
+    icon: Megaphone,
+    permission: 'captacion.manage',
+    group: 'Configuración comercial',
   },
   {
     to: '/comercial/promociones',
     label: 'Promociones',
     icon: Percent,
     permission: 'commercial_config.manage',
-  },
-  {
-    to: '/comercial/usuarios',
-    label: 'Usuarios',
-    icon: Users,
-    permission: 'users.manage',
-  },
-  {
-    to: '/comercial/backups',
-    label: 'Copias de Seguridad',
-    icon: Database,
+    group: 'Configuración comercial',
   },
   {
     to: '/comercial/tarifas-traslados',
     label: 'Tarifas de traslados',
     icon: SlidersHorizontal,
     permission: 'commercial_config.manage',
+    group: 'Configuración comercial',
   },
 ];

@@ -1,14 +1,16 @@
 from decimal import Decimal
-from django.db import connection
+from django.db import DatabaseError, connection
 
 from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_field
 from .models import (
-    User, Customer, Contract, Role, Permission, RolePermission, UserRole,
+    User, Customer, Contract, CoverageZone, Role, Permission, RolePermission, UserRole,
     TemporaryFunction, TemporaryAssignment, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
     TarifaTraslado, TarifaTrasladoHistorial, TrasladoExterno,
-    InventarioMovimiento,
+    InventarioMovimiento, CanalCaptacion,
+    CustomerLocation, CustomerLocationHistory,
 )
+from .models import normalize_canal_captacion_name
 from .domain import (
     SERVICE_TYPE_LABELS, SERVICE_TYPE_FAMILY, SERVICE_TYPE_TO_PLAN_TYPE,
     service_family_label, previous_service_family, is_service_change,
@@ -134,14 +136,20 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'name', 'role', 'active', 'roles']
+        fields = [
+            'id', 'name', 'role', 'active', 'roles',
+            'last_login_at', 'last_login_ip', 'must_change_password',
+            'created_at',
+        ]
 
     def get_roles(self, obj):
         return [
             {
                 'id': assignment.role_id,
+                'code': assignment.role.code,
                 'name': assignment.role.name,
                 'is_system_role': assignment.role.is_system_role,
+                'grants_full_access': assignment.role.grants_full_access,
             }
             for assignment in obj.role_assignments.all()
             if assignment.active and assignment.role.active
@@ -150,6 +158,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 class UserWriteSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False)
+    password_confirm = serializers.CharField(write_only=True, required=False)
     roleIds = serializers.ListField(
         child=serializers.IntegerField(min_value=1),
         required=False,
@@ -158,26 +167,64 @@ class UserWriteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'name', 'password', 'active', 'roleIds']
+        fields = [
+            'id', 'name', 'password', 'password_confirm', 'active', 'roleIds',
+        ]
 
     def validate(self, attrs):
+        from .models import normalize_user_name
+        from .passwords import PasswordPolicyError, validate_password
+
         if 'role' in self.initial_data:
             raise serializers.ValidationError({
                 'role': 'El rol heredado ya no se registra; asigne roleIds.'
             })
+
+        name = attrs.get('name')
+        if name is not None:
+            normalized = normalize_user_name(name)
+            if not normalized:
+                raise serializers.ValidationError(
+                    {'name': 'El nombre no puede estar vacío.'})
+            duplicates = User.objects.filter(name_normalized=normalized)
+            if self.instance is not None:
+                duplicates = duplicates.exclude(pk=self.instance.pk)
+            if duplicates.exists():
+                raise serializers.ValidationError(
+                    {'name': 'Ya existe un usuario con ese nombre.'})
+
+        password = attrs.get('password')
+        if password:
+            confirmation = attrs.get('password_confirm')
+            if confirmation is None:
+                raise serializers.ValidationError({
+                    'password_confirm': 'Confirme la contraseña.'})
+            if password != confirmation:
+                raise serializers.ValidationError({
+                    'password_confirm': 'Las contraseñas no coinciden.'})
+            try:
+                validate_password(password, self.instance or User(
+                    name=attrs.get('name') or ''))
+            except PasswordPolicyError as exc:
+                raise serializers.ValidationError({'password': str(exc)})
+
         return attrs
 
     def create(self, validated_data):
         password = validated_data.pop('password', None)
+        validated_data.pop('password_confirm', None)
         validated_data.pop('roleIds', None)
         user = User(**validated_data)
         if password:
             user.set_password(password)
+        else:
+            user.set_password('')
         user.save()
         return user
 
     def update(self, instance, validated_data):
         password = validated_data.pop('password', None)
+        validated_data.pop('password_confirm', None)
         validated_data.pop('roleIds', None)
         if password:
             instance.set_password(password)
@@ -189,24 +236,42 @@ class PermissionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Permission
-        fields = ['id', 'code', 'module', 'action', 'name', 'description', 'active']
+        fields = [
+            'id', 'code', 'module', 'resource', 'action', 'name',
+            'description', 'active', 'is_reserved', 'sort_order',
+        ]
 
 
 class RoleSerializer(serializers.ModelSerializer):
     permissions = serializers.SerializerMethodField()
+    user_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Role
         fields = [
             'id', 'code', 'name', 'description', 'active',
-            'is_system_role', 'permissions', 'created_at', 'updated_at',
+            'is_system_role', 'grants_full_access', 'permissions',
+            'user_count', 'created_at', 'updated_at',
         ]
-        read_only_fields = ['is_system_role', 'permissions', 'created_at', 'updated_at']
+        read_only_fields = [
+            'is_system_role', 'grants_full_access', 'permissions',
+            'user_count', 'created_at', 'updated_at',
+        ]
+
+    def validate_code(self, value):
+        if self.instance is not None and value != self.instance.code:
+            raise serializers.ValidationError(
+                'El código del rol no se puede modificar.')
+        return value
 
     def get_permissions(self, obj):
         permissions = Permission.objects.filter(
-            role_permissions__role=obj, active=True).order_by('module', 'action')
+            role_permissions__role=obj, active=True).order_by(
+                'module', 'resource', 'action')
         return PermissionSerializer(permissions, many=True).data
+
+    def get_user_count(self, obj):
+        return obj.user_assignments.filter(active=True).count()
 
 
 class UserRoleSerializer(serializers.ModelSerializer):
@@ -247,6 +312,65 @@ class CustomerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
         fields = ['id', 'code', 'name', 'ci', 'phone', 'status', 'active']
+
+
+class CustomerLocationSerializer(serializers.ModelSerializer):
+    customerCode = serializers.CharField(source='customer.code', read_only=True)
+    customerName = serializers.CharField(source='customer.name', read_only=True)
+    photoUrl = serializers.SerializerMethodField()
+    updatedBy = serializers.CharField(source='updated_by.name', read_only=True)
+    createdBy = serializers.CharField(source='created_by.name', read_only=True)
+
+    class Meta:
+        model = CustomerLocation
+        fields = [
+            'id', 'customer', 'customerCode', 'customerName', 'photoUrl',
+            'latitude', 'longitude', 'accuracy_meters', 'captured_at',
+            'maps_url', 'source', 'createdBy', 'updatedBy', 'created_at',
+            'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'customerCode', 'customerName', 'photoUrl', 'createdBy',
+            'updatedBy', 'created_at', 'updated_at',
+        ]
+
+    def get_photoUrl(self, obj):
+        from .location_storage import signed_url
+        try:
+            return signed_url(obj.photo_path)
+        except Exception:
+            return ''
+
+
+class CustomerLocationHistorySerializer(serializers.ModelSerializer):
+    changedBy = serializers.CharField(source='changed_by.name', read_only=True)
+    previousPhotoUrl = serializers.SerializerMethodField()
+    newPhotoUrl = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CustomerLocationHistory
+        fields = [
+            'id', 'change_type', 'changedBy', 'changed_at',
+            'previousPhotoUrl', 'newPhotoUrl',
+            'previous_latitude', 'previous_longitude',
+            'previous_accuracy_meters', 'previous_maps_url', 'previous_source',
+            'new_latitude', 'new_longitude', 'new_accuracy_meters',
+            'new_maps_url', 'new_source',
+        ]
+
+    def get_previousPhotoUrl(self, obj):
+        from .location_storage import signed_url
+        try:
+            return signed_url(obj.previous_photo_path)
+        except Exception:
+            return ''
+
+    def get_newPhotoUrl(self, obj):
+        from .location_storage import signed_url
+        try:
+            return signed_url(obj.new_photo_path)
+        except Exception:
+            return ''
 
 
 class ContractSerializer(serializers.ModelSerializer):
@@ -307,6 +431,39 @@ class PlanPublicSerializer(serializers.ModelSerializer):
                   'monthly', 'installation', 'total', 'legacy', 'active']
 
 
+class CoverageZoneSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(
+        source='created_by.name', read_only=True, default='')
+
+    class Meta:
+        model = CoverageZone
+        fields = [
+            'id', 'name', 'description', 'google_maps_url', 'is_active',
+            'created_by', 'created_by_name', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'created_by', 'created_by_name', 'created_at', 'updated_at',
+        ]
+
+    def validate_name(self, value):
+        from .models import normalize_coverage_zone_name
+
+        value = normalize_coverage_zone_name(value)
+        if not value:
+            raise serializers.ValidationError('El nombre de la zona es obligatorio')
+        if len(value) > 120:
+            raise serializers.ValidationError(
+                'El nombre no puede superar 120 caracteres')
+        normalized_name = value.casefold()
+        zones = CoverageZone.objects.filter(normalized_name=normalized_name)
+        if self.instance:
+            zones = zones.exclude(pk=self.instance.pk)
+        if zones.exists():
+            raise serializers.ValidationError(
+                'Ya existe una zona con ese nombre')
+        return value
+
+
 class MotivoSerializer(serializers.ModelSerializer):
     """CRUD administrativo de motivos."""
 
@@ -335,6 +492,37 @@ class TipoSolicitudPublicSerializer(serializers.ModelSerializer):
     class Meta:
         model = TipoSolicitud
         fields = ['id', 'code', 'nombre', 'descripcion', 'modo', 'orden']
+
+
+class CanalCaptacionSerializer(serializers.ModelSerializer):
+    """CRUD administrativo de canales de captacion."""
+
+    class Meta:
+        model = CanalCaptacion
+        fields = ['id', 'nombre', 'descripcion', 'activo',
+                  'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_nombre(self, value):
+        nombre = normalize_canal_captacion_name(value)
+        if not nombre:
+            raise serializers.ValidationError('El nombre es obligatorio')
+        duplicados = CanalCaptacion.objects.filter(
+            nombre_normalizado=nombre.casefold())
+        if self.instance is not None:
+            duplicados = duplicados.exclude(pk=self.instance.pk)
+        if duplicados.exists():
+            raise serializers.ValidationError(
+                'Ya existe un canal con ese nombre')
+        return nombre
+
+
+class CanalCaptacionPublicSerializer(serializers.ModelSerializer):
+    """Lo que recibe el selector "¿Como nos conocio?"."""
+
+    class Meta:
+        model = CanalCaptacion
+        fields = ['id', 'nombre']
 
 
 class PromotionSerializer(serializers.ModelSerializer):
@@ -462,10 +650,24 @@ class SaleSerializer(serializers.ModelSerializer):
     requiresTechnicalVisit = serializers.BooleanField(
         source='requires_technical_visit', read_only=True)
     debtApplies = serializers.BooleanField(source='debt_applies', read_only=True)
+    equipmentDelivered = serializers.BooleanField(
+        source='equipment_delivered', read_only=True)
+    equipmentSerial = serializers.CharField(
+        source='equipment_serial', read_only=True)
+    equipmentRecoveryRequired = serializers.BooleanField(
+        source='equipment_recovery_required', read_only=True)
+    equipmentRecoveryStatus = serializers.CharField(
+        source='equipment_recovery_status', read_only=True)
     debtAmount = serializers.DecimalField(
         source='debt_amount', max_digits=12, decimal_places=2, read_only=True)
     totalToCollect = serializers.SerializerMethodField()
     traslado = serializers.SerializerMethodField()
+    coverageZoneId = serializers.IntegerField(
+        source='coverage_zone_id', read_only=True)
+    coverageZone = serializers.SerializerMethodField()
+    canalCaptacionId = serializers.IntegerField(
+        source='canal_captacion_id', read_only=True)
+    canalCaptacion = serializers.SerializerMethodField()
 
     class Meta:
         model = Sale
@@ -478,8 +680,11 @@ class SaleSerializer(serializers.ModelSerializer):
                    'applied_installation', 'applied_monthly', 'previousPlan']
         fields = fields + [
             'equipmentRetained', 'requiresTechnicalVisit', 'debtApplies',
-            'debtAmount', 'totalToCollect', 'version']
-        fields = fields + ['traslado']
+             'equipmentDelivered', 'equipmentSerial', 'equipmentRecoveryRequired',
+             'equipmentRecoveryStatus', 'debtAmount',
+            'totalToCollect', 'version']
+        fields = fields + ['traslado', 'coverageZoneId', 'coverageZone',
+                           'canalCaptacionId', 'canalCaptacion']
 
     @extend_schema_field(str)
     def get_motivoNombre(self, obj):
@@ -543,6 +748,28 @@ class SaleSerializer(serializers.ModelSerializer):
             'status': traslado.status,
         }
 
+    @extend_schema_field(dict)
+    def get_coverageZone(self, obj):
+        zone = obj.coverage_zone
+        if not zone:
+            return None
+        return {
+            'id': zone.id,
+            'name': zone.name,
+            'is_active': zone.is_active,
+        }
+
+    @extend_schema_field(dict)
+    def get_canalCaptacion(self, obj):
+        canal = obj.canal_captacion
+        if not canal:
+            return None
+        return {
+            'id': canal.id,
+            'nombre': canal.nombre,
+            'activo': canal.activo,
+        }
+
 
 class SaleCreateSerializer(serializers.Serializer):
     """Crea una venta. El total se calcula en el servidor a partir del plan."""
@@ -563,6 +790,8 @@ class SaleCreateSerializer(serializers.Serializer):
         max_digits=12, decimal_places=2, required=False, allow_null=True)
     notes = serializers.CharField(required=False, allow_blank=True)
     planId = serializers.IntegerField()
+    coverageZoneId = serializers.IntegerField(required=False, allow_null=True)
+    canalCaptacionId = serializers.IntegerField(required=False, allow_null=True)
     meterNumber = serializers.CharField(
         required=False, allow_blank=True, max_length=80)
     sellerUserId = serializers.IntegerField(required=False, allow_null=True)
@@ -591,6 +820,8 @@ class SaleCreateSerializer(serializers.Serializer):
         source='equipment_delivered', required=False, allow_null=True)
     equipmentSerial = serializers.CharField(
         source='equipment_serial', required=False, allow_blank=True, max_length=255)
+    equipmentRecoveryRequired = serializers.BooleanField(
+        source='equipment_recovery_required', required=False)
 
     def validate(self, attrs):
         editable_origin_fields = {'contractOrigin', 'externalSeller'}
@@ -618,6 +849,45 @@ class SaleCreateSerializer(serializers.Serializer):
         equipment_delivered = attrs.get('equipment_delivered')
         equipment_serial = (attrs.get('equipment_serial') or '').strip().upper()
         contract_mode = mode == 'nuevo' or is_rehire
+        coverage_zone_id = attrs.get('coverageZoneId')
+        if contract_mode or is_transfer:
+            if coverage_zone_id is None:
+                raise serializers.ValidationError(
+                    {'coverageZoneId': 'Seleccione una zona de cobertura'})
+            coverage_zone = CoverageZone.objects.filter(
+                id=coverage_zone_id, is_active=True).first()
+            if coverage_zone is None:
+                raise serializers.ValidationError(
+                    {'coverageZoneId':
+                     'La zona de cobertura no existe o está inactiva'})
+        else:
+            if coverage_zone_id is not None:
+                raise serializers.ValidationError(
+                    {'coverageZoneId':
+                     'La zona solo aplica a contratos, recontrataciones y traslados'})
+            coverage_zone = None
+        attrs['coverageZone'] = coverage_zone
+
+        canal_captacion_id = attrs.get('canalCaptacionId')
+        is_new_contract = request_type == 'nuevo_contrato'
+        if is_new_contract and canal_captacion_id is None:
+            raise serializers.ValidationError(
+                {'canalCaptacionId':
+                 'Seleccione cómo nos conoció para registrar el nuevo contrato'})
+        if not is_new_contract and canal_captacion_id is not None:
+            raise serializers.ValidationError(
+                {'canalCaptacionId':
+                 'El canal de captación solo aplica a nuevos contratos'})
+        if canal_captacion_id is not None:
+            canal_captacion = CanalCaptacion.objects.filter(
+                id=canal_captacion_id, activo=True).first()
+            if canal_captacion is None:
+                raise serializers.ValidationError(
+                    {'canalCaptacionId':
+                     'El canal de captacion no existe o esta inactivo'})
+        else:
+            canal_captacion = None
+        attrs['canalCaptacion'] = canal_captacion
         meter_number = (attrs.get('meterNumber') or '').strip()
         seller_user_id = attrs.get('sellerUserId')
 
@@ -663,31 +933,44 @@ class SaleCreateSerializer(serializers.Serializer):
                 if not equipment_serial:
                     raise serializers.ValidationError(
                         {'equipmentSerial': 'Ingrese la serie del equipo entregado'})
-                with connection.cursor() as cursor:
-                    cursor.execute(
-                        """
-                        SELECT o.serie
-                        FROM public.onu AS o
-                        WHERE LOWER(TRIM(o.serie)) = LOWER(TRIM(%s))
-                        LIMIT 1
-                        """,
-                        [equipment_serial],
-                    )
-                    registered = cursor.fetchone()
-                if registered is None:
-                    raise serializers.ValidationError(
-                        {'equipmentSerial': 'La serie no está registrada en inventario'})
-                if InventarioMovimiento.objects.filter(
-                        serie__iexact=registered[0],
+                try:
+                    with connection.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            SELECT o.serie
+                            FROM public.onu AS o
+                            WHERE LOWER(TRIM(o.serie)) = LOWER(TRIM(%s))
+                            LIMIT 1
+                            """,
+                            [equipment_serial],
+                        )
+                        registered = cursor.fetchone()
+                except DatabaseError:
+                    # Inventario puede no estar disponible; el retiro
+                    # comercial conserva la serie como pendiente de
+                    # identificación en vez de bloquear el registro.
+                    registered = None
+                normalized_serial = registered[0] if registered else equipment_serial
+                if registered and InventarioMovimiento.objects.filter(
+                        serie__iexact=normalized_serial,
                         estado=InventarioMovimiento.ESTADO_PENDIENTE).exists():
                     raise serializers.ValidationError(
                         {'equipmentSerial': 'La serie ya tiene una recepción pendiente'})
-                attrs['equipment_serial'] = registered[0]
+                # La serie puede ser nueva para Inventario. Se conserva como
+                # declaración pendiente de identificación, sin bloquear el
+                # retiro comercial.
+                attrs['equipment_serial'] = normalized_serial
+                attrs['equipment_recovery_required'] = False
+                attrs['equipment_recovery_status'] = 'not_required'
             else:
                 attrs['equipment_serial'] = ''
+                attrs['equipment_recovery_required'] = True
+                attrs['equipment_recovery_status'] = 'pending'
         else:
             attrs['equipment_delivered'] = None
             attrs['equipment_serial'] = ''
+            attrs['equipment_recovery_required'] = False
+            attrs['equipment_recovery_status'] = 'not_required'
 
         if is_rehire:
             if equipment_retained is None:
@@ -830,6 +1113,8 @@ class SaleCreateSerializer(serializers.Serializer):
     def create(self, validated_data):
         user = self.context['user']
         plan = validated_data.pop('plan')
+        coverage_zone = validated_data.pop('coverageZone', None)
+        canal_captacion = validated_data.pop('canalCaptacion', None)
         promotion = validated_data.pop('promotion', None)
         transfer_tariff = validated_data.pop('transferTariff', None)
         plan_from = validated_data.pop('planFromPlan', None)
@@ -877,6 +1162,8 @@ class SaleCreateSerializer(serializers.Serializer):
             clientName=validated_data['clientName'],
             serviceType=validated_data['serviceType'],
             requestType=request_type,
+            coverage_zone=coverage_zone,
+            canal_captacion=canal_captacion,
             additionType=validated_data.get('additionType', ''),
             changeReason=validated_data.get('changeReason', ''),
             motivo=motivo,
@@ -900,6 +1187,10 @@ class SaleCreateSerializer(serializers.Serializer):
             debt_amount=validated_data.get('debt_amount', Decimal('0')),
             equipment_delivered=validated_data.get('equipment_delivered'),
             equipment_serial=validated_data.get('equipment_serial', ''),
+            equipment_recovery_required=validated_data.get(
+                'equipment_recovery_required', False),
+            equipment_recovery_status=validated_data.get(
+                'equipment_recovery_status', 'not_required'),
             seller_user=validated_data.get('sellerUser'),
             seller_name=validated_data.get('sellerName', ''),
             createdBy=user,
@@ -912,7 +1203,7 @@ class SaleCreateSerializer(serializers.Serializer):
                 tariff_amount=transfer_tariff.amount,
                 current_address=validated_data.get('transferCurrentAddress', '').strip(),
                 new_address=validated_data.get('transferNewAddress', '').strip(),
-                zone=validated_data.get('transferZone', '').strip(),
+                zone=coverage_zone.name,
                 references=validated_data.get('transferReferences', '').strip(),
                 has_physical_sketch=validated_data.get('transferHasSketch'),
                 status=('recibido' if validated_data.get('transferHasSketch')

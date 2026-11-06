@@ -1,6 +1,20 @@
+import unicodedata
+
 from django.db import models
 from django.utils import timezone
 from django.contrib.auth.hashers import make_password, check_password
+
+
+
+def normalize_user_name(value):
+    """Normaliza el nombre de acceso sin perder la grafía visible.
+
+    Se usa para que ``Juan`` y ``juan`` no puedan coexistir y para que el
+    login sea inequívoco. No se eliminan acentos: ``José`` y ``Jose``
+    pueden ser personas distintas.
+    """
+    value = unicodedata.normalize('NFKC', value or '')
+    return ' '.join(value.split()).casefold()[:120]
 
 
 class User(models.Model):
@@ -9,15 +23,39 @@ class User(models.Model):
     ROLE_CHOICES = [('admin', 'admin'), ('ventas', 'ventas')]
 
     name = models.CharField(max_length=120)
+    name_normalized = models.CharField(
+        max_length=120, unique=True, null=True, blank=True, editable=False,
+        help_text='Nombre normalizado para login y unicidad.')
     password = models.CharField(max_length=255)
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='ventas')
     active = models.BooleanField(default=True)
+    last_login_at = models.DateTimeField(null=True, blank=True)
+    last_login_ip = models.GenericIPAddressField(null=True, blank=True)
+    password_changed_at = models.DateTimeField(null=True, blank=True)
+    must_change_password = models.BooleanField(default=False)
+    token_version = models.PositiveIntegerField(default=0)
+    failed_login_count = models.PositiveIntegerField(default=0)
+    locked_until = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True)
 
-    def set_password(self, raw):
+    def save(self, *args, **kwargs):
+        normalized = normalize_user_name(self.name)
+        if normalized:
+            self.name_normalized = normalized
+        super().save(*args, **kwargs)
+
+    def set_password(self, raw, changed_at=None):
         self.password = make_password(raw)
+        self.password_changed_at = changed_at or timezone.now()
+        self.token_version += 1
+        self.must_change_password = False
 
     def check_password(self, raw):
         return check_password(raw, self.password)
+
+    def bump_token_version(self):
+        self.token_version += 1
 
     @property
     def is_authenticated(self):
@@ -32,12 +70,19 @@ class User(models.Model):
 
 
 class Role(models.Model):
-    """Rol permanente administrable del sistema."""
+    """Rol permanente administrable del sistema.
+
+    ``is_system_role`` significa "protegido": no se renombra, desactiva ni
+    elimina desde la interfaz. ``grants_full_access`` es distinto: solo el
+    rol de Administrador de sistemas lo tiene. Gerente puede ser protegido
+    sin convertirse en superadministrador.
+    """
     code = models.SlugField(max_length=40, unique=True)
     name = models.CharField(max_length=120)
     description = models.CharField(max_length=255, blank=True, default='')
     active = models.BooleanField(default=True)
     is_system_role = models.BooleanField(default=False)
+    grants_full_access = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -46,7 +91,12 @@ class Role(models.Model):
 
 
 class Permission(models.Model):
-    """Permiso granular expresado como módulo + acción."""
+    """Permiso granular expresado como módulo + recurso + acción.
+
+    Los permisos antiguos de dos niveles (``module.action``) siguen siendo
+    válidos: ``resource`` queda vacío. Los nuevos usan
+    ``module.resource.action``.
+    """
     ACTION_CHOICES = [
         ('view', 'Consultar'),
         ('create', 'Crear'),
@@ -55,23 +105,46 @@ class Permission(models.Model):
         ('manage', 'Administrar'),
         ('export', 'Exportar'),
         ('assign', 'Asignar'),
+        ('approve', 'Aprobar'),
+        ('reject', 'Rechazar'),
+        ('cancel', 'Cancelar'),
+        ('close', 'Cerrar'),
+        ('reopen', 'Reabrir'),
+        ('change_status', 'Cambiar estado'),
+        ('download', 'Descargar'),
+        ('restore', 'Restaurar'),
+        ('verify', 'Verificar'),
+        ('schedule', 'Programar'),
+        ('reset_password', 'Restablecer contraseña'),
+        ('revoke', 'Revocar'),
+        ('unlock', 'Desbloquear'),
+        ('configure', 'Configurar'),
+        ('execute', 'Ejecutar'),
     ]
 
     module = models.SlugField(max_length=60)
-    action = models.CharField(max_length=12, choices=ACTION_CHOICES)
+    resource = models.SlugField(max_length=60, blank=True, default='')
+    action = models.CharField(max_length=24, choices=ACTION_CHOICES)
     name = models.CharField(max_length=120)
     description = models.CharField(max_length=255, blank=True, default='')
     active = models.BooleanField(default=True)
+    is_reserved = models.BooleanField(
+        default=False,
+        help_text='Solo el administrador de sistemas puede ejercerlo o asignarlo.')
+    sort_order = models.PositiveIntegerField(default=0)
 
     class Meta:
-        ordering = ['module', 'action']
+        ordering = ['module', 'resource', 'action']
         constraints = [
             models.UniqueConstraint(
-                fields=['module', 'action'], name='unique_permission_module_action')
+                fields=['module', 'resource', 'action'],
+                name='unique_permission_module_resource_action')
         ]
 
     @property
     def code(self):
+        if self.resource:
+            return f'{self.module}.{self.resource}.{self.action}'
         return f'{self.module}.{self.action}'
 
 
@@ -313,6 +386,68 @@ class TarifaTrasladoHistorial(models.Model):
         ordering = ['-created_at', '-id']
 
 
+def normalize_coverage_zone_name(value):
+    normalized = unicodedata.normalize('NFKC', value or '')
+    return ' '.join(normalized.split())
+
+
+def normalize_canal_captacion_name(value):
+    return normalize_coverage_zone_name(value)
+
+
+class CoverageZone(models.Model):
+    name = models.CharField(max_length=120)
+    normalized_name = models.CharField(max_length=120, unique=True, editable=False)
+    description = models.TextField(blank=True, default='')
+    google_maps_url = models.URLField(max_length=500, blank=True, default='')
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.PROTECT,
+        related_name='coverage_zones_created')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'coverage_zones'
+        ordering = ['name', 'id']
+
+    def save(self, *args, **kwargs):
+        self.name = normalize_coverage_zone_name(self.name)
+        self.normalized_name = self.name.casefold()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+
+class CanalCaptacion(models.Model):
+    """Catalogo administrable de canales de captacion.
+
+    Responde a la pregunta comercial "¿Como nos conocio?". Se administra
+    desde Gestion Comercial y solo se desactiva: las solicitudes historicas
+    conservan su relacion mediante la FK de Sale.
+    """
+
+    nombre = models.CharField(max_length=120)
+    nombre_normalizado = models.CharField(
+        max_length=120, unique=True, editable=False)
+    descripcion = models.CharField(max_length=255, blank=True, default='')
+    activo = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['nombre', 'id']
+
+    def save(self, *args, **kwargs):
+        self.nombre = normalize_canal_captacion_name(self.nombre)
+        self.nombre_normalizado = self.nombre.casefold()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.nombre
+
+
 class Customer(models.Model):
     """Cliente maestro (KARDEX). Clave natural: code."""
     STATUS_CHOICES = [
@@ -427,6 +562,14 @@ class Sale(models.Model):
     requestType = models.CharField(
         max_length=20, blank=True, default='nuevo_contrato',
         help_text='Codigo de TipoSolicitud; el catalogo vive en esa tabla')
+    coverage_zone = models.ForeignKey(
+        CoverageZone, null=True, blank=True, on_delete=models.PROTECT,
+        related_name='sales',
+        help_text='Zona asociada al servicio o destino de traslado')
+    canal_captacion = models.ForeignKey(
+        CanalCaptacion, null=True, blank=True, on_delete=models.PROTECT,
+        related_name='sales',
+        help_text='Canal por el que el cliente conocio el servicio')
     additionType = models.CharField(
         max_length=20, choices=ADDITION_TYPE_CHOICES, blank=True, default='',
         help_text='Sub-tipo de adicion: internet o tv')
@@ -485,6 +628,17 @@ class Sale(models.Model):
     equipment_serial = models.CharField(
         max_length=255, blank=True, default='',
         help_text='Serie del equipo declarado en el retiro')
+    equipment_recovery_required = models.BooleanField(
+        default=False,
+        help_text='Indica que el equipo debe recuperarse posteriormente del domicilio')
+    equipment_recovery_status = models.CharField(
+        max_length=24,
+        choices=[
+            ('not_required', 'No requiere recuperación'),
+            ('pending', 'Pendiente de recuperación'),
+        ],
+        default='not_required',
+        help_text='Estado inicial preparado para la futura gestión operativa')
     createdBy = models.ForeignKey(
         User, on_delete=models.PROTECT, related_name='sales_created')
     seller_user = models.ForeignKey(
@@ -567,6 +721,12 @@ class AuditLog(models.Model):
     action = models.CharField(max_length=40)
     entity = models.CharField(max_length=60)
     entity_id = models.CharField(max_length=80)
+    module = models.CharField(max_length=60, blank=True, default='')
+    request_id = models.CharField(max_length=64, blank=True, default='')
+    outcome = models.CharField(
+        max_length=12, default='success',
+        choices=[('success', 'Éxito'), ('failure', 'Fallo')])
+    user_agent = models.CharField(max_length=255, blank=True, default='')
     before = models.JSONField(default=dict)
     after = models.JSONField(default=dict)
     ip = models.GenericIPAddressField(null=True, blank=True)
@@ -577,7 +737,91 @@ class AuditLog(models.Model):
         indexes = [
             models.Index(fields=['entity', 'entity_id']),
             models.Index(fields=['actor', 'created_at']),
+            models.Index(fields=['module', 'created_at']),
+            models.Index(fields=['action', 'created_at']),
         ]
+
+
+class CustomerLocation(models.Model):
+    """Ubicación vigente y fotografía de fachada de un cliente."""
+    SOURCE_GPS = 'gps'
+    SOURCE_MAPS_URL = 'maps_url'
+    SOURCE_CHOICES = [
+        (SOURCE_GPS, 'GPS'),
+        (SOURCE_MAPS_URL, 'URL de Google Maps'),
+    ]
+
+    customer = models.OneToOneField(
+        Customer, on_delete=models.PROTECT, related_name='location')
+    photo_path = models.CharField(max_length=500)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    accuracy_meters = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True)
+    captured_at = models.DateTimeField(null=True, blank=True)
+    maps_url = models.URLField(max_length=1000, blank=True, default='')
+    source = models.CharField(max_length=12, choices=SOURCE_CHOICES)
+    created_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='customer_locations_created')
+    updated_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='customer_locations_updated')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['customer', 'updated_at']),
+            models.Index(fields=['updated_by', 'updated_at']),
+        ]
+
+
+class CustomerLocationHistory(models.Model):
+    """Snapshot append-only de cada alta o actualización de ubicación."""
+    CREATED = 'created'
+    UPDATED = 'updated'
+    CHANGE_CHOICES = [(CREATED, 'Creación'), (UPDATED, 'Actualización')]
+
+    location = models.ForeignKey(
+        CustomerLocation, on_delete=models.PROTECT, related_name='history')
+    changed_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='customer_location_changes')
+    change_type = models.CharField(max_length=12, choices=CHANGE_CHOICES)
+    previous_photo_path = models.CharField(max_length=500, blank=True, default='')
+    new_photo_path = models.CharField(max_length=500)
+    previous_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    previous_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    previous_accuracy_meters = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    previous_maps_url = models.URLField(max_length=1000, blank=True, default='')
+    previous_source = models.CharField(max_length=12, blank=True, default='')
+    new_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    new_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    new_accuracy_meters = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    new_maps_url = models.URLField(max_length=1000, blank=True, default='')
+    new_source = models.CharField(max_length=12)
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-changed_at', '-id']
+        indexes = [
+            models.Index(fields=['location', 'changed_at']),
+            models.Index(fields=['changed_by', 'changed_at']),
+        ]
+
+
+class LoginAttempt(models.Model):
+    """Intento de inicio de sesión para límite de fuerza bruta.
+
+    Se guarda en base de datos, no en memoria, porque Render ejecuta dos
+    workers y un contador local no se compartiría.
+    """
+    username = models.CharField(max_length=120, db_index=True)
+    ip = models.GenericIPAddressField(null=True, blank=True, db_index=True)
+    successful = models.BooleanField(default=False)
+    user_agent = models.CharField(max_length=255, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
 
 
 class TrasladoExterno(models.Model):
