@@ -565,6 +565,16 @@ class LoginView(APIView):
         ip = client_ip(request)
         user = User.objects.filter(
             name_normalized=normalized, active=True).first()
+        # Compatibilidad con usuarios creados/importados antes de que
+        # ``name_normalized`` existiera o mediante una actualización directa.
+        # No se usa una coincidencia parcial: el nombre sigue siendo exacto,
+        # insensible a mayúsculas y espacios externos.
+        if user is None:
+            user = User.objects.filter(
+                name__iexact=name, active=True).first()
+            if user is not None and user.name_normalized != normalized:
+                user.name_normalized = normalized
+                user.save(update_fields=['name_normalized'])
 
         remaining = lockout_remaining(normalized, ip)
         if remaining:
