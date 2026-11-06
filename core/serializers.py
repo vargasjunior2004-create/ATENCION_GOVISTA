@@ -8,6 +8,7 @@ from .models import (
     TemporaryFunction, TemporaryAssignment, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
     TarifaTraslado, TarifaTrasladoHistorial, TrasladoExterno,
     InventarioMovimiento, CanalCaptacion,
+    CustomerLocation, CustomerLocationHistory,
 )
 from .models import normalize_canal_captacion_name
 from .domain import (
@@ -311,6 +312,65 @@ class CustomerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
         fields = ['id', 'code', 'name', 'ci', 'phone', 'status', 'active']
+
+
+class CustomerLocationSerializer(serializers.ModelSerializer):
+    customerCode = serializers.CharField(source='customer.code', read_only=True)
+    customerName = serializers.CharField(source='customer.name', read_only=True)
+    photoUrl = serializers.SerializerMethodField()
+    updatedBy = serializers.CharField(source='updated_by.name', read_only=True)
+    createdBy = serializers.CharField(source='created_by.name', read_only=True)
+
+    class Meta:
+        model = CustomerLocation
+        fields = [
+            'id', 'customer', 'customerCode', 'customerName', 'photoUrl',
+            'latitude', 'longitude', 'accuracy_meters', 'captured_at',
+            'maps_url', 'source', 'createdBy', 'updatedBy', 'created_at',
+            'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'customerCode', 'customerName', 'photoUrl', 'createdBy',
+            'updatedBy', 'created_at', 'updated_at',
+        ]
+
+    def get_photoUrl(self, obj):
+        from .location_storage import signed_url
+        try:
+            return signed_url(obj.photo_path)
+        except Exception:
+            return ''
+
+
+class CustomerLocationHistorySerializer(serializers.ModelSerializer):
+    changedBy = serializers.CharField(source='changed_by.name', read_only=True)
+    previousPhotoUrl = serializers.SerializerMethodField()
+    newPhotoUrl = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CustomerLocationHistory
+        fields = [
+            'id', 'change_type', 'changedBy', 'changed_at',
+            'previousPhotoUrl', 'newPhotoUrl',
+            'previous_latitude', 'previous_longitude',
+            'previous_accuracy_meters', 'previous_maps_url', 'previous_source',
+            'new_latitude', 'new_longitude', 'new_accuracy_meters',
+            'new_maps_url', 'new_source',
+        ]
+
+    def get_previousPhotoUrl(self, obj):
+        from .location_storage import signed_url
+        try:
+            return signed_url(obj.previous_photo_path)
+        except Exception:
+            return ''
+
+    def get_newPhotoUrl(self, obj):
+        from .location_storage import signed_url
+        try:
+            return signed_url(obj.new_photo_path)
+        except Exception:
+            return ''
 
 
 class ContractSerializer(serializers.ModelSerializer):

@@ -9,3 +9,5 @@ psycopg2-binary>=2.9
 dj-database-url>=2.0
 drf-spectacular>=0.27,<1.0
 tzdata
+Pillow>=10.0
+supabase>=2.0,<3.0

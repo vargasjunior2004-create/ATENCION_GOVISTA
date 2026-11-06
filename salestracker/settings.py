@@ -221,3 +221,9 @@ LOGGING = {
 
 # Ruta donde se sirve el build del frontend React (producción)
 FRONTEND_BUILD_DIR = BASE_DIR / 'frontend_build'
+
+# Storage privado para fotografías sensibles de domicilios.
+SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
+SUPABASE_STORAGE_BUCKET = os.environ.get(
+    'SUPABASE_STORAGE_BUCKET', 'ubicaciones-clientes')

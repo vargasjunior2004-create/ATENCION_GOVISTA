@@ -5,7 +5,8 @@ export function setOnAuthExpired(cb) { onAuthExpired = cb; }
 
 async function request(path, options = {}) {
   const token = localStorage.getItem('token');
-  const headers = { 'Content-Type': 'application/json', ...options.headers };
+  const isFormData = options.body instanceof FormData;
+  const headers = { ...(isFormData ? {} : { 'Content-Type': 'application/json' }), ...options.headers };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const res = await fetch(`${API_URL}${path}`, { ...options, headers });
@@ -98,6 +99,13 @@ const api = {
   getActiveCoverageZones: () => request('/api/coverage/zones/?active=true'),
   getCoverageZones: () => request('/api/coverage/zones/'),
   getManagedCoverageZones: () => request('/api/coverage/zones/manage/'),
+
+  // Ubicación de clientes
+  searchLocationCustomers: (q = '') => request(`/api/ubicaciones/clientes${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  createCustomerLocation: (data) => request('/api/ubicaciones', { method: 'POST', body: data }),
+  updateCustomerLocation: (id, data) => request(`/api/ubicaciones/${id}`, { method: 'PATCH', body: data }),
+  getCustomerLocation: (id) => request(`/api/ubicaciones/${id}`),
+  getCustomerLocationHistory: (id) => request(`/api/ubicaciones/${id}/historial`),
   createCoverageZone: (data) => request('/api/coverage/zones/manage/', {
     method: 'POST', body: JSON.stringify(data),
   }),

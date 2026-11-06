@@ -742,6 +742,72 @@ class AuditLog(models.Model):
         ]
 
 
+class CustomerLocation(models.Model):
+    """Ubicación vigente y fotografía de fachada de un cliente."""
+    SOURCE_GPS = 'gps'
+    SOURCE_MAPS_URL = 'maps_url'
+    SOURCE_CHOICES = [
+        (SOURCE_GPS, 'GPS'),
+        (SOURCE_MAPS_URL, 'URL de Google Maps'),
+    ]
+
+    customer = models.OneToOneField(
+        Customer, on_delete=models.PROTECT, related_name='location')
+    photo_path = models.CharField(max_length=500)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    accuracy_meters = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True)
+    captured_at = models.DateTimeField(null=True, blank=True)
+    maps_url = models.URLField(max_length=1000, blank=True, default='')
+    source = models.CharField(max_length=12, choices=SOURCE_CHOICES)
+    created_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='customer_locations_created')
+    updated_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='customer_locations_updated')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['customer', 'updated_at']),
+            models.Index(fields=['updated_by', 'updated_at']),
+        ]
+
+
+class CustomerLocationHistory(models.Model):
+    """Snapshot append-only de cada alta o actualización de ubicación."""
+    CREATED = 'created'
+    UPDATED = 'updated'
+    CHANGE_CHOICES = [(CREATED, 'Creación'), (UPDATED, 'Actualización')]
+
+    location = models.ForeignKey(
+        CustomerLocation, on_delete=models.PROTECT, related_name='history')
+    changed_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='customer_location_changes')
+    change_type = models.CharField(max_length=12, choices=CHANGE_CHOICES)
+    previous_photo_path = models.CharField(max_length=500, blank=True, default='')
+    new_photo_path = models.CharField(max_length=500)
+    previous_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    previous_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    previous_accuracy_meters = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    previous_maps_url = models.URLField(max_length=1000, blank=True, default='')
+    previous_source = models.CharField(max_length=12, blank=True, default='')
+    new_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    new_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    new_accuracy_meters = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    new_maps_url = models.URLField(max_length=1000, blank=True, default='')
+    new_source = models.CharField(max_length=12)
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-changed_at', '-id']
+        indexes = [
+            models.Index(fields=['location', 'changed_at']),
+            models.Index(fields=['changed_by', 'changed_at']),
+        ]
+
+
 class LoginAttempt(models.Model):
     """Intento de inicio de sesión para límite de fuerza bruta.
 
