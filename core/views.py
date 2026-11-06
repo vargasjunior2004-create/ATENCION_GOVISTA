@@ -2,6 +2,8 @@ import json
 import logging
 import os
 import threading
+import re
+from urllib.parse import urlparse, parse_qs
 from decimal import Decimal, InvalidOperation
 from datetime import date, timedelta
 
@@ -12,10 +14,12 @@ from django.db.migrations.executor import MigrationExecutor
 from django.db.models import Count, Max, Q, Sum
 from django.http import FileResponse
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.renderers import JSONRenderer
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.views import APIView
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -25,7 +29,7 @@ from .models import (
     User, Customer, Contract, CoverageZone, Role, Permission, RolePermission, UserRole,
     TemporaryFunction, TemporaryAssignment, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
     TarifaTraslado, TarifaTrasladoHistorial, SaleIdempotencyKey, AuditLog,
-    InventarioMovimiento, CanalCaptacion,
+    InventarioMovimiento, CanalCaptacion, CustomerLocation, CustomerLocationHistory,
 )
 from .serializers import (
     UserSerializer, UserWriteSerializer, PermissionSerializer, RoleSerializer,
@@ -37,6 +41,7 @@ from .serializers import (
     TipoSolicitudPublicSerializer, MotivoSerializer, MotivoPublicSerializer,
     CoverageZoneSerializer, TarifaTrasladoSerializer, TarifaTrasladoHistorialSerializer,
     CanalCaptacionSerializer, CanalCaptacionPublicSerializer,
+    CustomerLocationSerializer, CustomerLocationHistorySerializer,
 )
 from .domain import (
     request_type_mode, request_type_catalog,
@@ -46,6 +51,7 @@ from .domain import (
 from .reports import build_sales_pdf, build_sales_xlsx
 from .rbac import can_supervise_productivity, has_permission, is_system_admin
 from .audit import record_audit
+from .location_storage import optimize_photo, upload_photo
 
 # Evita que dos respaldos corran a la vez. Con gunicorn --workers 2 este
 # lock es por proceso, lo cual es suficiente para el caso de un unico
@@ -1365,6 +1371,200 @@ class CustomerListView(APIView):
                 | Q(contracts__meter_number__icontains=q)
             ).distinct()
         return Response(CustomerSerializer(qs[:20], many=True).data)
+
+
+def _maps_url_coordinates(value):
+    """Extrae coordenadas de formatos comunes de Google Maps, si existen."""
+    parsed = urlparse(value)
+    host = (parsed.hostname or '').lower()
+    valid_hosts = ('google.com', 'www.google.com', 'maps.google.com',
+                   'goo.gl', 'maps.app.goo.gl')
+    if parsed.scheme != 'https' or not any(host == item or host.endswith('.' + item) for item in valid_hosts):
+        raise ValueError('La URL debe ser un enlace HTTPS válido de Google Maps')
+    text = parsed.path + '?' + parsed.query
+    patterns = [
+        r'@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)',
+        r'!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return Decimal(match.group(1)), Decimal(match.group(2))
+    query = parse_qs(parsed.query).get('q', [])
+    if query:
+        match = re.match(r'^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)', query[0])
+        if match:
+            return Decimal(match.group(1)), Decimal(match.group(2))
+    return None, None
+
+
+def _location_values(data, current=None):
+    """Valida la ubicación recibida y devuelve valores normalizados."""
+    source = data.get('source') or (current.source if current else '')
+    maps_url = (data.get('maps_url') if 'maps_url' in data else (current.maps_url if current else '')) or ''
+    latitude = data.get('latitude') if 'latitude' in data else (current.latitude if current else None)
+    longitude = data.get('longitude') if 'longitude' in data else (current.longitude if current else None)
+    accuracy = data.get('accuracy_meters') if 'accuracy_meters' in data else (current.accuracy_meters if current else None)
+    captured_at = data.get('captured_at') if 'captured_at' in data else (current.captured_at if current else None)
+    if source == CustomerLocation.SOURCE_MAPS_URL:
+        if not maps_url:
+            raise ValueError('Pega una URL de Google Maps')
+        url_lat, url_lng = _maps_url_coordinates(maps_url)
+        latitude = latitude if latitude is not None else url_lat
+        longitude = longitude if longitude is not None else url_lng
+    elif source == CustomerLocation.SOURCE_GPS:
+        if latitude in (None, '') or longitude in (None, ''):
+            raise ValueError('La ubicación GPS está incompleta')
+        try:
+            latitude, longitude = Decimal(str(latitude)), Decimal(str(longitude))
+            if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+                raise ValueError
+        except (InvalidOperation, ValueError):
+            raise ValueError('Las coordenadas GPS no son válidas')
+    else:
+        raise ValueError('Indica si la ubicación proviene de GPS o Google Maps')
+    if accuracy not in (None, ''):
+        try:
+            accuracy = Decimal(str(accuracy))
+            if accuracy < 0:
+                raise ValueError
+        except (InvalidOperation, ValueError):
+            raise ValueError('La precisión GPS no es válida')
+    if isinstance(captured_at, str):
+        captured_at = parse_datetime(captured_at)
+        if captured_at is None:
+            raise ValueError('La fecha de captura no es válida')
+    return {
+        'source': source, 'maps_url': maps_url,
+        'latitude': latitude, 'longitude': longitude,
+        'accuracy_meters': accuracy, 'captured_at': captured_at,
+    }
+
+
+class CustomerLocationListView(PermissionMixin, APIView):
+    permission_code = 'ubicaciones.clientes.view'
+
+    def get(self, request):
+        error = self.check_permission(request)
+        if error:
+            return error
+        query = (request.query_params.get('q') or '').strip()
+        customers = Customer.objects.filter(active=True)
+        if query:
+            customers = customers.filter(Q(code__icontains=query) | Q(name__icontains=query))
+        locations = CustomerLocation.objects.filter(customer__in=customers).select_related(
+            'customer', 'created_by', 'updated_by').order_by('-updated_at')[:20]
+        return Response(CustomerLocationSerializer(locations, many=True).data)
+
+
+class CustomerLocationDetailView(PermissionMixin, APIView):
+    permission_code = 'ubicaciones.clientes.view'
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_object(self, pk, lock=False):
+        qs = CustomerLocation.objects.select_related(
+            'customer', 'created_by', 'updated_by')
+        if lock:
+            qs = qs.select_for_update()
+        return qs.filter(pk=pk).first()
+
+    def get(self, request, pk):
+        error = self.check_permission(request)
+        if error:
+            return error
+        location = self.get_object(pk)
+        if location is None:
+            return Response({'error': 'Ubicación no encontrada'}, status=404)
+        return Response(CustomerLocationSerializer(location).data)
+
+    def patch(self, request, pk):
+        error = self.check_permission(request, 'ubicaciones.clientes.change')
+        if error:
+            return error
+        with transaction.atomic():
+            location = self.get_object(pk, lock=True)
+            if location is None:
+                return Response({'error': 'Ubicación no encontrada'}, status=404)
+            try:
+                values = _location_values(request.data, location)
+                photo = request.FILES.get('photo')
+                new_photo_path = location.photo_path
+                if photo:
+                    content, content_type = optimize_photo(photo)
+                    new_photo_path = upload_photo(content, content_type, location.customer_id)
+            except (ValueError, RuntimeError) as exc:
+                return Response({'error': str(exc)}, status=400 if isinstance(exc, ValueError) else 503)
+            before = CustomerLocationSerializer(location).data
+            previous_photo_path = location.photo_path
+            for key, value in values.items():
+                setattr(location, key, value)
+            location.photo_path = new_photo_path
+            location.updated_by = request.user
+            location.save()
+            CustomerLocationHistory.objects.create(
+                location=location, changed_by=request.user, change_type='updated',
+                previous_photo_path=previous_photo_path,
+                new_photo_path=new_photo_path,
+                previous_latitude=before.get('latitude'), previous_longitude=before.get('longitude'),
+                previous_accuracy_meters=before.get('accuracy_meters'), previous_maps_url=before.get('maps_url', ''),
+                previous_source=before.get('source', ''), new_latitude=location.latitude,
+                new_longitude=location.longitude, new_accuracy_meters=location.accuracy_meters,
+                new_maps_url=location.maps_url, new_source=location.source)
+            record_audit(request, 'updated', 'customer_location', location.id,
+                         module='ubicaciones', before=before,
+                         after={'customer_id': location.customer_id, 'source': location.source})
+        return Response(CustomerLocationSerializer(location).data)
+
+
+class CustomerLocationCreateView(PermissionMixin, APIView):
+    permission_code = 'ubicaciones.clientes.create'
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def post(self, request):
+        error = self.check_permission(request)
+        if error:
+            return error
+        customer_id = request.data.get('customer')
+        try:
+            customer = Customer.objects.get(pk=customer_id, active=True)
+        except (Customer.DoesNotExist, TypeError, ValueError):
+            return Response({'error': 'Cliente no encontrado'}, status=404)
+        if CustomerLocation.objects.filter(customer=customer).exists():
+            return Response({'error': 'El cliente ya tiene una ubicación; usa actualizar'}, status=409)
+        photo = request.FILES.get('photo')
+        if not photo:
+            return Response({'error': 'La fotografía de fachada es obligatoria'}, status=400)
+        try:
+            values = _location_values(request.data)
+            content, content_type = optimize_photo(photo)
+            photo_path = upload_photo(content, content_type, customer.id)
+        except (ValueError, RuntimeError) as exc:
+            return Response({'error': str(exc)}, status=400 if isinstance(exc, ValueError) else 503)
+        with transaction.atomic():
+            location = CustomerLocation.objects.create(
+                customer=customer, photo_path=photo_path, created_by=request.user,
+                updated_by=request.user, **values)
+            CustomerLocationHistory.objects.create(
+                location=location, changed_by=request.user, change_type='created',
+                new_photo_path=photo_path, new_latitude=location.latitude,
+                new_longitude=location.longitude, new_accuracy_meters=location.accuracy_meters,
+                new_maps_url=location.maps_url, new_source=location.source)
+            record_audit(request, 'created', 'customer_location', location.id,
+                         module='ubicaciones', after={'customer_id': customer.id})
+        return Response(CustomerLocationSerializer(location).data, status=201)
+
+
+class CustomerLocationHistoryView(PermissionMixin, APIView):
+    permission_code = 'ubicaciones.historial.view'
+
+    def get(self, request, pk):
+        error = self.check_permission(request)
+        if error:
+            return error
+        if not CustomerLocation.objects.filter(pk=pk).exists():
+            return Response({'error': 'Ubicación no encontrada'}, status=404)
+        history = CustomerLocationHistory.objects.filter(location_id=pk).select_related('changed_by')
+        return Response(CustomerLocationHistorySerializer(history, many=True).data)
 
 
 class CustomerDetailView(APIView):

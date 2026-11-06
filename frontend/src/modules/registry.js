@@ -1,12 +1,22 @@
-import { Briefcase, Headphones, MapPinned, Router, ShieldCheck } from 'lucide-react';
+import { Briefcase, Headphones, MapPinned, Router, ShieldCheck, MapPin } from 'lucide-react';
 
 export const MODULES = [
+  {
+    id: 'ubicaciones',
+    name: 'Ubicación de Clientes',
+    description: 'Fotografías de fachada y ubicación de domicilios.',
+    icon: MapPin,
+    to: '/ubicaciones',
+    permission: 'ubicaciones.clientes.view',
+    status: 'available',
+  },
   {
     id: 'comercial',
     name: 'Gestión Comercial',
     description: 'Solicitudes comerciales, contratos, cambios de plan y reportes.',
     icon: Briefcase,
     to: '/comercial',
+    permission: 'comercial.view',
     status: 'available',
   },
   {

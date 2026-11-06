@@ -57,6 +57,10 @@ urlpatterns = [
 
     path('customers', views.CustomerListView.as_view()),
     path('customers/<int:pk>', views.CustomerDetailView.as_view()),
+    path('ubicaciones/clientes', views.CustomerLocationListView.as_view()),
+    path('ubicaciones', views.CustomerLocationCreateView.as_view()),
+    path('ubicaciones/<int:pk>', views.CustomerLocationDetailView.as_view()),
+    path('ubicaciones/<int:pk>/historial', views.CustomerLocationHistoryView.as_view()),
     path('contracts/<int:pk>/meter-review', views.ContractMeterReviewView.as_view()),
     path('contracts/<int:pk>/meter', views.ContractMeterUpdateView.as_view()),
     path('contracts/<int:pk>', views.ContractDetailView.as_view()),
