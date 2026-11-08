@@ -243,7 +243,7 @@ const CATEGORY_COPY = {
   },
   recontrataciones: {
     label: 'Recontrataciones',
-    description: 'Clientes recuperados mediante una nueva contratación.',
+    description: 'Clientes recuperados mediante una recontratacion.',
   },
   retiros: {
     label: 'Retiros',
