@@ -8,6 +8,8 @@ const CATEGORY_LABELS = {
   recontrataciones: 'Recontrataciones',
   retiros: 'Retiros',
   cambios_plan: 'Cambios de plan',
+  traslados: 'Traslados externos',
+  adiciones: 'Adiciones',
 };
 
 const INDICATOR_LABELS = {
