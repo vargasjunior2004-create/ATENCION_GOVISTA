@@ -263,7 +263,7 @@ const CATEGORY_COPY = {
   },
 };
 
-function CategoryAnalyticsPanel({ analytics, movementType, onIndicator, onPlan, onZone }) {
+function CategoryAnalyticsPanel({ analytics, movementType, onIndicator, onPlan, onZone, onChannel, onMotive }) {
   const copy = CATEGORY_COPY[movementType] || {
     label: movementType,
     description: 'Solicitudes registradas en el período seleccionado.',
@@ -357,13 +357,13 @@ function CategoryAnalyticsPanel({ analytics, movementType, onIndicator, onPlan, 
 
       {movementType === 'nuevo_contrato' && channels.length > 0 && (
         <ChartCard eyebrow="Origen de nuevos clientes" title="Canales de captación">
-          <div className="space-y-4">{channels.map((channel, index) => <div key={channel.key}><div className="mb-1.5 flex items-center justify-between text-sm"><span className="font-semibold text-slate-600">{channel.name}</span><span className="tabular-nums text-slate-800"><strong>{number(channel.count)}</strong><span className="ml-2 text-xs text-slate-400">{channel.percentage}%</span></span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full" style={{ width: `${Math.max(channel.percentage, channel.count ? 2 : 0)}%`, backgroundColor: CHANNEL_COLORS[index % CHANNEL_COLORS.length] }} /></div></div>)}</div>
+          <div className="space-y-4">{channels.map((channel, index) => <button key={channel.key} type="button" onClick={() => onChannel?.(channel)} className="block w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/30"><div className="mb-1.5 flex items-center justify-between text-sm"><span className="font-semibold text-slate-600">{channel.name}</span><span className="tabular-nums text-slate-800"><strong>{number(channel.count)}</strong><span className="ml-2 text-xs text-slate-400">{channel.percentage}%</span></span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full" style={{ width: `${Math.max(channel.percentage, channel.count ? 2 : 0)}%`, backgroundColor: CHANNEL_COLORS[index % CHANNEL_COLORS.length] }} /></div></button>)}</div>
         </ChartCard>
       )}
 
       {motives.length > 0 && (
-        <ChartCard eyebrow="Motivos registrados" title={movementType === 'retiros' ? 'Motivos de retiro' : 'Motivos del movimiento'}>
-          <div className="space-y-4">{motives.map((motive) => <div key={motive.id}><div className="mb-1.5 flex items-center justify-between text-sm"><span className="font-semibold text-slate-600">{motive.label}</span><strong className="tabular-nums text-slate-800">{number(motive.count)}</strong></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-violet-600" style={{ width: `${(motive.count / maxMotive) * 100}%` }} /></div></div>)}</div>
+        <ChartCard eyebrow="Motivos registrados" title={movementType === 'retiros' ? 'Motivos de retiro' : 'Motivo del cambio'}>
+          <div className="space-y-4">{motives.map((motive) => <button key={motive.id} type="button" onClick={() => onMotive?.(motive)} className="block w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/30"><div className="mb-1.5 flex items-center justify-between text-sm"><span className="font-semibold text-slate-600">{motive.label}</span><strong className="tabular-nums text-slate-800">{number(motive.count)}</strong></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-violet-600" style={{ width: `${(motive.count / maxMotive) * 100}%` }} /></div></button>)}</div>
         </ChartCard>
       )}
 
@@ -500,6 +500,7 @@ export default function Dashboard() {
   const [drilldownZoneName, setDrilldownZoneName] = useState('');
   const [drilldownPlan, setDrilldownPlan] = useState(null);
   const [drilldownChannel, setDrilldownChannel] = useState(null);
+  const [drilldownMotive, setDrilldownMotive] = useState(null);
   const requestId = useRef(0);
   const canSupervise = isAdmin || (user?.roles || []).some(
     (role) => ['gerente', 'jefe-comercial'].includes(role.code),
@@ -952,6 +953,14 @@ export default function Dashboard() {
                setDrilldownZoneName(zone);
                setDrilldownIndicator('zone');
              }}
+             onChannel={(channel) => {
+               setDrilldownChannel(channel);
+               setDrilldownIndicator('channel');
+             }}
+             onMotive={(motive) => {
+               setDrilldownMotive(motive);
+               setDrilldownIndicator('motive');
+             }}
            />
          )
          )
@@ -963,8 +972,10 @@ export default function Dashboard() {
           planName={drilldownPlan?.plan_name}
           catalogLabel={drilldownPlan?.catalog_label}
           planType={drilldownPlan?.type}
-          channelKey={drilldownChannel?.key}
-          channelName={drilldownChannel?.name}
+           channelKey={drilldownChannel?.key}
+           channelName={drilldownChannel?.name}
+           motiveId={drilldownMotive?.id}
+           motiveName={drilldownMotive?.label}
           from={range.from}
           to={range.to}
           movementType={movementType}
@@ -972,9 +983,10 @@ export default function Dashboard() {
           onClose={() => {
             setDrilldownIndicator(null);
             setDrilldownZoneName('');
-            setDrilldownPlan(null);
-            setDrilldownChannel(null);
-          }}
+             setDrilldownPlan(null);
+             setDrilldownChannel(null);
+             setDrilldownMotive(null);
+           }}
         />
       )}
     </div>
