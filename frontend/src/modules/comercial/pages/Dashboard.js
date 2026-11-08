@@ -767,7 +767,7 @@ export default function Dashboard() {
                     </ResponsiveContainer>
                   </div>
                 </ChartCard>
-                 <ChartCard eyebrow="Solicitudes por zona" title="Zonas de cobertura">
+                 <ChartCard eyebrow="Solicitudes por zona" title="Zonas de mayor demanda">
                   {zones.length ? (
                     <div className="space-y-4">
                       {zones.map((zone) => {
