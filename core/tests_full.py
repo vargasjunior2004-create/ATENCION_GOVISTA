@@ -739,7 +739,7 @@ class DashboardTests(TestCase):
             [{'name': villa_busch.name, 'count': 1, 'percentage': 100.0}],
         )
 
-    def test_dashboard_zone_ranking_groups_remaining_zones_as_others(self):
+    def test_dashboard_zone_ranking_includes_all_zones(self):
         today = timezone.localdate()
         token = self._token()
         zones = list(CoverageZone.objects.order_by('name')[:7])
@@ -763,11 +763,11 @@ class DashboardTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         ranking = _json(response)['analytics']['zonas']
-        self.assertEqual(len(ranking), 6)
+        self.assertEqual(len(ranking), len(zones))
         self.assertEqual(ranking[0]['name'], zones[0].name)
         self.assertEqual(ranking[0]['count'], 2)
-        self.assertEqual(ranking[-1]['name'], 'Otros barrios')
-        self.assertEqual(ranking[-1]['count'], 2)
+        self.assertNotIn('Otros barrios', {item['name'] for item in ranking})
+        self.assertAlmostEqual(sum(item['percentage'] for item in ranking), 100.0)
 
     def test_dashboard_zone_drilldown_matches_ranking_and_filters(self):
         today = timezone.localdate()
@@ -803,8 +803,8 @@ class DashboardTests(TestCase):
         ranking = _json(stats)['analytics']['zonas']
         self.assertEqual(ranking[0]['name'], selected_zone.name)
         self.assertEqual(ranking[0]['count'], 2)
-        self.assertEqual(ranking[-1]['name'], 'Otros barrios')
-        self.assertEqual(ranking[-1]['count'], 2)
+        self.assertNotIn('Otros barrios', {item['name'] for item in ranking})
+        self.assertEqual(len(ranking), len(zones))
 
         params = {
             **period_params,
@@ -842,17 +842,6 @@ class DashboardTests(TestCase):
         self.assertEqual(searched.status_code, 200)
         self.assertEqual(_json(searched)['zone_count'], 2)
         self.assertEqual(_json(searched)['total'], 1)
-
-        other_zone_params = {
-            **period_params,
-            'indicator': 'zone',
-            'zone_name': 'Otros barrios',
-        }
-        other_zones = self.c.get(
-            '/api/dashboard/drilldown', other_zone_params, **headers)
-        self.assertEqual(other_zones.status_code, 200)
-        self.assertEqual(_json(other_zones)['zone_count'], ranking[-1]['count'])
-        self.assertEqual(_json(other_zones)['total'], ranking[-1]['count'])
 
         filtered_stats = self.c.get(
             '/api/dashboard/stats',
