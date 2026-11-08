@@ -4,7 +4,7 @@ from django.test import Client, TestCase
 from django.utils import timezone
 
 from .models import (
-    CoverageZone, Motivo, Plan, Role, Sale, TarifaTraslado, User, UserRole,
+    CanalCaptacion, CoverageZone, Motivo, Plan, Role, Sale, TarifaTraslado, User, UserRole,
 )
 
 
@@ -41,6 +41,7 @@ class CoverageZoneApiTests(TestCase):
             type='internet', code='COV-001', label='Internet base',
             monthly=Decimal('100'), speed=10, active=True,
             installation=Decimal('0'))
+        self.channel = CanalCaptacion.objects.create(nombre='Cobertura QA')
 
     @staticmethod
     def attach_role(user, code):
@@ -68,7 +69,7 @@ class CoverageZoneApiTests(TestCase):
         )
 
     def base_sale(self, code, request_type='nuevo_contrato', **extra):
-        return {
+        payload = {
             'clientCode': code,
             'clientName': f'Cliente {code}',
             'serviceType': 'internet',
@@ -76,6 +77,9 @@ class CoverageZoneApiTests(TestCase):
             'planId': self.plan.id,
             **extra,
         }
+        if request_type == 'nuevo_contrato':
+            payload.setdefault('canalCaptacionId', self.channel.id)
+        return payload
 
     def test_seeded_zone_catalog_is_idempotent_shape(self):
         expected = {
@@ -136,22 +140,22 @@ class CoverageZoneApiTests(TestCase):
                 self.assertIn(
                     inactive.name, {zone['name'] for zone in response.json()})
 
-    def test_users_without_coverage_view_permission_cannot_list_zones(self):
+    def test_any_authenticated_user_can_list_zones(self):
         for user in (self.cashier, self.call_center, self.manager):
             with self.subTest(user=user.name):
                 response = self.client.get(
                     '/api/coverage/zones/', **self.auth(user))
-                self.assertEqual(response.status_code, 403)
+                self.assertEqual(response.status_code, 200)
 
     def test_coverage_permissions_match_configured_roles(self):
         expected = {
-            'jefa-operativa': {
-                'coverage.view', 'coverage.create',
-                'coverage.change', 'coverage.manage',
-            },
-            'encargado-red': {'coverage.view', 'coverage.create'},
-            'tecnico-uno': {'coverage.view'},
-            'tecnico-dos': {'coverage.view'},
+            'gerente': {'coverage.view', 'coverage.create', 'coverage.change', 'coverage.manage'},
+            'jefe-comercial': {'coverage.view', 'coverage.create', 'coverage.change', 'coverage.manage'},
+            'jefa-operativa': {'coverage.view', 'coverage.create', 'coverage.change', 'coverage.manage'},
+            'jefe-tecnico': {'coverage.view', 'coverage.create', 'coverage.change', 'coverage.manage'},
+            'encargado-red': set(),
+            'tecnico-uno': set(),
+            'tecnico-dos': set(),
         }
         for role_code, permission_codes in expected.items():
             role = Role.objects.get(code=role_code)
@@ -191,7 +195,39 @@ class CoverageZoneApiTests(TestCase):
         self.assertEqual(created.status_code, 201, created.content)
         self.assertTrue(created.json()['is_active'])
 
-    def test_registerer_can_create_but_cannot_manage_or_edit(self):
+    def test_all_authorized_roles_can_register_edit_and_deactivate(self):
+        for index, user in enumerate((
+                self.admin, self.manager, self.commercial_lead,
+                self.technical_lead, self.operations_lead), start=1):
+            with self.subTest(user=user.name):
+                created = self.client.post(
+                    '/api/coverage/zones/manage/',
+                    {
+                        'name': f'Zona autorizada {index}',
+                        'google_maps_url': f'https://maps.google.com/?q={index}',
+                    },
+                    content_type='application/json',
+                    **self.auth(user),
+                )
+                self.assertEqual(created.status_code, 201, created.content)
+                zone_id = created.json()['id']
+                edited = self.client.patch(
+                    f'/api/coverage/zones/{zone_id}/',
+                    {'name': f'Zona autorizada editada {index}'},
+                    content_type='application/json',
+                    **self.auth(user),
+                )
+                self.assertEqual(edited.status_code, 200, edited.content)
+                disabled = self.client.patch(
+                    f'/api/coverage/zones/{zone_id}/',
+                    {'is_active': False},
+                    content_type='application/json',
+                    **self.auth(user),
+                )
+                self.assertEqual(disabled.status_code, 200, disabled.content)
+                self.assertFalse(disabled.json()['is_active'])
+
+    def test_registerer_cannot_register_or_manage(self):
         created = self.client.post(
             '/api/coverage/zones/manage/',
             {
@@ -201,8 +237,7 @@ class CoverageZoneApiTests(TestCase):
             content_type='application/json',
             **self.auth(self.registerer),
         )
-        self.assertEqual(created.status_code, 201, created.content)
-        self.assertTrue(created.json()['is_active'])
+        self.assertEqual(created.status_code, 403, created.content)
         response = self.client.get(
             '/api/coverage/zones/manage/', **self.auth(self.registerer))
         self.assertEqual(response.status_code, 403)
@@ -218,14 +253,35 @@ class CoverageZoneApiTests(TestCase):
         self.assertEqual(response.status_code, 403)
 
         edited = self.client.patch(
-            f"/api/coverage/zones/{created.json()['id']}/",
+            f"/api/coverage/zones/{self.zone.id}/",
             {'name': 'No autorizado'},
             content_type='application/json',
             **self.auth(self.registerer),
         )
         self.assertEqual(edited.status_code, 403)
 
-    def test_registerer_creates_active_zone_available_to_commercial(self):
+    def test_read_only_roles_are_rejected_by_direct_management_api(self):
+        for user in (self.operator, self.cashier, self.call_center, self.registerer):
+            with self.subTest(user=user.name):
+                created = self.client.post(
+                    '/api/coverage/zones/manage/',
+                    {
+                        'name': f'Zona no autorizada {user.id}',
+                        'google_maps_url': 'https://maps.google.com/',
+                    },
+                    content_type='application/json',
+                    **self.auth(user),
+                )
+                self.assertEqual(created.status_code, 403)
+                edited = self.client.patch(
+                    f'/api/coverage/zones/{self.zone.id}/',
+                    {'name': 'No autorizada'},
+                    content_type='application/json',
+                    **self.auth(user),
+                )
+                self.assertEqual(edited.status_code, 403)
+
+    def test_authorized_manager_creates_active_zone_available_to_commercial(self):
         created = self.client.post(
             '/api/coverage/zones/manage/',
             {
@@ -233,13 +289,13 @@ class CoverageZoneApiTests(TestCase):
                 'google_maps_url': 'https://maps.google.com/?q=-11.1,-68.8',
             },
             content_type='application/json',
-            **self.auth(self.registerer),
+            **self.auth(self.manager),
         )
         self.assertEqual(created.status_code, 201, created.content)
         zone = CoverageZone.objects.get(name='Barrio nuevo')
-        self.assertEqual(zone.created_by, self.registerer)
+        self.assertEqual(zone.created_by, self.manager)
         self.assertTrue(zone.is_active)
-        self.assertEqual(created.json()['created_by_name'], self.registerer.name)
+        self.assertEqual(created.json()['created_by_name'], self.manager.name)
 
         commercial = self.client.get(
             '/api/coverage/zones/?active=true', **self.auth(self.operator))
@@ -257,12 +313,12 @@ class CoverageZoneApiTests(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
-    def test_registration_requires_google_maps_url(self):
+    def test_authorized_registration_requires_google_maps_url(self):
         response = self.client.post(
             '/api/coverage/zones/manage/',
             {'name': 'Barrio sin mapa'},
             content_type='application/json',
-            **self.auth(self.registerer),
+            **self.auth(self.manager),
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(

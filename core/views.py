@@ -743,14 +743,10 @@ class ActivePlansView(APIView):
         return Response(PlanPublicSerializer(plans, many=True).data)
 
 
-class ActiveCoverageZoneListView(PermissionMixin, APIView):
+class ActiveCoverageZoneListView(APIView):
     permission_classes = [IsAuthenticated]
-    permission_code = 'coverage.view'
 
     def get(self, request):
-        error = self.check_permission(request)
-        if error:
-            return error
         zones = CoverageZone.objects.all()
         if request.query_params.get('active', '').lower() in {'true', '1'}:
             zones = zones.filter(is_active=True)
