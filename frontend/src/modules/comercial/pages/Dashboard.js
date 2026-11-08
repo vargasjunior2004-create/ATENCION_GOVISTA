@@ -152,6 +152,7 @@ function MetricCard({ label, count, total, icon: Icon, tone, detail, onClick }) 
     green: 'border-brand-200 bg-brand-50/60 text-brand-700',
     red: 'border-red-200 bg-red-50/70 text-red-700',
     blue: 'border-blue-200 bg-blue-50/70 text-blue-700',
+    violet: 'border-violet-200 bg-violet-50/70 text-violet-700',
     slate: 'border-slate-200 bg-slate-50 text-slate-700',
   };
   return (
@@ -262,7 +263,7 @@ const CATEGORY_COPY = {
   },
 };
 
-function CategoryAnalyticsPanel({ analytics, movementType, onPlan, onZone }) {
+function CategoryAnalyticsPanel({ analytics, movementType, onIndicator, onPlan, onZone }) {
   const copy = CATEGORY_COPY[movementType] || {
     label: movementType,
     description: 'Solicitudes registradas en el período seleccionado.',
@@ -290,7 +291,15 @@ function CategoryAnalyticsPanel({ analytics, movementType, onPlan, onZone }) {
       </div>
 
       <section className="grid gap-4 sm:grid-cols-2">
-        <MetricCard label={`Total de ${copy.label.toLowerCase()}`} count={summary.count} total={summary.total} icon={Activity} tone={movementType === 'retiros' ? 'red' : 'green'} />
+        <MetricCard
+          label={`Total de ${copy.label.toLowerCase()}`}
+          count={summary.count}
+          total={summary.total}
+          icon={movementType === 'retiros' ? ArrowDownRight : movementType === 'recontrataciones' ? RefreshCw : Activity}
+          tone={movementType === 'retiros' ? 'red' : movementType === 'recontrataciones' ? 'violet' : 'green'}
+          onClick={() => onIndicator?.(movementType)}
+          detail="Consultar detalle de esta categoría"
+        />
       </section>
 
       <ChartCard eyebrow="Comparativa diaria" title={`${copy.label} por día`}>
@@ -302,7 +311,7 @@ function CategoryAnalyticsPanel({ analytics, movementType, onPlan, onZone }) {
                 <XAxis dataKey="date" tickFormatter={readableShortDate} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                 <Tooltip content={<ChartTooltip />} />
-                <Bar name={copy.label} dataKey="count" fill={movementType === 'retiros' ? '#e82711' : '#15803d'} radius={[5, 5, 0, 0]} />
+                <Bar name={copy.label} dataKey="count" fill={movementType === 'retiros' ? '#e82711' : movementType === 'recontrataciones' ? '#7c3aed' : '#15803d'} radius={[5, 5, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -723,7 +732,7 @@ export default function Dashboard() {
          <>
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
             <MetricCard label="Nuevos contratos" count={analytics?.nuevo_contrato?.count} total={analytics?.nuevo_contrato?.total} icon={ArrowUpRight} tone="green" onClick={() => setDrilldownIndicator('nuevo_contrato')} />
-            <MetricCard label="Recontrataciones" count={analytics?.recontrataciones?.count} total={analytics?.recontrataciones?.total} icon={RefreshCw} tone="blue" onClick={() => setDrilldownIndicator('recontrataciones')} />
+             <MetricCard label="Recontrataciones" count={analytics?.recontrataciones?.count} total={analytics?.recontrataciones?.total} icon={RefreshCw} tone="violet" onClick={() => setDrilldownIndicator('recontrataciones')} />
             <MetricCard label="Retiros" count={analytics?.retiros?.count} total={analytics?.retiros?.total} icon={ArrowDownRight} tone="red" onClick={() => setDrilldownIndicator('retiros')} />
             <MetricCard
               label="Altas comerciales"
@@ -934,6 +943,15 @@ export default function Dashboard() {
            <CategoryAnalyticsPanel
              analytics={analytics}
              movementType={movementType}
+             onIndicator={(indicator) => setDrilldownIndicator(indicator)}
+             onPlan={(plan) => {
+               setDrilldownPlan(plan);
+               setDrilldownIndicator('plan');
+             }}
+             onZone={(zone) => {
+               setDrilldownZoneName(zone);
+               setDrilldownIndicator('zone');
+             }}
            />
          )
          )

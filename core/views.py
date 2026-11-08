@@ -3133,6 +3133,8 @@ class DashboardDrilldownView(APIView):
         'recontrataciones': ('recontrataciones',),
         'retiros': ('retiros',),
         'cambios_plan': ('cambios_plan',),
+        'traslados': ('traslados',),
+        'adiciones': ('adiciones',),
         'altas_comerciales': ('nuevo_contrato', 'recontrataciones'),
         'balance_neto': (
             'nuevo_contrato', 'recontrataciones', 'retiros'),
@@ -3235,6 +3237,8 @@ class DashboardDrilldownView(APIView):
                         {'error': {'plan': 'Plan no válido'}},
                         status=status.HTTP_400_BAD_REQUEST)
                 demand_codes = (
+                    categories.get(movement_type)
+                    if movement_type != 'all' else
                     categories['nuevo_contrato']
                     + categories['recontrataciones'])
                 selected_sales = filtered_sales.filter(
@@ -3288,6 +3292,8 @@ class DashboardDrilldownView(APIView):
                             'recontrataciones': 'Recontrataciones',
                             'retiros': 'Retiros',
                             'cambios_plan': 'Cambios de plan',
+                            'traslados': 'Traslados externos',
+                            'adiciones': 'Adiciones',
                         }[name],
                         **summary,
                     })
