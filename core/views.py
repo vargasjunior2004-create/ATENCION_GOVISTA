@@ -2642,7 +2642,7 @@ class DashboardStatsView(APIView):
     MOVEMENT_TYPES = {
         'all', 'nuevo_contrato', 'recontrataciones', 'instalaciones',
         'retiros', 'cambios_plan',
-        'adiciones', 'otros',
+        'adiciones', 'traslados', 'otros',
     }
 
     @staticmethod
@@ -2723,8 +2723,74 @@ class DashboardStatsView(APIView):
                 'coverage_zone_id', 'coverage_zone__name'
             ).annotate(
                 count=Count('id')
-            ).order_by('-count', 'coverage_zone__name')
-        )
+            ).order_by('-count', 'coverage_zone__name'))
+
+    @staticmethod
+    def _category_rows(queryset, categories, movement_type, from_date, to_date):
+        """Aggregate only the category selected in the dashboard."""
+        codes = categories.get(movement_type, [])
+        selected = queryset.filter(requestType__in=codes)
+        plans = list(selected.values(
+            'planName', 'plan__label', 'plan__type'
+        ).annotate(count=Count('id'), total=Sum('total'))
+             .order_by('-count', 'planName', 'plan__label'))
+        plan_type_labels = {
+            'internet': 'Internet', 'tv': 'TV', 'combo': 'Combo',
+        }
+        plan_rows = [{
+            'label': row['planName'] or row['plan__label'],
+            'plan_name': row['planName'],
+            'catalog_label': row['plan__label'],
+            'type': row['plan__type'],
+            'type_label': plan_type_labels.get(row['plan__type'], row['plan__type']),
+            'count': row['count'],
+            'total': float(row['total'] or 0),
+        } for row in plans]
+
+        motive_rows = list(selected.filter(motivo__isnull=False).values(
+            'motivo_id', 'motivo__nombre'
+        ).annotate(count=Count('id')).order_by('-count', 'motivo__nombre'))
+        motives = [{
+            'id': row['motivo_id'],
+            'label': row['motivo__nombre'],
+            'count': row['count'],
+        } for row in motive_rows]
+
+        transitions = []
+        if movement_type == 'cambios_plan':
+            transition_rows = selected.values(
+                'planFromId__label', 'planName', 'plan__label'
+            ).annotate(count=Count('id')).order_by(
+                '-count', 'planFromId__label', 'planName', 'plan__label')
+            transitions = [{
+                'from': row['planFromId__label'] or 'Sin plan anterior',
+                'to': row['planName'] or row['plan__label'] or 'Sin plan nuevo',
+                'count': row['count'],
+            } for row in transition_rows]
+
+        zone_rows = []
+        if movement_type in {'nuevo_contrato', 'recontrataciones', 'traslados'}:
+            zone_rows = list(selected.filter(coverage_zone__isnull=False).values(
+                'coverage_zone__name'
+            ).annotate(count=Count('id')).order_by('-count', 'coverage_zone__name'))
+        zones = [{'name': row['coverage_zone__name'], 'count': row['count']}
+                 for row in zone_rows]
+
+        daily = selected.values('date').annotate(count=Count('id')).order_by('date')
+        daily_by_date = {row['date']: row['count'] for row in daily}
+        series = []
+        current = from_date
+        while current <= to_date:
+            series.append({'date': current.isoformat(), 'count': daily_by_date.get(current, 0)})
+            current += timedelta(days=1)
+
+        return {
+            'plans': plan_rows,
+            'motivos': motives,
+            'transiciones': transitions,
+            'zonas': zones,
+            'series': series,
+        }
 
     @staticmethod
     def _selected_sales(categories, from_date, to_date, movement_type):
@@ -2922,6 +2988,12 @@ class DashboardStatsView(APIView):
                          'adiciones', 'otros')
         ]
 
+        selected_summary = cls._summary(queryset)
+        category_analysis = None
+        if movement_type != 'all':
+            category_analysis = cls._category_rows(
+                queryset, categories, movement_type, from_date, to_date)
+
         return {
             'period': {
                 'from': from_date.isoformat(),
@@ -2950,6 +3022,8 @@ class DashboardStatsView(APIView):
                 'series': channels_by_day,
             },
             'categorias': movement_breakdown,
+            'selected': selected_summary,
+            'category_analysis': category_analysis,
         }
 
     def get(self, request):

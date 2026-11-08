@@ -46,7 +46,7 @@ const MOVEMENT_OPTIONS = [
   { value: 'retiros', label: 'Retiros' },
   { value: 'cambios_plan', label: 'Cambios de plan' },
   { value: 'adiciones', label: 'Adiciones' },
-  { value: 'otros', label: 'Traslado Externo' },
+  { value: 'traslados', label: 'Traslado Externo' },
 ];
 
 const PERIOD_OPTIONS = [
@@ -235,6 +235,138 @@ function ProductivityTable({ items, title, onClose, loading }) {
   );
 }
 
+const CATEGORY_COPY = {
+  nuevo_contrato: {
+    label: 'Nuevos contratos',
+    description: 'Altas comerciales registradas en el período seleccionado.',
+  },
+  recontrataciones: {
+    label: 'Recontrataciones',
+    description: 'Clientes recuperados mediante una nueva contratación.',
+  },
+  retiros: {
+    label: 'Retiros',
+    description: 'Servicios y planes dados de baja en el período seleccionado.',
+  },
+  cambios_plan: {
+    label: 'Cambios de plan',
+    description: 'Transiciones de plan registradas por el equipo comercial.',
+  },
+  traslados: {
+    label: 'Traslados externos',
+    description: 'Solicitudes de traslado externo registradas.',
+  },
+  adiciones: {
+    label: 'Adiciones',
+    description: 'Servicios adicionales registrados en el período seleccionado.',
+  },
+};
+
+function CategoryAnalyticsPanel({ analytics, movementType, onPlan, onZone }) {
+  const copy = CATEGORY_COPY[movementType] || {
+    label: movementType,
+    description: 'Solicitudes registradas en el período seleccionado.',
+  };
+  const analysis = analytics?.category_analysis || {};
+  const summary = analytics?.selected || { count: 0, total: 0 };
+  const plans = analysis.plans || [];
+  const services = analytics?.servicios || [];
+  const zones = analysis.zonas || [];
+  const motives = analysis.motivos || [];
+  const transitions = analysis.transiciones || [];
+  const series = analysis.series || [];
+  const channels = analytics?.canales_captacion?.items || [];
+  const maxPlan = Math.max(...plans.map((item) => item.count || 0), 1);
+  const maxZone = Math.max(...zones.map((item) => item.count || 0), 1);
+  const maxMotive = Math.max(...motives.map((item) => item.count || 0), 1);
+  const maxTransition = Math.max(...transitions.map((item) => item.count || 0), 1);
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-[1.35rem] border border-brand-100 bg-brand-50/45 p-5 sm:p-6">
+        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-brand-700">Análisis por solicitud</p>
+        <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-900">{copy.label}</h2>
+        <p className="mt-1 text-sm text-slate-500">{copy.description}</p>
+      </div>
+
+      <section className="grid gap-4 sm:grid-cols-2">
+        <MetricCard label={`Total de ${copy.label.toLowerCase()}`} count={summary.count} total={summary.total} icon={Activity} tone={movementType === 'retiros' ? 'red' : 'green'} />
+      </section>
+
+      <ChartCard eyebrow="Comparativa diaria" title={`${copy.label} por día`}>
+        {summary.count ? (
+          <div className="h-[280px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={series} margin={{ top: 4, right: 4, left: -18, bottom: 4 }}>
+                <CartesianGrid stroke="#e8eee9" vertical={false} />
+                <XAxis dataKey="date" tickFormatter={readableShortDate} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                <Tooltip content={<ChartTooltip />} />
+                <Bar name={copy.label} dataKey="count" fill={movementType === 'retiros' ? '#e82711' : '#15803d'} radius={[5, 5, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : <EmptyChart message={`No hay ${copy.label.toLowerCase()} en este período`} />}
+      </ChartCard>
+
+      <section className="grid gap-5 lg:grid-cols-2">
+        <ChartCard eyebrow="Distribución" title="Por tipo de servicio">
+          {services.length ? (
+            <div className="h-[280px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={services} dataKey="count" nameKey="label" cx="50%" cy="46%" innerRadius={62} outerRadius={96} paddingAngle={3}>
+                    {services.map((entry) => <Cell key={entry.serviceType} fill={SERVICE_COLORS[entry.serviceType] || '#64748b'} />)}
+                  </Pie>
+                  <Tooltip content={<ChartTooltip />} />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          ) : <EmptyChart message="No hay información de servicios para esta categoría" />}
+        </ChartCard>
+
+        <ChartCard eyebrow="Planes" title={movementType === 'cambios_plan' ? 'Planes involucrados' : 'Distribución por plan'}>
+          {plans.length ? (
+            <div className="space-y-4">
+              {plans.slice(0, 8).map((item, index) => (
+                <button key={`${item.label}-${item.type}-${index}`} type="button" onClick={() => onPlan?.(item)} className="block w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/30">
+                  <div className="mb-1.5 flex items-center justify-between gap-3 text-sm"><span className="flex min-w-0 items-center gap-2 font-semibold text-slate-600"><span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: PLAN_COLORS[index % PLAN_COLORS.length] }} /><span className="truncate">{item.label}</span></span><strong className="shrink-0 tabular-nums text-slate-800">{number(item.count)}</strong></div>
+                  <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full" style={{ width: `${(item.count / maxPlan) * 100}%`, backgroundColor: PLAN_COLORS[index % PLAN_COLORS.length] }} /></div>
+                </button>
+              ))}
+            </div>
+          ) : <EmptyChart message="No hay planes registrados para esta categoría" />}
+        </ChartCard>
+      </section>
+
+      {zones.length > 0 && (
+        <ChartCard eyebrow="Cobertura" title="Solicitudes por zona">
+          <div className="space-y-4">{zones.slice(0, 8).map((zone) => <button key={zone.name} type="button" onClick={() => onZone?.(zone.name)} className="block w-full rounded-xl text-left"><div className="mb-1.5 flex items-center justify-between text-sm"><span className="font-semibold text-slate-600">{zone.name}</span><strong className="tabular-nums text-slate-800">{number(zone.count)}</strong></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-brand-600" style={{ width: `${(zone.count / maxZone) * 100}%` }} /></div></button>)}</div>
+        </ChartCard>
+      )}
+
+      {movementType === 'nuevo_contrato' && channels.length > 0 && (
+        <ChartCard eyebrow="Origen de nuevos clientes" title="Canales de captación">
+          <div className="space-y-4">{channels.map((channel, index) => <div key={channel.key}><div className="mb-1.5 flex items-center justify-between text-sm"><span className="font-semibold text-slate-600">{channel.name}</span><span className="tabular-nums text-slate-800"><strong>{number(channel.count)}</strong><span className="ml-2 text-xs text-slate-400">{channel.percentage}%</span></span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full" style={{ width: `${Math.max(channel.percentage, channel.count ? 2 : 0)}%`, backgroundColor: CHANNEL_COLORS[index % CHANNEL_COLORS.length] }} /></div></div>)}</div>
+        </ChartCard>
+      )}
+
+      {motives.length > 0 && (
+        <ChartCard eyebrow="Motivos registrados" title={movementType === 'retiros' ? 'Motivos de retiro' : 'Motivos del movimiento'}>
+          <div className="space-y-4">{motives.map((motive) => <div key={motive.id}><div className="mb-1.5 flex items-center justify-between text-sm"><span className="font-semibold text-slate-600">{motive.label}</span><strong className="tabular-nums text-slate-800">{number(motive.count)}</strong></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-violet-600" style={{ width: `${(motive.count / maxMotive) * 100}%` }} /></div></div>)}</div>
+        </ChartCard>
+      )}
+
+      {transitions.length > 0 && (
+        <ChartCard eyebrow="Transiciones" title="Planes de origen y destino">
+          <div className="space-y-4">{transitions.slice(0, 8).map((transition, index) => <div key={`${transition.from}-${transition.to}-${index}`}><div className="mb-1.5 flex items-center justify-between gap-3 text-sm"><span className="min-w-0 truncate font-semibold text-slate-600">{transition.from} <span className="text-slate-400">→</span> {transition.to}</span><strong className="shrink-0 tabular-nums text-slate-800">{number(transition.count)}</strong></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-blue-600" style={{ width: `${(transition.count / maxTransition) * 100}%` }} /></div></div>)}</div>
+        </ChartCard>
+      )}
+    </div>
+  );
+}
+
 function ProductivityPanel({ data, from, to, movementType }) {
   const [selectedUser, setSelectedUser] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -415,7 +547,7 @@ export default function Dashboard() {
   const topPlans = plans.slice(0, 5);
   const planDemandCount = plans.reduce((sum, item) => sum + item.count, 0);
   const hasData = series.some((item) => item.movimientos > 0);
-  const hasTodaySales = (stats?.movimientos?.today?.count || 0) > 0;
+  const hasTodaySales = (stats?.selected?.count || 0) > 0;
   const selectedMovementLabel = MOVEMENT_OPTIONS.find(
     (item) => item.value === movementType,
   )?.label;
@@ -441,7 +573,7 @@ export default function Dashboard() {
         xlsx: api.getDashboardXLSX,
         png: api.getDashboardPNG,
       };
-      const blob = await methods[kind]();
+      const blob = await methods[kind](movementType);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -586,8 +718,9 @@ export default function Dashboard() {
               <p className="text-sm font-semibold text-slate-500">No se pudo cargar la productividad.</p>
             </Card>
           )
-        ) : (
-        <>
+         ) : (
+         movementType === 'all' ? (
+         <>
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
             <MetricCard label="Nuevos contratos" count={analytics?.nuevo_contrato?.count} total={analytics?.nuevo_contrato?.total} icon={ArrowUpRight} tone="green" onClick={() => setDrilldownIndicator('nuevo_contrato')} />
             <MetricCard label="Recontrataciones" count={analytics?.recontrataciones?.count} total={analytics?.recontrataciones?.total} icon={RefreshCw} tone="blue" onClick={() => setDrilldownIndicator('recontrataciones')} />
@@ -796,8 +929,14 @@ export default function Dashboard() {
               <Button size="sm" disabled={!hasTodaySales} onClick={() => download('pdf')}><FileText className="h-4 w-4" /> PDF</Button>
             </div>
           </Card>
-        </>
-        )
+         </>
+         ) : (
+           <CategoryAnalyticsPanel
+             analytics={analytics}
+             movementType={movementType}
+           />
+         )
+         )
       )}
       {drilldownIndicator && (
         <DashboardDrilldownModal
