@@ -251,9 +251,21 @@ const api = {
     if (showMotivos) params.set('showMotivos', 'si');
     return request(`/api/reports/png?${params.toString()}`);
   },
-  getDashboardPDF: () => request('/api/reports/dashboard/pdf'),
-  getDashboardXLSX: () => request('/api/reports/dashboard/xlsx'),
-  getDashboardPNG: () => request('/api/reports/dashboard/png'),
+  getDashboardPDF: (requestType = 'all') => {
+    const query = requestType && requestType !== 'all'
+      ? `?requestType=${encodeURIComponent(requestType)}` : '';
+    return request(`/api/reports/dashboard/pdf${query}`);
+  },
+  getDashboardXLSX: (requestType = 'all') => {
+    const query = requestType && requestType !== 'all'
+      ? `?requestType=${encodeURIComponent(requestType)}` : '';
+    return request(`/api/reports/dashboard/xlsx${query}`);
+  },
+  getDashboardPNG: (requestType = 'all') => {
+    const query = requestType && requestType !== 'all'
+      ? `?requestType=${encodeURIComponent(requestType)}` : '';
+    return request(`/api/reports/dashboard/png${query}`);
+  },
 
   // Backups
   getBackups: () => request('/api/admin/respaldos'),

@@ -413,6 +413,59 @@ class DashboardTests(TestCase):
             5,
         )
 
+    def test_dashboard_selected_category_isolated_analysis(self):
+        today = timezone.localdate()
+        previous = Plan.objects.create(
+            type='internet', code='P001', label='Plan 100', monthly=100,
+            speed='10', active=True, installation=Decimal('0'))
+        motivo_cambio = Motivo.objects.create(
+            categoria='cambio', nombre='MEJOR SERVICIO')
+        self._sale('FILTER-NEW', 'nuevo_contrato', today,
+                   coverage_zone=CoverageZone.objects.get(id=self.coverage_zone_id),
+                   canal_captacion=self.canal_facebook)
+        self._sale('FILTER-REHIRE', 'recontratacion', today,
+                   coverage_zone=CoverageZone.objects.get(id=self.coverage_zone_id))
+        retirement = self._sale('FILTER-RETIRE', 'retiro', today)
+        retirement.motivo = self.motivo_retiro
+        retirement.changeReason = self.motivo_retiro.nombre
+        retirement.save(update_fields=['motivo', 'changeReason'])
+        Sale.objects.create(
+            date=today, clientCode='FILTER-CHANGE', clientName='FILTER-CHANGE',
+            serviceType='internet', requestType='cambio_plan', plan=self.plan,
+            planFromId=previous, planName=self.plan.label,
+            changeReason=motivo_cambio.nombre, motivo=motivo_cambio,
+            total=Decimal('200'), createdBy=self.admin)
+        self._sale('FILTER-TRANSFER', 'traslado_externo', today,
+                   coverage_zone=CoverageZone.objects.get(id=self.coverage_zone_id))
+
+        token = self._token()
+        headers = {'HTTP_AUTHORIZATION': f'Bearer {token}'}
+        for movement_type, expected_plan, expected_motive in (
+                ('nuevo_contrato', 'Plan 200', 0),
+                ('recontrataciones', 'Plan 200', 0),
+                ('retiros', 'Plan 200', 1),
+                ('cambios_plan', 'Plan 200', 1)):
+            response = self.c.get(
+                f'/api/dashboard/stats?movement_type={movement_type}',
+                **headers)
+            self.assertEqual(response.status_code, 200, _json(response))
+            analytics = _json(response)['analytics']
+            self.assertEqual(analytics['selected']['count'], 1)
+            self.assertEqual(sum(item['count'] for item in analytics['category_analysis']['plans']), 1)
+            self.assertEqual(analytics['category_analysis']['plans'][0]['label'], expected_plan)
+            self.assertEqual(len(analytics['category_analysis']['motivos']), expected_motive)
+            self.assertEqual(sum(item['count'] for item in analytics['category_analysis']['series']), 1)
+            if movement_type != 'nuevo_contrato':
+                self.assertEqual(analytics['canales_captacion']['total'], 0)
+
+        transfer = self.c.get(
+            '/api/dashboard/stats?movement_type=traslados', **headers)
+        self.assertEqual(transfer.status_code, 200, _json(transfer))
+        self.assertEqual(_json(transfer)['analytics']['selected']['count'], 1)
+        legacy_other = self.c.get(
+            '/api/dashboard/stats?movement_type=otros', **headers)
+        self.assertEqual(legacy_other.status_code, 200)
+
     def test_dashboard_channels_include_unspecified_and_drilldown_only_new_contracts(self):
         today = timezone.localdate()
         yesterday = today - timedelta(days=1)
