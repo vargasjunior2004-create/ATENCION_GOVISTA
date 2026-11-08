@@ -121,6 +121,8 @@ function RowDetails({
           <>
             <span className="text-slate-500">Plan anterior</span>
             <span className="text-right text-slate-700">{sale.planFrom || sale.previousPlan?.label || '—'}</span>
+            <span className="text-slate-500">Motivo del cambio</span>
+            <span className="text-right text-slate-700">{sale.changeReason || sale.motivoNombre || '—'}</span>
           </>
         )}
         <span className="text-slate-500">Plan</span>
@@ -238,8 +240,10 @@ export default function DashboardDrilldownModal({
     setPage(1);
   };
 
-  const isRetirement = category === 'retiros';
-  const isPlanChange = category === 'cambios_plan';
+  const isRetirement = category === 'retiros'
+    || (isMotive && movementType === 'retiros');
+  const isPlanChange = category === 'cambios_plan'
+    || (isMotive && movementType === 'cambios_plan');
   const sales = result?.items || [];
   const breakdown = result?.breakdown || [];
   const selectedLabel = isZone || isPlan || isChannel || isMotive
@@ -380,6 +384,7 @@ export default function DashboardDrilldownModal({
                         <th className="px-4 py-3">Servicio</th>
                         {isPlanChange && <th className="px-4 py-3">Plan anterior</th>}
                         <th className="px-4 py-3">Plan</th>
+                        {isPlanChange && <th className="px-4 py-3">Motivo del cambio</th>}
                         {isRetirement && <th className="px-4 py-3">Motivo</th>}
                         {isRetirement && <th className="px-4 py-3">Equipo / serie</th>}
                         <th className="px-4 py-3">Registró</th>
@@ -410,9 +415,10 @@ export default function DashboardDrilldownModal({
                           {(isZone || isPlan) && <td className="px-4 py-3 text-slate-600">{sale.requestTypeLabel || sale.requestType || '—'}</td>}
                           <td className="px-4 py-3 text-slate-600">{displayDate(sale.date)}</td>
                           <td className="px-4 py-3 text-slate-600">{SERVICE_LABELS[sale.serviceType] || sale.serviceType || '—'}</td>
-                          {isPlanChange && <td className="px-4 py-3 text-slate-600">{sale.planFrom || sale.previousPlan?.label || '—'}</td>}
-                          <td className="px-4 py-3 text-slate-600">{sale.Plan?.label || '—'}</td>
-                          {isRetirement && <td className="px-4 py-3 text-slate-600">{sale.changeReason || sale.motivoNombre || '—'}</td>}
+                           {isPlanChange && <td className="px-4 py-3 text-slate-600">{sale.planFrom || sale.previousPlan?.label || '—'}</td>}
+                           <td className="px-4 py-3 text-slate-600">{sale.Plan?.label || '—'}</td>
+                           {isPlanChange && <td className="px-4 py-3 text-slate-600">{sale.changeReason || sale.motivoNombre || '—'}</td>}
+                           {isRetirement && <td className="px-4 py-3 text-slate-600">{sale.changeReason || sale.motivoNombre || '—'}</td>}
                           {isRetirement && <td className="px-4 py-3 font-mono text-xs text-slate-600">{equipmentDescription(sale)}</td>}
                           <td className="px-4 py-3 text-slate-600">{sale.creator?.name || '—'}</td>
                           {isPlan && <td className="px-4 py-3 text-slate-600">{sale.coverageZone?.name || '—'}</td>}
