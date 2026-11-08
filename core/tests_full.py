@@ -1067,7 +1067,7 @@ class ReportTests(TestCase):
         r = self.c.get('/api/reports/dashboard/pdf')
         self.assertEqual(r.status_code, 401)
 
-    def test_operador_reporta_dashboard_pero_no_historial(self):
+    def test_usuario_autenticado_reporta_dashboard_e_historial(self):
         _create_user('op4', 'pass2', 'ventas')
         r = self.c.post('/api/auth/login',
                         {'name': 'op4', 'password': 'pass2'},
@@ -1098,7 +1098,7 @@ class ReportTests(TestCase):
             with self.subTest(url=url):
                 resp = self.c.get(
                     url, HTTP_AUTHORIZATION=f'Bearer {token}')
-                self.assertEqual(resp.status_code, 403)
+                self.assertEqual(resp.status_code, 200)
 
     def test_labels_respetan_tipo_de_movimiento(self):
         """Cada tipo de movimiento conserva su propia etiqueta en el reporte.

@@ -157,7 +157,8 @@ function SaleCard({ sale, isAdmin, archived, onPreview, onEdit, onDelete, onRest
 }
 
 export default function SalesList() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
+  const canGenerateReports = Boolean(user?.active);
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const [searchParams, setSearchParams] = useSearchParams();
@@ -367,7 +368,7 @@ export default function SalesList() {
   };
 
   const handleGenerateReport = async () => {
-    if (!isAdmin || !requestType || !serviceType || !reportFormat) return;
+    if (!canGenerateReports || !requestType || !serviceType || !reportFormat) return;
     setGeneratingReport(true);
     setMsg('');
     try {
@@ -454,15 +455,15 @@ export default function SalesList() {
           <Button
             variant="primary"
             onClick={handleGenerateReport}
-             disabled={!isAdmin || !reportReady || generatingReport}
-             className={(!isAdmin || !reportReady) ? 'opacity-50 cursor-not-allowed' : ''}
+             disabled={!canGenerateReports || !reportReady || generatingReport}
+             className={(!canGenerateReports || !reportReady) ? 'opacity-50 cursor-not-allowed' : ''}
           >
             {generatingReport ? 'Generando...' : 'Reporte'}
           </Button>
-          {!isAdmin && (
-            <p className="text-xs text-slate-400">Solo los administradores pueden generar reportes desde el historial</p>
-          )}
-          {isAdmin && !reportReady && (
+           {!canGenerateReports && (
+             <p className="text-xs text-slate-400">Debes iniciar sesión para generar reportes</p>
+           )}
+           {canGenerateReports && !reportReady && (
             <p className="text-xs text-slate-400">Selecciona solicitud, servicio, mostrar motivos y formato para habilitar el reporte</p>
           )}
         </div>
