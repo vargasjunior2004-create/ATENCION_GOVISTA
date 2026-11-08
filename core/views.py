@@ -2773,8 +2773,13 @@ class DashboardStatsView(APIView):
             zone_rows = list(selected.filter(coverage_zone__isnull=False).values(
                 'coverage_zone__name'
             ).annotate(count=Count('id')).order_by('-count', 'coverage_zone__name'))
-        zones = [{'name': row['coverage_zone__name'], 'count': row['count']}
-                 for row in zone_rows]
+        zone_total = sum(row['count'] for row in zone_rows)
+        zones = [{
+            'name': row['coverage_zone__name'],
+            'count': row['count'],
+            'percentage': round(row['count'] * 100 / zone_total, 1)
+            if zone_total else 0,
+        } for row in zone_rows]
 
         daily = selected.values('date').annotate(count=Count('id')).order_by('date')
         daily_by_date = {row['date']: row['count'] for row in daily}
@@ -2954,7 +2959,7 @@ class DashboardStatsView(APIView):
 
         zone_rows = cls._zone_rows(queryset, categories)
         zone_request_total = sum(row['count'] for row in zone_rows)
-        top_zone_rows = zone_rows[:5]
+        top_zone_rows = zone_rows
         zones = [
             {
                 'name': row['coverage_zone__name'],
@@ -2963,13 +2968,6 @@ class DashboardStatsView(APIView):
             }
             for row in top_zone_rows
         ] if zone_request_total else []
-        other_zone_count = sum(row['count'] for row in zone_rows[5:])
-        if other_zone_count:
-            zones.append({
-                'name': 'Otros barrios',
-                'count': other_zone_count,
-                'percentage': round(other_zone_count * 100 / zone_request_total, 1),
-            })
 
         movement_breakdown = [
             {

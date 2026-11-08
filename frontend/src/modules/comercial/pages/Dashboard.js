@@ -278,7 +278,6 @@ function CategoryAnalyticsPanel({ analytics, movementType, onIndicator, onPlan, 
   const series = analysis.series || [];
   const channels = analytics?.canales_captacion?.items || [];
   const maxPlan = Math.max(...plans.map((item) => item.count || 0), 1);
-  const maxZone = Math.max(...zones.map((item) => item.count || 0), 1);
   const maxMotive = Math.max(...motives.map((item) => item.count || 0), 1);
   const maxTransition = Math.max(...transitions.map((item) => item.count || 0), 1);
 
@@ -351,7 +350,7 @@ function CategoryAnalyticsPanel({ analytics, movementType, onIndicator, onPlan, 
 
       {zones.length > 0 && (
         <ChartCard eyebrow="Cobertura" title="Solicitudes por zona">
-          <div className="space-y-4">{zones.slice(0, 8).map((zone) => <button key={zone.name} type="button" onClick={() => onZone?.(zone.name)} className="block w-full rounded-xl text-left"><div className="mb-1.5 flex items-center justify-between text-sm"><span className="font-semibold text-slate-600">{zone.name}</span><strong className="tabular-nums text-slate-800">{number(zone.count)}</strong></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-brand-600" style={{ width: `${(zone.count / maxZone) * 100}%` }} /></div></button>)}</div>
+          <div className="space-y-4">{zones.map((zone) => <button key={zone.name} type="button" onClick={() => onZone?.(zone.name)} className="block w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/30"><div className="mb-1.5 flex items-center justify-between gap-3 text-sm"><span className="font-semibold text-slate-600">{zone.name}</span><span className="shrink-0 text-right"><strong className="tabular-nums text-slate-800">{number(zone.count)}</strong><span className="ml-2 text-xs font-medium tabular-nums text-slate-400">{zone.percentage}%</span></span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-brand-600" style={{ width: `${Math.max(zone.percentage, zone.count ? 2 : 0)}%` }} /></div></button>)}</div>
         </ChartCard>
       )}
 
@@ -768,7 +767,7 @@ export default function Dashboard() {
                     </ResponsiveContainer>
                   </div>
                 </ChartCard>
-                <ChartCard eyebrow="Solicitudes por zona" title="Top de 5 Zonas de mayor demanda">
+                 <ChartCard eyebrow="Solicitudes por zona" title="Zonas de cobertura">
                   {zones.length ? (
                     <div className="space-y-4">
                       {zones.map((zone) => {
