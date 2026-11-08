@@ -34,7 +34,6 @@ export const MODULES = [
     description: 'Mapa general, consulta y registro de zonas.',
     icon: MapPinned,
     to: '/cobertura',
-    permission: 'coverage.view',
     status: 'available',
   },
   {

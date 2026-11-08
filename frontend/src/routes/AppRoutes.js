@@ -56,7 +56,7 @@ export default function AppRoutes() {
         </Route>
         <Route
           path="/cobertura"
-          element={<AdminRoute permission="coverage.view"><CoverageLayout /></AdminRoute>}
+          element={<ProtectedRoute><CoverageLayout /></ProtectedRoute>}
         >
           <Route index element={<CoverageDashboard />} />
           <Route path="consultar" element={<CoverageZones />} />
