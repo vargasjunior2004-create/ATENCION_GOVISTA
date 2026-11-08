@@ -3,7 +3,7 @@ import uuid
 
 from django.http import HttpResponse
 from django.utils import timezone
-from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
@@ -16,24 +16,6 @@ from .reports import (
     sign_report_token, unsign_report_token,
 )
 from .domain import request_type_label
-from .rbac import has_permission
-
-
-class IsAdminRole(BasePermission):
-    """Solo el rol admin puede generar los reportes del historial.
-
-    Los reportes del dashboard tienen sus propios endpoints y estan
-    disponibles para cualquier usuario autenticado.
-    """
-
-    message = 'Se requieren permisos de administrador'
-
-    def has_permission(self, request, view):
-        user = getattr(request, 'user', None)
-        return bool(user and getattr(user, 'active', True)
-                    and has_permission(user, 'reports.export'))
-
-
 def _sales_range(params, default_day=True):
     today = timezone.localdate().isoformat()
     from_date = params.get('from') or (today if default_day else '')
@@ -95,7 +77,8 @@ def _filters_from_payload(payload):
 
 @extend_schema(responses={200: OpenApiResponse(OpenApiTypes.BINARY)})
 class SalesPdfView(APIView):
-    permission_classes = [IsAdminRole]
+    # Cualquier usuario autenticado puede generar reportes.
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         from_date, to_date = _sales_range(request.query_params)
@@ -111,7 +94,7 @@ class SalesPdfView(APIView):
 
 @extend_schema(responses={200: OpenApiResponse(OpenApiTypes.BINARY)})
 class SalesXlsxView(APIView):
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         from_date, to_date = _sales_range(request.query_params)
@@ -131,7 +114,7 @@ class SalesXlsxView(APIView):
 
 @extend_schema(responses={200: OpenApiResponse(OpenApiTypes.BINARY)})
 class SalesPngView(APIView):
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         from_date, to_date = _sales_range(request.query_params)
@@ -190,7 +173,7 @@ class DashboardPngView(APIView):
 
 @extend_schema(responses={200: dict, 400: dict, 429: dict})
 class SalesPdfLinkView(APIView):
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'report_link'
 
@@ -202,7 +185,7 @@ class SalesPdfLinkView(APIView):
 
 @extend_schema(responses={200: dict, 400: dict, 429: dict})
 class SalesXlsxLinkView(APIView):
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'report_link'
 
