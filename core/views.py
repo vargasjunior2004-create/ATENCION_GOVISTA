@@ -3141,6 +3141,7 @@ class DashboardDrilldownView(APIView):
         'zone': (),
         'plan': (),
         'channel': (),
+        'motive': (),
     }
 
     def get(self, request):
@@ -3193,6 +3194,7 @@ class DashboardDrilldownView(APIView):
             zone_count = None
             plan_count = None
             channel_count = None
+            motive_count = None
             category = None
             if indicator == 'zone':
                 zone_name = request.query_params.get('zone_name', '').strip()
@@ -3273,6 +3275,19 @@ class DashboardDrilldownView(APIView):
                         {'error': {'channel_key': 'Canal no válido'}},
                         status=status.HTTP_400_BAD_REQUEST)
                 channel_count = selected_sales.count()
+            elif indicator == 'motive':
+                motive_id = request.query_params.get('motive_id', '').strip()
+                if not motive_id.isdigit():
+                    return Response(
+                        {'error': {'motive_id': 'Motivo no válido'}},
+                        status=status.HTTP_400_BAD_REQUEST)
+                motive = Motivo.objects.filter(id=int(motive_id)).first()
+                if motive is None:
+                    return Response(
+                        {'error': {'motive_id': 'Motivo no válido'}},
+                        status=status.HTTP_400_BAD_REQUEST)
+                selected_sales = filtered_sales.filter(motivo_id=motive.id)
+                motive_count = selected_sales.count()
             else:
                 relevant_categories = self.INDICATOR_CATEGORIES[indicator]
                 category = request.query_params.get(
@@ -3329,6 +3344,8 @@ class DashboardDrilldownView(APIView):
                 indicator_count = plan_count
             elif indicator == 'channel':
                 indicator_count = channel_count
+            elif indicator == 'motive':
+                indicator_count = motive_count
             elif indicator == 'balance_neto':
                 totals = {item['category']: item['count'] for item in breakdown}
                 indicator_count = (
@@ -3365,6 +3382,10 @@ class DashboardDrilldownView(APIView):
                 response_data['channel_key'] = channel_key
                 response_data['channel_name'] = channel_name
                 response_data['channel_count'] = channel_count
+            elif indicator == 'motive':
+                response_data['motive_id'] = motive.id
+                response_data['motive_name'] = motive.nombre
+                response_data['motive_count'] = motive_count
             return Response(response_data)
         except Exception:
             logger.exception(

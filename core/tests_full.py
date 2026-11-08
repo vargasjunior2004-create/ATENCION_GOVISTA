@@ -466,6 +466,16 @@ class DashboardTests(TestCase):
             '/api/dashboard/stats?movement_type=otros', **headers)
         self.assertEqual(legacy_other.status_code, 200)
 
+        motive_detail = self.c.get(
+            '/api/dashboard/drilldown', {
+                'indicator': 'motive',
+                'motive_id': self.motivo_retiro.id,
+                'movement_type': 'retiros',
+            }, **headers)
+        self.assertEqual(motive_detail.status_code, 200, _json(motive_detail))
+        self.assertEqual(_json(motive_detail)['motive_count'], 1)
+        self.assertEqual(_json(motive_detail)['total'], 1)
+
     def test_dashboard_channels_include_unspecified_and_drilldown_only_new_contracts(self):
         today = timezone.localdate()
         yesterday = today - timedelta(days=1)

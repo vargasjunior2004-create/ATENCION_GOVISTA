@@ -18,6 +18,7 @@ const INDICATOR_LABELS = {
   balance_neto: 'Balance neto',
   zone: 'Detalle por zona',
   channel: 'Canales de captación',
+  motive: 'Motivos',
 };
 
 const SERVICE_LABELS = {
@@ -165,12 +166,15 @@ export default function DashboardDrilldownModal({
   planType,
   channelKey,
   channelName,
+  motiveId,
+  motiveName,
   onClose,
 }) {
   const isZone = indicator === 'zone';
   const isPlan = indicator === 'plan';
   const isChannel = indicator === 'channel';
-  const relevantCategories = isZone || isPlan || isChannel
+  const isMotive = indicator === 'motive';
+  const relevantCategories = isZone || isPlan || isChannel || isMotive
     ? []
     : indicator === 'altas_comerciales'
     ? ['nuevo_contrato', 'recontrataciones']
@@ -207,7 +211,7 @@ export default function DashboardDrilldownModal({
     const timer = setTimeout(() => {
       api.getDashboardDrilldown({
         indicator, category, zoneName, planName, catalogLabel, planType,
-        channelKey,
+         channelKey, motiveId,
         from, to, movementType, search, page,
       })
         .then((data) => {
@@ -225,7 +229,7 @@ export default function DashboardDrilldownModal({
     return () => clearTimeout(timer);
   }, [
     indicator, category, zoneName, planName, catalogLabel, planType,
-    channelKey,
+    channelKey, motiveId,
     from, to, movementType, search, page,
   ]);
 
@@ -238,7 +242,7 @@ export default function DashboardDrilldownModal({
   const isPlanChange = category === 'cambios_plan';
   const sales = result?.items || [];
   const breakdown = result?.breakdown || [];
-  const selectedLabel = isZone || isPlan || isChannel
+  const selectedLabel = isZone || isPlan || isChannel || isMotive
     ? 'Solicitudes registradas'
     : CATEGORY_LABELS[category] || INDICATOR_LABELS[indicator];
   const resultCount = Number(result?.total || 0);
@@ -248,6 +252,8 @@ export default function DashboardDrilldownModal({
       ? result?.plan_count
       : isChannel
         ? result?.channel_count
+        : isMotive
+          ? result?.motive_count
         : 0);
   const totalPages = result?.total_pages || 1;
 
@@ -275,9 +281,11 @@ export default function DashboardDrilldownModal({
                   ? zoneName
                   : isPlan
                     ? planName || catalogLabel
-                    : isChannel
-                      ? channelName
-                      : null)
+                     : isChannel
+                       ? channelName
+                       : isMotive
+                         ? motiveName
+                       : null)
                   || INDICATOR_LABELS[indicator]}
               </h2>
               <p className="mt-1 text-xs font-medium text-slate-500 sm:text-sm">
