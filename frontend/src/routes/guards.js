@@ -20,7 +20,7 @@ export function PublicRoute() {
   return token ? <Navigate to="/" replace /> : <Outlet />;
 }
 
-export function ProtectedRoute() {
+export function ProtectedRoute({ children }) {
   const { token, sessionReady } = useAuth();
 
   if (!sessionReady) return <SessionLoader />;
