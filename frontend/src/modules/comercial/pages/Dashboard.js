@@ -556,7 +556,6 @@ export default function Dashboard() {
   const topPlans = plans.slice(0, 5);
   const planDemandCount = plans.reduce((sum, item) => sum + item.count, 0);
   const hasData = series.some((item) => item.movimientos > 0);
-  const hasTodaySales = (stats?.selected?.count || 0) > 0;
   const selectedMovementLabel = MOVEMENT_OPTIONS.find(
     (item) => item.value === movementType,
   )?.label;
@@ -933,9 +932,9 @@ export default function Dashboard() {
               <p className="mt-1 text-xs text-slate-500">Las exportaciones conservan su alcance actual: solicitudes comerciales de hoy.</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" size="sm" disabled={!hasTodaySales} onClick={() => download('xlsx')}><Download className="h-4 w-4" /> Excel</Button>
-              <Button variant="secondary" size="sm" disabled={!hasTodaySales} onClick={() => download('png')}><Image className="h-4 w-4" /> Foto</Button>
-              <Button size="sm" disabled={!hasTodaySales} onClick={() => download('pdf')}><FileText className="h-4 w-4" /> PDF</Button>
+              <Button variant="secondary" size="sm" disabled={loading} onClick={() => download('xlsx')}><Download className="h-4 w-4" /> Excel</Button>
+              <Button variant="secondary" size="sm" disabled={loading} onClick={() => download('png')}><Image className="h-4 w-4" /> Foto</Button>
+              <Button size="sm" disabled={loading} onClick={() => download('pdf')}><FileText className="h-4 w-4" /> PDF</Button>
             </div>
           </Card>
          </>
