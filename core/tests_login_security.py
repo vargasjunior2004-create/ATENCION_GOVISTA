@@ -40,3 +40,23 @@ class LoginSecurityTests(TestCase):
             content_type='application/json',
         )
         self.assertEqual(response.status_code, 200, response.content)
+
+    def test_password_login_remains_case_sensitive(self):
+        user = User.objects.create(name='case-sensitive-login', role='ventas')
+        user.set_password('MixedCase-password-123')
+        user.save()
+        client = Client()
+
+        wrong_case = client.post(
+            '/api/auth/login',
+            {'name': user.name, 'password': 'MIXEDCASE-PASSWORD-123'},
+            content_type='application/json',
+        )
+        valid = client.post(
+            '/api/auth/login',
+            {'name': user.name, 'password': 'MixedCase-password-123'},
+            content_type='application/json',
+        )
+
+        self.assertEqual(wrong_case.status_code, 401)
+        self.assertEqual(valid.status_code, 200, valid.content)
