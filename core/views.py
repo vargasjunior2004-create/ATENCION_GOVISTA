@@ -6,8 +6,8 @@ import re
 from urllib.parse import urlparse, parse_qs
 from decimal import Decimal, InvalidOperation
 from datetime import date, timedelta
-
 from django.db import IntegrityError, transaction
+from django.conf import settings
 from django.db.models import ProtectedError
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
@@ -30,6 +30,7 @@ from .models import (
     TemporaryFunction, TemporaryAssignment, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
     TarifaTraslado, TarifaTrasladoHistorial, SaleIdempotencyKey, AuditLog,
     InventarioMovimiento, CanalCaptacion, CustomerLocation, CustomerLocationHistory,
+    UserSession,
 )
 from .serializers import (
     UserSerializer, UserWriteSerializer, PermissionSerializer, RoleSerializer,
@@ -59,6 +60,19 @@ from .location_storage import optimize_photo, upload_photo
 _backup_lock = threading.Lock()
 _backup_in_progress = False
 logger = logging.getLogger(__name__)
+
+
+def _issue_session_token(user):
+    """Crea una sesión persistente y emite un JWT asociado a ella."""
+    access_lifetime = settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME']
+    session = UserSession.objects.create(
+        user=user,
+        expires_at=timezone.now() + access_lifetime,
+    )
+    refresh = RefreshToken.for_user(user)
+    refresh['ver'] = user.token_version
+    refresh['sid'] = str(session.session_id)
+    return session, refresh
 
 
 class _BackupFileResponse(FileResponse):
@@ -599,8 +613,7 @@ class LoginView(APIView):
 
         register_success(
             user, normalized, ip, request.META.get('HTTP_USER_AGENT', ''))
-        refresh = RefreshToken.for_user(user)
-        refresh['ver'] = user.token_version
+        _, refresh = _issue_session_token(user)
         record_audit(
             request, 'login', 'user', user.pk, module='auth',
             actor=user, after={'username': user.name})
@@ -608,6 +621,27 @@ class LoginView(APIView):
             'token': str(refresh.access_token),
             'user': _user_payload(user),
         })
+
+
+@extend_schema(responses={200: dict, 401: dict})
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        session_id = request.auth.get('sid') if request.auth else None
+        if session_id:
+            updated = UserSession.objects.filter(
+                session_id=session_id,
+                user=request.user,
+                revoked_at__isnull=True,
+            ).update(
+                revoked_at=timezone.now(),
+                revoked_reason='logout',
+            )
+            return Response({'revoked': bool(updated)})
+        # Tokens emitidos antes de las sesiones individuales siguen siendo
+        # compatibles hasta expirar, pero nunca pueden revocar otra sesión.
+        return Response({'revoked': False, 'legacy': True})
 
 
 @extend_schema(responses={200: dict})
@@ -647,15 +681,20 @@ class ChangePasswordView(APIView):
             return Response({'error': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        user.set_password(new_password)
-        user.save(update_fields=[
-            'password', 'password_changed_at', 'token_version',
-            'must_change_password', 'updated_at'])
+        with transaction.atomic():
+            user.set_password(new_password)
+            user.save(update_fields=[
+                'password', 'password_changed_at', 'token_version',
+                'must_change_password', 'updated_at'])
+            UserSession.objects.filter(
+                user=user, revoked_at__isnull=True).update(
+                    revoked_at=timezone.now(),
+                    revoked_reason='password_changed',
+                )
+            _, refresh = _issue_session_token(user)
         record_audit(
             request, 'password_changed', 'user', user.pk, module='auth',
             after={'must_change_password': False})
-        refresh = RefreshToken.for_user(user)
-        refresh['ver'] = user.token_version
         return Response({
             'message': 'Contrasena actualizada correctamente',
             'token': str(refresh.access_token),

@@ -5,17 +5,21 @@ export function setOnAuthExpired(cb) { onAuthExpired = cb; }
 
 async function request(path, options = {}) {
   const token = localStorage.getItem('token');
+  const isLoginRequest = path === '/api/auth/login';
   const isFormData = options.body instanceof FormData;
   const headers = { ...(isFormData ? {} : { 'Content-Type': 'application/json' }), ...options.headers };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (token && !isLoginRequest) headers['Authorization'] = `Bearer ${token}`;
 
   const res = await fetch(`${API_URL}${path}`, { ...options, headers });
 
   if (res.status === 401) {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    if (onAuthExpired) onAuthExpired();
-    throw new Error('Sesión expirada');
+    const err = await res.json().catch(() => ({ error: 'Sesión inválida' }));
+    if (!isLoginRequest) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      if (onAuthExpired) onAuthExpired();
+    }
+    throw err;
   }
 
   if (!res.ok) {
@@ -34,6 +38,8 @@ async function request(path, options = {}) {
 const api = {
   login: (name, password) =>
     request('/api/auth/login', { method: 'POST', body: JSON.stringify({ name, password }) }),
+
+  logout: () => request('/api/auth/logout', { method: 'POST' }),
 
   me: () => request('/api/auth/me'),
 
