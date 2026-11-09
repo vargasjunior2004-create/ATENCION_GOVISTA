@@ -2,6 +2,7 @@ import time
 import logging
 
 from django.db import OperationalError
+from django.utils import timezone
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken
 
@@ -10,7 +11,7 @@ logger = logging.getLogger('core')
 
 class CoreJWTAuthentication(JWTAuthentication):
     def get_user(self, validated_token):
-        from .models import User
+        from .models import User, UserSession
 
         try:
             user_id = validated_token['user_id']
@@ -40,5 +41,16 @@ class CoreJWTAuthentication(JWTAuthentication):
         # aceptan hasta que expiren; los nuevos siempre lo incluyen.
         if token_version is not None and int(token_version) != user.token_version:
             raise InvalidToken('Token has been revoked')
+
+        session_id = validated_token.get('sid')
+        if session_id is not None:
+            active_session = UserSession.objects.filter(
+                session_id=session_id,
+                user=user,
+                revoked_at__isnull=True,
+                expires_at__gt=timezone.now(),
+            ).exists()
+            if not active_session:
+                raise InvalidToken('Session has been revoked')
 
         return user

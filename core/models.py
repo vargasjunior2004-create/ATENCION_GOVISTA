@@ -1,4 +1,5 @@
 import unicodedata
+import uuid
 
 from django.db import models
 from django.utils import timezone
@@ -67,6 +68,28 @@ class User(models.Model):
 
     def __str__(self):
         return f'{self.name} ({self.role})'
+
+
+class UserSession(models.Model):
+    """Sesión JWT individual revocable en el servidor."""
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='sessions')
+    session_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoked_reason = models.CharField(max_length=40, blank=True, default='')
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['user', 'revoked_at']),
+            models.Index(fields=['expires_at']),
+        ]
+
+    @property
+    def is_active(self):
+        return self.revoked_at is None and self.expires_at > timezone.now()
 
 
 class Role(models.Model):

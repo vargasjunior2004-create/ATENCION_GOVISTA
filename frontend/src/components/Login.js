@@ -9,7 +9,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, authNotice } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (event) => {
@@ -108,6 +108,15 @@ export default function Login() {
               >
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                 <span>{error}</span>
+              </div>
+            )}
+
+            {authNotice && !error && (
+              <div
+                className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-5 text-amber-800"
+                role="status"
+              >
+                {authNotice}
               </div>
             )}
 

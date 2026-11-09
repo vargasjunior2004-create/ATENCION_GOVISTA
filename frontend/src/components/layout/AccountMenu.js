@@ -20,9 +20,9 @@ export default function AccountMenu({ variant = 'sidebar' }) {
     || (user?.role === 'admin' ? 'ADMINISTRADOR' : 'OPERADOR');
   const roleColor = user?.isSystemAdmin || user?.role === 'admin' ? 'amber' : 'blue';
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setMenuOpen(false);
-    logout();
+    await logout();
     navigate('/login', { replace: true });
   };
 
