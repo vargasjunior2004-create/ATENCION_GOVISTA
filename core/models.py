@@ -4,6 +4,7 @@ import uuid
 from django.db import models
 from django.utils import timezone
 from django.contrib.auth.hashers import make_password, check_password
+from .domain import SOLICITUD_STATUS_CHOICES
 
 
 
@@ -585,6 +586,10 @@ class Sale(models.Model):
     requestType = models.CharField(
         max_length=20, blank=True, default='nuevo_contrato',
         help_text='Codigo de TipoSolicitud; el catalogo vive en esa tabla')
+    status = models.CharField(
+        max_length=12, choices=SOLICITUD_STATUS_CHOICES,
+        null=True, blank=True, default=None,
+        help_text='Estado comercial derivado del tipo de solicitud; no lo aporta el cliente')
     coverage_zone = models.ForeignKey(
         CoverageZone, null=True, blank=True, on_delete=models.PROTECT,
         related_name='sales',

@@ -46,6 +46,7 @@ from .serializers import (
 )
 from .domain import (
     request_type_mode, request_type_catalog,
+    movement_status_for_request_type,
     MODO_RETIRO, MODO_CAMBIO_PLAN, MODO_ADICION,
     MODO_SIMPLE, MODO_TRASLADO,
 )
@@ -2136,6 +2137,10 @@ class SaleDetailView(IsAdminMixin, APIView):
             resolve_motivo)
 
         data = request.data
+        if 'status' in data:
+            return Response(
+                {'error': 'El estado se determina automáticamente según el tipo de solicitud.'},
+                status=status.HTTP_400_BAD_REQUEST)
         if 'version' in data:
             try:
                 requested_version = int(data['version'])
@@ -2344,6 +2349,7 @@ class SaleDetailView(IsAdminMixin, APIView):
         sale.clientName = data.get('clientName', sale.clientName)
         sale.serviceType = service_type
         sale.requestType = request_type
+        sale.status = movement_status_for_request_type(request_type, catalog)
         sale.additionType = data.get('additionType', sale.additionType)
         sale.changeReason = change_reason
         sale.motivo = motivo

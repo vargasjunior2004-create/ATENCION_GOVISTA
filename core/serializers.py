@@ -15,6 +15,8 @@ from .domain import (
     SERVICE_TYPE_LABELS, SERVICE_TYPE_FAMILY, SERVICE_TYPE_TO_PLAN_TYPE,
     service_family_label, previous_service_family, is_service_change,
     request_type_mode, request_type_catalog,
+    movement_status_for_request_type,
+    SOLICITUD_STATUS_CHOICES,
     MODO_ADICION, MODO_CAMBIO_PLAN, MODO_RETIRO, MODO_TRASLADO,
     MODOS_SOLO_MENSUAL,
     plan_is_selectable,
@@ -668,11 +670,13 @@ class SaleSerializer(serializers.ModelSerializer):
     canalCaptacionId = serializers.IntegerField(
         source='canal_captacion_id', read_only=True)
     canalCaptacion = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
 
     class Meta:
         model = Sale
         fields = ['id', 'date', 'clientCode', 'clientName', 'serviceType',
-                  'requestType', 'additionType', 'changeReason', 'motivo',
+                   'requestType', 'additionType', 'changeReason', 'motivo',
+                   'status',
                   'motivoNombre', 'planFrom',
                   'serviceTypeFrom', 'previousService', 'isServiceChange',
                    'totalFrom', 'notes', 'planId', 'total', 'Plan', 'creator',
@@ -690,6 +694,18 @@ class SaleSerializer(serializers.ModelSerializer):
     def get_motivoNombre(self, obj):
         """Nombre del motivo: el snapshot si existe, o el texto historico."""
         return obj.changeReason or ''
+
+    @extend_schema_field(str)
+    def get_status(self, obj):
+        """Expone una etiqueta estable y repara visualmente históricos seguros.
+
+        Los registros antiguos pueden no tener status persistido. Para los
+        tres tipos definidos se deriva únicamente para lectura; no se altera
+        ningún histórico automáticamente.
+        """
+        code = obj.status or movement_status_for_request_type(
+            obj.requestType, sale_catalog(self))
+        return dict(SOLICITUD_STATUS_CHOICES).get(code) if code else None
 
     @extend_schema_field(dict)
     def get_Plan(self, obj):
@@ -824,6 +840,9 @@ class SaleCreateSerializer(serializers.Serializer):
         source='equipment_recovery_required', required=False)
 
     def validate(self, attrs):
+        if 'status' in self.initial_data:
+            raise serializers.ValidationError(
+                {'status': 'El estado se determina automáticamente según el tipo de solicitud.'})
         editable_origin_fields = {'contractOrigin', 'externalSeller'}
         if editable_origin_fields.intersection(self.initial_data):
             raise serializers.ValidationError(
@@ -1121,6 +1140,8 @@ class SaleCreateSerializer(serializers.Serializer):
         service_type_from = validated_data.pop('serviceTypeFromValue', None)
         motivo = validated_data.pop('motivoValue', None)
         request_type = validated_data.get('requestType', 'nuevo_contrato')
+        movement_status = movement_status_for_request_type(
+            request_type, request_type_catalog())
 
         code = validated_data.get('clientCode', '').strip()
         ci = validated_data.get('clientCi', '').strip()
@@ -1162,6 +1183,7 @@ class SaleCreateSerializer(serializers.Serializer):
             clientName=validated_data['clientName'],
             serviceType=validated_data['serviceType'],
             requestType=request_type,
+            status=movement_status,
             coverage_zone=coverage_zone,
             canal_captacion=canal_captacion,
             additionType=validated_data.get('additionType', ''),
