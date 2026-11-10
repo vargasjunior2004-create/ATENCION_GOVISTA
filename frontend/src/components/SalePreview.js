@@ -32,6 +32,7 @@ export function SalePreviewDetails({ sale }) {
       <PreviewRow label="Kardex" value={sale.clientCode} />
       <PreviewRow label="Cliente" value={sale.clientName} />
       <PreviewRow label="Solicitud" value={sale.requestLabel} />
+      <PreviewRow label="Estado" value={sale.status} />
       {isChange ? (
         <>
           <PreviewRow label="Servicio anterior" value={sale.previousServiceLabel} />

@@ -200,6 +200,7 @@ export default function SalesList() {
     requestType: sale.requestType,
     clientCode: sale.clientCode,
     clientName: sale.clientName,
+    status: sale.status,
     creatorName: sale.creator?.name,
     requestLabel: requestLabel(sale),
     serviceLabel: SERVICE_LABELS[sale.serviceType] || sale.serviceType,
