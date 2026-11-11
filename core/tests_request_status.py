@@ -49,6 +49,19 @@ class RequestStatusTests(TestCase):
 
         self.assertEqual(sale.status, 'contratado')
 
+        customer = sale.customer
+        response = self.client.get(
+            f'/api/customers/{customer.id}', **self.auth())
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['contracts'][0]['status'], 'Contratado')
+        self.assertEqual(response.json()['timeline'][0]['status'], 'Contratado')
+
+        productivity = self.client.get(
+            '/api/dashboard/productivity', **self.auth())
+        self.assertEqual(productivity.status_code, 200)
+        self.assertEqual(productivity.json()['items'][0]['status'], 'Contratado')
+
     def test_plan_change_is_persisted_as_cambiado(self):
         sale = self.create({
             'clientCode': 'STATUS-C', 'clientName': 'Cambio estado',

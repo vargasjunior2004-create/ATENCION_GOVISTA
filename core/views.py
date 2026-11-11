@@ -1618,7 +1618,7 @@ class CustomerDetailView(APIView):
 
     def get_customer(self, pk):
         return Customer.objects.prefetch_related(
-            'contracts__plan', 'contracts__created_by',
+            'contracts__plan', 'contracts__sale', 'contracts__created_by',
             'contracts__meter_reviewed_by',
         ).filter(pk=pk).first()
 
@@ -3537,7 +3537,6 @@ class CommercialProductivityView(APIView):
             # No existe actualmente un responsable/fecha de atención fiable.
             payload['attendedBy'] = None
             payload['attendedAt'] = None
-            payload['status'] = None
 
         def user_row(row):
             return {

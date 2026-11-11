@@ -384,6 +384,7 @@ class ContractSerializer(serializers.ModelSerializer):
     planLabel = serializers.SerializerMethodField()
     createdBy = serializers.SerializerMethodField()
     reviewedBy = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
 
     class Meta:
         model = Contract
@@ -403,6 +404,19 @@ class ContractSerializer(serializers.ModelSerializer):
 
     def get_planLabel(self, obj):
         return obj.plan_name or obj.plan.label
+
+    @extend_schema_field(str)
+    def get_status(self, obj):
+        """Prioriza el estado comercial persistido en la solicitud vinculada.
+
+        Contract.status pertenece al ciclo operativo histórico del contrato
+        (activo, retirado, etc.). Para contratos originados en Gestión
+        Comercial, la fuente del estado mostrado es Sale.status.
+        """
+        sale = getattr(obj, 'sale', None)
+        if sale is not None and sale.status:
+            return dict(SOLICITUD_STATUS_CHOICES).get(sale.status, sale.status)
+        return obj.get_status_display() if obj.status else None
 
     def get_createdBy(self, obj):
         return {'id': obj.created_by_id, 'name': obj.created_by.name}
