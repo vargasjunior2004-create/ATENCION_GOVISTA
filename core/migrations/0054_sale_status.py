@@ -14,6 +14,7 @@ class Migration(migrations.Migration):
                 blank=True,
                 choices=[
                     ('contratado', 'Contratado'),
+                    ('recontratado', 'Recontratado'),
                     ('cambiado', 'Cambiado'),
                     ('retirado', 'Retirado'),
                 ],
