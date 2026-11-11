@@ -75,6 +75,7 @@ class RecontratacionTests(TestCase):
 
         self.assertEqual(response.status_code, 201, response.content)
         data = response.json()
+        self.assertEqual(data['status'], 'Recontratado')
         self.assertTrue(data['equipmentRetained'])
         self.assertFalse(data['requiresTechnicalVisit'])
         self.assertFalse(data['debtApplies'])

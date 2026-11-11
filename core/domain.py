@@ -71,14 +71,16 @@ MODO_ADICION = 'adicion'
 MODO_TRASLADO = 'traslado'
 MODO_SIMPLE = 'simple'
 
-# Estado comercial del movimiento. Se persiste en Sale; el estado operativo
-# futuro (por ejemplo, asignado o instalado) se podrá ampliar aquí sin que el
-# cliente pueda enviar valores arbitrarios.
+# Estado comercial del movimiento. Se persiste en Sale; los estados operativos
+# futuros (por ejemplo, reinstalado) se podrán ampliar aquí sin que el cliente
+# pueda enviar valores arbitrarios.
 SOLICITUD_STATUS_CONTRATADO = 'contratado'
+SOLICITUD_STATUS_RECONTRATADO = 'recontratado'
 SOLICITUD_STATUS_CAMBIADO = 'cambiado'
 SOLICITUD_STATUS_RETIRADO = 'retirado'
 SOLICITUD_STATUS_CHOICES = (
     (SOLICITUD_STATUS_CONTRATADO, 'Contratado'),
+    (SOLICITUD_STATUS_RECONTRATADO, 'Recontratado'),
     (SOLICITUD_STATUS_CAMBIADO, 'Cambiado'),
     (SOLICITUD_STATUS_RETIRADO, 'Retirado'),
 )
@@ -87,11 +89,11 @@ SOLICITUD_STATUS_CHOICES = (
 def movement_status_for_request_type(request_type, catalog=None):
     """Devuelve el estado comercial inicial de un movimiento.
 
-    Las recontrataciones se dejan sin tocar: su comportamiento histórico no
-    se redefine hasta acordar su ciclo de negocio específico.
+    Las recontrataciones tienen un estado comercial propio. El estado
+    operativo futuro ``Reinstalado`` todavía no se implementa.
     """
     if request_type == 'recontratacion':
-        return None
+        return SOLICITUD_STATUS_RECONTRATADO
     mode = request_type_mode(request_type, catalog)
     return {
         MODO_NUEVO: SOLICITUD_STATUS_CONTRATADO,

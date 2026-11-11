@@ -72,6 +72,22 @@ class RequestStatusTests(TestCase):
 
         self.assertEqual(sale.status, 'cambiado')
 
+    def test_rehire_is_persisted_as_recontratado(self):
+        sale = self.create({
+            'clientCode': 'STATUS-RC', 'clientName': 'Recontratado estado',
+            'serviceType': 'internet', 'requestType': 'recontratacion',
+            'planId': self.plan.id, 'coverageZoneId': self.zone.id,
+            'equipmentRetained': True, 'requiresTechnicalVisit': False,
+            'debtApplies': False, 'debtAmount': 0,
+        })
+
+        self.assertEqual(sale.status, 'recontratado')
+
+        response = self.client.get(
+            f'/api/customers/{sale.customer.id}', **self.auth())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['contracts'][0]['status'], 'Recontratado')
+
     def test_withdrawal_is_persisted_as_retirado(self):
         sale = self.create({
             'clientCode': 'STATUS-R', 'clientName': 'Retiro estado',
