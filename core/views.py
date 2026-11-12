@@ -2954,6 +2954,25 @@ class DashboardStatsView(APIView):
             })
             current += timedelta(days=1)
 
+        # Resumen general por servicio. El análisis de una categoría tiene
+        # su propia agregación en _category_rows, pero el dashboard general
+        # también necesita este bloque.
+        service_rows = queryset.values('serviceType').annotate(
+            count=Count('id'), total=Sum('total')).order_by('serviceType')
+        service_labels = {
+            'internet': 'Internet',
+            'tv': 'TV analógica',
+            'tv_digital': 'TV digital',
+            'combo_analog': 'Internet + TV analógica',
+            'combo_digital': 'Internet + TV digital',
+        }
+        services = [{
+            'serviceType': row['serviceType'],
+            'label': service_labels.get(row['serviceType'], row['serviceType']),
+            'count': row['count'],
+            'total': cls._amount(row['total']),
+        } for row in service_rows]
+
         channel_queryset = queryset.filter(
             requestType__in=categories['nuevo_contrato'])
         channel_rows = list(
