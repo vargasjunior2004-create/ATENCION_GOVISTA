@@ -1116,6 +1116,8 @@ class SaleCreateSerializer(serializers.Serializer):
 
         # Una adición incorpora el servicio faltante y siempre termina en
         # Combo. No exige motivo; additionType identifica lo incorporado.
+        service_type_from = attrs.get('serviceTypeFrom') or None
+
         if mode == MODO_ADICION:
             if not attrs.get('additionType'):
                 raise serializers.ValidationError(
@@ -1132,8 +1134,6 @@ class SaleCreateSerializer(serializers.Serializer):
             attrs['additionType'] = ''
 
         plan_from = None
-        service_type_from = attrs.get('serviceTypeFrom') or None
-
         # Motivo del cambio / del retiro. Se resuelve primero para usar su
         # nombre como motivo, pero sus errores se reportan al final para no
         # tapar los mensajes de plan anterior o compatibilidad de servicio.
