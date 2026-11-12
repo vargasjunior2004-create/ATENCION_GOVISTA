@@ -45,7 +45,6 @@ const MOVEMENT_OPTIONS = [
   { value: 'recontrataciones', label: 'Recontrataciones' },
   { value: 'retiros', label: 'Retiros' },
   { value: 'cambios_plan', label: 'Cambios de plan' },
-  { value: 'adiciones', label: 'Adiciones' },
   { value: 'traslados', label: 'Traslado Externo' },
 ];
 
@@ -256,10 +255,6 @@ const CATEGORY_COPY = {
   traslados: {
     label: 'Traslados externos',
     description: 'Solicitudes de traslado externo registradas.',
-  },
-  adiciones: {
-    label: 'Adiciones',
-    description: 'Servicios incorporados al servicio actual para formar un Combo.',
   },
 };
 
