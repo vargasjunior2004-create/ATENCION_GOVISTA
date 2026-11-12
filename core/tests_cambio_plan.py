@@ -139,6 +139,8 @@ class CambioPlanEntreServiciosTest(TestCase):
         self.assertEqual(sale.serviceType, 'combo_analog')
         self.assertEqual(sale.additionType, 'adicion_tv')
         self.assertEqual(r.json()['previousService']['family'], 'internet')
+        self.assertEqual(sale_service_label(sale), 'INTERNET → COMBO')
+        self.assertTrue(r.json()['isServiceChange'])
 
     def test_adicion_de_internet_desde_tv_termina_en_combo(self):
         r = self._post_sale({

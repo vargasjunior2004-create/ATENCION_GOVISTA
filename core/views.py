@@ -2315,6 +2315,7 @@ class SaleDetailView(IsAdminMixin, APIView):
         elif mode == MODO_ADICION:
             errors = validate_adicion(
                 plan=plan, service_type=service_type,
+                plan_from=plan_from,
                 service_type_from=service_type_from,
                 addition_type=data.get('additionType', sale.additionType))
             if errors:
