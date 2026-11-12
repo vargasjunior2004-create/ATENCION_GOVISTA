@@ -287,9 +287,13 @@ export default function SalesList() {
       if (name === 'serviceType') { next.planId = ''; next.serviceTypeFrom = ''; }
       if (name === 'requestType') {
         const nuevoModo = modoOf(value);
+        if (nuevoModo === 'adicion') next.serviceType = 'combo_analog';
         next.motivoId = '';
         if (nuevoModo !== 'adicion') next.additionType = '';
-        if (nuevoModo !== 'cambio_plan') { next.planFromId = ''; next.serviceTypeFrom = ''; }
+        if (nuevoModo !== 'cambio_plan' && nuevoModo !== 'adicion') {
+          next.planFromId = ''; next.serviceTypeFrom = '';
+        }
+        if (nuevoModo === 'adicion') next.planFromId = '';
       }
       return next;
     });
@@ -320,7 +324,7 @@ export default function SalesList() {
     e.preventDefault();
     setEditError('');
     try {
-       const payload = { date: editForm.date, clientCode: editForm.clientCode, clientName: editForm.clientName, serviceType: editForm.serviceType, requestType: editForm.requestType, additionType: editModo === 'adicion' ? editForm.additionType : '', planFromId: editModo === 'cambio_plan' && editForm.planFromId ? Number(editForm.planFromId) : null, serviceTypeFrom: editModo === 'cambio_plan' && editForm.serviceTypeFrom ? editForm.serviceTypeFrom : null, planId: Number(editForm.planId), notes: editForm.notes, appliedInstallation: Number(editForm.appliedInstallation), appliedMonthly: Number(editForm.appliedMonthly) };
+        const payload = { date: editForm.date, clientCode: editForm.clientCode, clientName: editForm.clientName, serviceType: editForm.serviceType, requestType: editForm.requestType, additionType: editModo === 'adicion' ? editForm.additionType : '', planFromId: editModo === 'cambio_plan' && editForm.planFromId ? Number(editForm.planFromId) : null, serviceTypeFrom: (editModo === 'cambio_plan' || editModo === 'adicion') && editForm.serviceTypeFrom ? editForm.serviceTypeFrom : null, planId: Number(editForm.planId), notes: editForm.notes, appliedInstallation: Number(editForm.appliedInstallation), appliedMonthly: Number(editForm.appliedMonthly) };
        if (editForm.requestType === 'recontratacion') {
          payload.debtApplies = editForm.debtApplies;
          payload.debtAmount = editForm.debtApplies ? Number(editForm.debtAmount) : 0;
@@ -516,21 +520,29 @@ export default function SalesList() {
                     <option key={t.code} value={t.code}>{t.nombre}</option>
                   ))}
                 </Select>
-                <Select label="Tipo" name="serviceType" value={editForm.serviceType} onChange={handleEditChange}>
-                  <option value="internet">Internet</option>
-                  <option value="tv">TV Cable</option>
-                  <option value="tv_digital">TV Digital</option>
-                  <option value="combo_analog">Internet + TV Analoga</option>
-                  <option value="combo_digital">Internet + TV Digital</option>
-                </Select>
+                 <Select label={editModo === 'adicion' ? 'Tipo de Servicio Nuevo' : 'Tipo'} name="serviceType" value={editForm.serviceType} onChange={handleEditChange}>
+                   {SERVICE_TYPES.filter((t) => editModo !== 'adicion'
+                     || SERVICE_TYPE_TO_PLAN_TYPE[t.value] === 'combo').map((t) => (
+                     <option key={t.value} value={t.value}>{t.label}</option>
+                   ))}
+                 </Select>
               </div>
               {editModo === 'adicion' && (
-                <Select label="Tipo de Adicion" name="additionType" value={editForm.additionType} onChange={handleEditChange} required>
-                  <option value="">--Seleccione--</option>
-                  <option value="adicion_internet">ADICION INTERNET</option>
-                  <option value="adicion_tv">ADICION TV</option>
-                </Select>
-              )}
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                   <Select label="Servicio actual" name="serviceTypeFrom" value={editForm.serviceTypeFrom} onChange={handleEditChange} required>
+                     <option value="">--Seleccione--</option>
+                     {SERVICE_TYPES.filter((t) => ['internet', 'tv'].includes(
+                       SERVICE_TYPE_TO_PLAN_TYPE[t.value])).map((t) => (
+                       <option key={t.value} value={t.value}>{t.label}</option>
+                     ))}
+                   </Select>
+                   <Select label="Servicio que se adiciona" name="additionType" value={editForm.additionType} onChange={handleEditChange} required>
+                     <option value="">--Seleccione--</option>
+                     <option value="adicion_internet">ADICION INTERNET</option>
+                     <option value="adicion_tv">ADICION TV</option>
+                   </Select>
+                 </div>
+               )}
               {editModo === 'cambio_plan' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Select label="Plan Anterior" name="planFromId" value={editForm.planFromId} onChange={handleEditPreviousPlanChange} required>

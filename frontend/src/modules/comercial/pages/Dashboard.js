@@ -251,7 +251,7 @@ const CATEGORY_COPY = {
   },
   cambios_plan: {
     label: 'Cambios de plan',
-    description: 'Transiciones de plan registradas por el equipo comercial.',
+    description: 'Cambios de plan y conversiones de servicio, incluido COMBO → INTERNET.',
   },
   traslados: {
     label: 'Traslados externos',
@@ -259,7 +259,7 @@ const CATEGORY_COPY = {
   },
   adiciones: {
     label: 'Adiciones',
-    description: 'Servicios adicionales registrados en el período seleccionado.',
+    description: 'Servicios incorporados al servicio actual para formar un Combo.',
   },
 };
 
@@ -271,7 +271,7 @@ function CategoryAnalyticsPanel({ analytics, movementType, onIndicator, onPlan, 
   const analysis = analytics?.category_analysis || {};
   const summary = analytics?.selected || { count: 0, total: 0 };
   const plans = analysis.plans || [];
-  const services = analytics?.servicios || [];
+  const services = analysis.servicios || analytics?.servicios || [];
   const zones = analysis.zonas || [];
   const motives = analysis.motivos || [];
   const transitions = analysis.transiciones || [];
@@ -318,7 +318,10 @@ function CategoryAnalyticsPanel({ analytics, movementType, onIndicator, onPlan, 
       </ChartCard>
 
       <section className="grid gap-5 lg:grid-cols-2">
-        <ChartCard eyebrow="Distribución" title="Por tipo de servicio">
+        <ChartCard
+          eyebrow="Distribución"
+          title={movementType === 'adiciones' ? 'Servicio incorporado' : 'Por tipo de servicio'}
+        >
           {services.length ? (
             <div className="h-[280px] w-full">
               <ResponsiveContainer width="100%" height="100%">
@@ -367,7 +370,12 @@ function CategoryAnalyticsPanel({ analytics, movementType, onIndicator, onPlan, 
       )}
 
       {transitions.length > 0 && (
-        <ChartCard eyebrow="Transiciones" title="Planes de origen y destino">
+        <ChartCard
+          eyebrow="Transiciones"
+          title={movementType === 'cambios_plan'
+            ? 'Origen y destino del cambio'
+            : 'Planes de origen y destino'}
+        >
           <div className="space-y-4">{transitions.slice(0, 8).map((transition, index) => <div key={`${transition.from}-${transition.to}-${index}`}><div className="mb-1.5 flex items-center justify-between gap-3 text-sm"><span className="min-w-0 truncate font-semibold text-slate-600">{transition.from} <span className="text-slate-400">→</span> {transition.to}</span><strong className="shrink-0 tabular-nums text-slate-800">{number(transition.count)}</strong></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-blue-600" style={{ width: `${(transition.count / maxTransition) * 100}%` }} /></div></div>)}</div>
         </ChartCard>
       )}

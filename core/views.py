@@ -2134,6 +2134,7 @@ class SaleDetailView(IsAdminMixin, APIView):
             motivo_categoria_de_modo, plan_is_selectable)
         from .serializers import (
             SaleSerializer, resolve_sale_prices, validate_cambio_plan,
+            validate_adicion,
             resolve_motivo)
 
         data = request.data
@@ -2311,6 +2312,15 @@ class SaleDetailView(IsAdminMixin, APIView):
             if errors:
                 return Response({'error': next(iter(errors.values()))},
                                 status=status.HTTP_400_BAD_REQUEST)
+        elif mode == MODO_ADICION:
+            errors = validate_adicion(
+                plan=plan, service_type=service_type,
+                service_type_from=service_type_from,
+                addition_type=data.get('additionType', sale.additionType))
+            if errors:
+                return Response({'error': next(iter(errors.values()))},
+                                status=status.HTTP_400_BAD_REQUEST)
+            plan_from = None
         else:
             service_type_from = None
             plan_from = None
@@ -2799,15 +2809,61 @@ class DashboardStatsView(APIView):
 
         transitions = []
         if movement_type == 'cambios_plan':
+            from .domain import SERVICE_TYPE_FAMILY, SERVICE_FAMILY_LABELS
+
             transition_rows = selected.values(
-                'planFromId__label', 'planName', 'plan__label'
-            ).annotate(count=Count('id')).order_by(
-                '-count', 'planFromId__label', 'planName', 'plan__label')
+                'serviceTypeFrom', 'serviceType',
+                'planFromId__type', 'plan__type',
+                'planFromId__label', 'planName', 'plan__label')
+            transition_counts = {}
+            for row in transition_rows:
+                old_family = (SERVICE_TYPE_FAMILY.get(row['serviceTypeFrom'])
+                              or row['planFromId__type'])
+                new_family = SERVICE_TYPE_FAMILY.get(row['serviceType'])
+                if old_family and new_family and old_family != new_family:
+                    transition = (
+                        SERVICE_FAMILY_LABELS.get(old_family, old_family),
+                        SERVICE_FAMILY_LABELS.get(new_family, new_family))
+                else:
+                    transition = (
+                        row['planFromId__label'] or 'Sin plan anterior',
+                        row['planName'] or row['plan__label'] or 'Sin plan nuevo')
+                transition_counts[transition] = transition_counts.get(transition, 0) + 1
             transitions = [{
-                'from': row['planFromId__label'] or 'Sin plan anterior',
-                'to': row['planName'] or row['plan__label'] or 'Sin plan nuevo',
+                'from': old,
+                'to': new,
+                'count': count,
+            } for (old, new), count in sorted(
+                transition_counts.items(), key=lambda item: (-item[1], item[0]))]
+
+        if movement_type == 'adiciones':
+            addition_rows = selected.values('additionType').annotate(
+                count=Count('id'), total=Sum('total')).order_by('additionType')
+            services = [{
+                'serviceType': row['additionType'],
+                'label': {
+                    'adicion_tv': 'TV cable adicionada',
+                    'adicion_internet': 'Internet adicionado',
+                }.get(row['additionType'], 'Adición'),
                 'count': row['count'],
-            } for row in transition_rows]
+                'total': float(row['total'] or 0),
+            } for row in addition_rows]
+        else:
+            service_rows = selected.values('serviceType').annotate(
+                count=Count('id'), total=Sum('total')).order_by('serviceType')
+            service_labels = {
+                'internet': 'Internet',
+                'tv': 'TV analógica',
+                'tv_digital': 'TV digital',
+                'combo_analog': 'Internet + TV analógica',
+                'combo_digital': 'Internet + TV digital',
+            }
+            services = [{
+                'serviceType': row['serviceType'],
+                'label': service_labels.get(row['serviceType'], row['serviceType']),
+                'count': row['count'],
+                'total': float(row['total'] or 0),
+            } for row in service_rows]
 
         zone_rows = []
         if movement_type in {'nuevo_contrato', 'recontrataciones', 'traslados'}:
@@ -2834,6 +2890,7 @@ class DashboardStatsView(APIView):
             'plans': plan_rows,
             'motivos': motives,
             'transiciones': transitions,
+            'servicios': services,
             'zonas': zones,
             'series': series,
         }
@@ -2895,25 +2952,6 @@ class DashboardStatsView(APIView):
                 'otros': row.get('otros', 0),
             })
             current += timedelta(days=1)
-
-        service_rows = queryset.values('serviceType').annotate(
-            count=Count('id'), total=Sum('total')).order_by('serviceType')
-        service_labels = {
-            'internet': 'Internet',
-            'tv': 'TV analógica',
-            'tv_digital': 'TV digital',
-            'combo_analog': 'Internet + TV analógica',
-            'combo_digital': 'Internet + TV digital',
-        }
-        services = [
-            {
-                'serviceType': row['serviceType'],
-                'label': service_labels.get(row['serviceType'], row['serviceType']),
-                'count': row['count'],
-                'total': cls._amount(row['total']),
-            }
-            for row in service_rows
-        ]
 
         channel_queryset = queryset.filter(
             requestType__in=categories['nuevo_contrato'])
