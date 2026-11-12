@@ -248,8 +248,14 @@ def sale_plan_labels(sale, catalog=None):
 
 
 def is_service_change(sale, catalog=None):
-    """True si el movimiento cambia de familia de servicio (Combo -> Internet)."""
-    if request_type_mode(sale.requestType, catalog) != MODO_CAMBIO_PLAN:
+    """True si el movimiento cambia de familia de servicio.
+
+    Las adiciones también son cambios de servicio: por ejemplo,
+    INTERNET -> COMBO. La etiqueta administrativa sigue siendo ``adicion``;
+    esta función solo expresa el movimiento real entre familias.
+    """
+    if request_type_mode(sale.requestType, catalog) not in (
+            MODO_CAMBIO_PLAN, MODO_ADICION):
         return False
     previous = previous_service_family(sale)
     current = SERVICE_TYPE_FAMILY.get(sale.serviceType)
@@ -259,7 +265,7 @@ def is_service_change(sale, catalog=None):
 def sale_service_label(sale, catalog=None):
     """Texto de la columna SERVICIO.
 
-    En un cambio de plan se muestra la conversion. Si cambia la familia se
+    En un cambio de plan o adición se muestra la conversión. Si cambia la familia se
     usan las etiquetas de familia (COMBO -> INTERNET); si solo cambia la
     variante dentro de la misma familia se usan etiquetas cortas
     (COMBO ANALOGICO -> COMBO DIGITAL). En el resto de movimientos se deja
@@ -267,7 +273,8 @@ def sale_service_label(sale, catalog=None):
     """
     current_label = SERVICE_TYPE_LABELS.get(
         sale.serviceType, sale.serviceType or '')
-    if request_type_mode(sale.requestType, catalog) != MODO_CAMBIO_PLAN:
+    if request_type_mode(sale.requestType, catalog) not in (
+            MODO_CAMBIO_PLAN, MODO_ADICION):
         return current_label
 
     previous_type = sale.serviceTypeFrom or None
