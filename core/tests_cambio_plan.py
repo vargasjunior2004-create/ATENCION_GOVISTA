@@ -125,6 +125,40 @@ class CambioPlanEntreServiciosTest(TestCase):
         self.assertEqual(sale.total, self.plans[('internet', 1)].monthly)
         self.assertEqual(sale.applied_installation, Decimal('0'))
 
+    def test_adicion_de_tv_desde_internet_termina_en_combo(self):
+        r = self._post_sale({
+            'clientCode': 'AD001', 'clientName': 'Adicion TV',
+            'serviceType': 'combo_analog', 'serviceTypeFrom': 'internet',
+            'requestType': 'adicion', 'additionType': 'adicion_tv',
+            'planId': self.plans[('combo', 1)].id,
+        })
+        self.assertEqual(r.status_code, 201, r.content)
+        sale = Sale.objects.get(clientCode='AD001')
+        self.assertEqual(sale.requestType, 'adicion')
+        self.assertEqual(sale.serviceTypeFrom, 'internet')
+        self.assertEqual(sale.serviceType, 'combo_analog')
+        self.assertEqual(sale.additionType, 'adicion_tv')
+        self.assertEqual(r.json()['previousService']['family'], 'internet')
+
+    def test_adicion_de_internet_desde_tv_termina_en_combo(self):
+        r = self._post_sale({
+            'clientCode': 'AD002', 'clientName': 'Adicion Internet',
+            'serviceType': 'combo_digital', 'serviceTypeFrom': 'tv',
+            'requestType': 'adicion', 'additionType': 'adicion_internet',
+            'planId': self.plans[('combo', 1)].id,
+        })
+        self.assertEqual(r.status_code, 201, r.content)
+
+    def test_adicion_exige_servicio_actual_y_coherencia(self):
+        r = self._post_sale({
+            'clientCode': 'AD003', 'clientName': 'Adicion invalida',
+            'serviceType': 'combo_analog', 'requestType': 'adicion',
+            'additionType': 'adicion_tv',
+            'planId': self.plans[('combo', 1)].id,
+        })
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('servicio actual', r.json()['error'])
+
     def test_etiqueta_de_conversion_en_el_reporte(self):
         self._post_cambio('combo', 'internet')
         self._post_cambio('internet', 'combo', client_code='CP002')

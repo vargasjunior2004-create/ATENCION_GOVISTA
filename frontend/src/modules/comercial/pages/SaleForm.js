@@ -207,6 +207,11 @@ export default function SaleForm() {
     return p.type === SERVICE_TYPE_TO_PLAN_TYPE[form.serviceType];
   });
 
+  const additionCurrentOptions = SERVICE_TYPES.filter((t) => (
+    SERVICE_TYPE_TO_PLAN_TYPE[t.value] === 'internet'
+    || SERVICE_TYPE_TO_PLAN_TYPE[t.value] === 'tv'
+  ));
+
   // El plan anterior se ofrece completo y agrupado por familia, sin atarse
   // al servicio nuevo. Se omite el plan ya elegido como nuevo para no
   // proponer un cambio que no cambia nada.
@@ -304,17 +309,22 @@ export default function SaleForm() {
         next.planId = '';
         next.serviceTypeFrom = '';
       }
-      if (name === 'requestType') {
-        next.planId = '';
-        next.motivoId = '';
-        next.coverageZoneId = '';
-        const nuevoModo = modoOf(value);
-        if (value !== 'nuevo_contrato') next.canalCaptacionId = '';
-        if (nuevoModo !== 'adicion') next.additionType = '';
-        if (nuevoModo !== 'cambio_plan') {
-          next.planFromId = '';
-          next.serviceTypeFrom = '';
-        }
+        if (name === 'requestType') {
+          next.planId = '';
+          next.motivoId = '';
+          next.coverageZoneId = '';
+          const nuevoModo = modoOf(value);
+          if (nuevoModo === 'adicion') next.serviceType = 'combo_analog';
+          if (value !== 'nuevo_contrato') next.canalCaptacionId = '';
+          if (nuevoModo !== 'adicion') next.additionType = '';
+          if (nuevoModo !== 'adicion' && nuevoModo !== 'cambio_plan') {
+            next.planFromId = '';
+            next.serviceTypeFrom = '';
+          }
+          if (nuevoModo === 'adicion') {
+            next.planFromId = '';
+            next.serviceTypeFrom = '';
+          }
         if (value !== 'recontratacion') {
           next.equipmentRetained = null;
           next.requiresTechnicalVisit = null;
@@ -382,7 +392,8 @@ export default function SaleForm() {
         requestType: form.requestType,
         additionType: isAdicion ? form.additionType : '',
         planFromId: isCambio && form.planFromId ? Number(form.planFromId) : null,
-        serviceTypeFrom: isCambio && form.serviceTypeFrom ? form.serviceTypeFrom : null,
+        serviceTypeFrom: (isCambio || isAdicion) && form.serviceTypeFrom
+          ? form.serviceTypeFrom : null,
         motivoId: (isCambio || isRetiro) && form.motivoId ? Number(form.motivoId) : null,
         notes: form.notes,
         planId: Number(form.planId),
@@ -583,25 +594,48 @@ export default function SaleForm() {
                 <option key={t.code} value={t.code}>{t.nombre}</option>
               ))}
             </Select>
-             <Select
-               label={isCambio ? 'Tipo de Servicio Nuevo *' : 'Tipo de Servicio *'}
-               name="serviceType"
-               value={form.serviceType}
-               onChange={handleChange}
-             >
-               {SERVICE_TYPES.map((t) => (
-                 <option key={t.value} value={t.value}>{t.label}</option>
-               ))}
-             </Select>
+               <Select
+                 label={(isCambio || isAdicion) ? 'Tipo de Servicio Nuevo *' : 'Tipo de Servicio *'}
+                 name="serviceType"
+                 value={form.serviceType}
+                 onChange={handleChange}
+               >
+                {SERVICE_TYPES.filter((t) => !isAdicion
+                  || SERVICE_TYPE_TO_PLAN_TYPE[t.value] === 'combo').map((t) => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+               </Select>
           </div>
 
            {isAdicion && (
-            <Select label="Tipo de Adicion *" name="additionType" value={form.additionType} onChange={handleChange} required>
-              <option value="">--Seleccione--</option>
-              {ADDITION_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>{t.label}</option>
-              ))}
-            </Select>
+             <div className="space-y-4 rounded-2xl border-2 border-dashed border-emerald-200 bg-emerald-50/40 p-4">
+               <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider">
+                 Servicio que tiene el cliente
+               </p>
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                 <Select
+                   label="Servicio actual *"
+                   name="serviceTypeFrom"
+                   value={form.serviceTypeFrom}
+                   onChange={handleChange}
+                   required
+                 >
+                   <option value="">--Seleccione--</option>
+                   {additionCurrentOptions.map((t) => (
+                     <option key={t.value} value={t.value}>{t.label}</option>
+                   ))}
+                 </Select>
+                 <Select label="Servicio que se adiciona *" name="additionType" value={form.additionType} onChange={handleChange} required>
+                   <option value="">--Seleccione--</option>
+                   {ADDITION_TYPES.map((t) => (
+                     <option key={t.value} value={t.value}>{t.label}</option>
+                   ))}
+                 </Select>
+               </div>
+               <p className="text-xs text-slate-500">
+                 El nuevo servicio se registra como Combo. No requiere motivo.
+               </p>
+             </div>
            )}
 
           {isContract && (

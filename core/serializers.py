@@ -108,6 +108,42 @@ def validate_cambio_plan(plan, plan_from, service_type, service_type_from,
     return errors
 
 
+def validate_adicion(plan, service_type, service_type_from, addition_type):
+    """Valida una adición como incorporación de un servicio al actual.
+
+    Una adición siempre termina en una configuración Combo: el cliente tenía
+    Internet o TV y agrega el servicio que falta. No es un cambio de plan y no
+    lleva motivo; ``additionType`` identifica qué servicio se incorporó.
+    """
+    errors = {}
+    current_family = SERVICE_TYPE_FAMILY.get(service_type_from)
+    new_family = SERVICE_TYPE_FAMILY.get(service_type)
+
+    if not service_type_from:
+        errors['serviceTypeFrom'] = 'Debe seleccionar el servicio actual'
+    elif current_family not in ('internet', 'tv'):
+        errors['serviceTypeFrom'] = (
+            'El servicio actual de una adición debe ser Internet o TV')
+
+    if new_family != 'combo':
+        errors['serviceType'] = (
+            'El servicio nuevo de una adición debe ser un Combo')
+
+    expected_addition = {
+        'internet': 'adicion_internet',
+        'tv': 'adicion_tv',
+    }.get(current_family)
+    if expected_addition and addition_type != expected_addition:
+        errors['additionType'] = (
+            'El tipo de adición no corresponde al servicio que se incorpora')
+
+    if current_family and new_family == current_family:
+        errors['serviceTypeFrom'] = (
+            'La adición debe incorporar el servicio que falta')
+
+    return errors
+
+
 def resolve_motivo(motivo_id, mode, errors):
     """Resuelve el motivo de un movimiento y valida su categoria/estado.
 
@@ -739,7 +775,8 @@ class SaleSerializer(serializers.ModelSerializer):
     @extend_schema_field(dict)
     def get_previousService(self, obj):
         """Servicio anterior del movimiento, deducido si no se registro."""
-        if request_type_mode(obj.requestType, sale_catalog(self)) != MODO_CAMBIO_PLAN:
+        if request_type_mode(obj.requestType, sale_catalog(self)) not in (
+                MODO_CAMBIO_PLAN, MODO_ADICION):
             return None
         family = previous_service_family(obj)
         if not family:
@@ -1074,11 +1111,19 @@ class SaleCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {'serviceType': 'El plan no pertenece al tipo de servicio seleccionado'})
 
-        # additionType requerido cuando el tipo es ADICION
+        # Una adición incorpora el servicio faltante y siempre termina en
+        # Combo. No exige motivo; additionType identifica lo incorporado.
         if mode == MODO_ADICION:
             if not attrs.get('additionType'):
                 raise serializers.ValidationError(
                     {'additionType': 'Debe seleccionar el tipo de adicion (Internet o TV)'})
+            addition_errors = validate_adicion(
+                plan=plan,
+                service_type=attrs['serviceType'],
+                service_type_from=service_type_from,
+                addition_type=attrs.get('additionType'))
+            if addition_errors:
+                raise serializers.ValidationError(addition_errors)
         else:
             attrs['additionType'] = ''
 
@@ -1109,7 +1154,7 @@ class SaleCreateSerializer(serializers.Serializer):
                 change_reason=attrs['changeReason'])
             if errors:
                 raise serializers.ValidationError(errors)
-        else:
+        elif mode != MODO_ADICION:
             service_type_from = None
 
         if reason_errors:
