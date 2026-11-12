@@ -2729,16 +2729,22 @@ class DashboardStatsView(APIView):
         }
         classified = set(categories['nuevo_contrato']) | set(
             categories['recontrataciones'])
-        for name, mode in (
-            ('retiros', MODO_RETIRO),
-            ('cambios_plan', MODO_CAMBIO_PLAN),
-            ('adiciones', MODO_ADICION),
-            ('traslados', MODO_TRASLADO),
-        ):
+        # Una adición es un cambio de servicio con una etiqueta comercial
+        # distinta. Se agrupa junto a cambios_plan para no duplicar métricas;
+        # requestType sigue conservando "adicion" para reportes y auditoría.
+        mode_groups = (
+            ('retiros', (MODO_RETIRO,)),
+            ('cambios_plan', (MODO_CAMBIO_PLAN, MODO_ADICION)),
+            ('traslados', (MODO_TRASLADO,)),
+        )
+        for name, modes in mode_groups:
             categories[name] = [
                 code for code, tipo in catalog.items()
-                if code not in classified and tipo.modo == mode]
+                if code not in classified and tipo.modo in modes]
             classified.update(categories[name])
+        # Se conserva la clave para clientes antiguos del endpoint, pero ya
+        # no clasifica movimientos: las adiciones viven en cambios_plan.
+        categories['adiciones'] = []
         # Compatibilidad para consumidores antiguos del endpoint. No se
         # expone como categoría nueva ni se incluye en el desglose.
         categories['instalaciones'] = (

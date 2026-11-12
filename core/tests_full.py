@@ -397,7 +397,10 @@ class DashboardTests(TestCase):
         self.assertEqual(analytics['nuevo_contrato']['count'], 1)
         self.assertEqual(analytics['recontrataciones']['count'], 1)
         self.assertEqual(analytics['retiros']['count'], 1)
-        self.assertEqual(analytics['cambios_plan']['count'], 1)
+        # Las adiciones también son cambios de servicio; la etiqueta
+        # administrativa se conserva en requestType, pero no se duplica en
+        # las métricas del dashboard.
+        self.assertEqual(analytics['cambios_plan']['count'], 2)
         self.assertEqual(analytics['balance_neto'], 1)
         self.assertEqual(len(analytics['series']), 2)
         self.assertEqual(analytics['series'][0]['nuevo_contrato'], 1)
@@ -1015,8 +1018,8 @@ class DashboardTests(TestCase):
         analytics = data['analytics']
 
         self.assertEqual(analytics['period']['movement_type'], 'cambios_plan')
-        self.assertEqual(analytics['series'][0]['movimientos'], 1)
-        self.assertEqual(analytics['cambios_plan']['count'], 1)
+        self.assertEqual(analytics['series'][0]['movimientos'], 2)
+        self.assertEqual(analytics['cambios_plan']['count'], 2)
         self.assertEqual(analytics['nuevo_contrato']['count'], 0)
         self.assertEqual(analytics['recontrataciones']['count'], 0)
         self.assertEqual(analytics['retiros']['count'], 0)
