@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'drf_spectacular',
     'core',
     'administration',
+    'document_reader',
 ]
 
 MIDDLEWARE = [
