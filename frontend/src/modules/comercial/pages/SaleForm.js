@@ -351,7 +351,12 @@ export default function SaleForm() {
           next.transferReferences = '';
           next.transferHasSketch = null;
         }
-        if (nuevoModo === 'retiro' || modoOf(form.requestType) === 'retiro') {
+        if (
+          nuevoModo === 'retiro'
+          || nuevoModo === 'nuevo'
+          || modoOf(form.requestType) === 'retiro'
+          || form.requestType === 'nuevo_contrato'
+        ) {
           setRetirementReady(false);
           setScanFile(null);
           setScanError('');
@@ -410,7 +415,7 @@ export default function SaleForm() {
   };
 
   const handleDocumentPaste = (event) => {
-    if (!isRetiro || event.defaultPrevented) return;
+    if ((!isRetiro && !isNewContract) || event.defaultPrevented) return;
     if (event.defaultPrevented) return;
     const imageItem = [...(event.clipboardData?.items || [])]
       .find((item) => item.kind === 'file' && item.type.startsWith('image/'));
@@ -429,7 +434,10 @@ export default function SaleForm() {
     setScanError('');
     setScanNotice('');
     try {
-      const result = await api.scanSaleDocument(scanFile);
+      const result = await api.scanSaleDocument(
+        scanFile,
+        isNewContract ? 'installation' : 'retirement',
+      );
       const extracted = result.fields || {};
       setForm((prev) => ({
         ...prev,
@@ -653,9 +661,14 @@ export default function SaleForm() {
       onDrop={handleScanDrop}
     >
       <div className="mx-auto max-w-2xl text-center">
-        <p className="text-lg font-black text-slate-900">Carga la orden de retiro</p>
+        <p className="text-lg font-black text-slate-900">
+          {isNewContract ? 'Carga la orden de instalación' : 'Carga la orden de retiro'}
+        </p>
         <p className="mt-2 text-sm text-slate-500">
-          Selecciona una fotografía o PDF, arrástralo aquí o pega una captura con Ctrl+V.
+          {isNewContract
+            ? 'Usa la orden cuyo encabezado indique una instalación.'
+            : 'Usa la orden cuyo encabezado diga “Retiro de aparato”.'}
+          {' '}Selecciona una fotografía o PDF, arrástralo aquí o pega una captura con Ctrl+V.
         </p>
         <div className="mt-6 flex flex-col items-center gap-3">
           <input
@@ -686,12 +699,16 @@ export default function SaleForm() {
     </div>
   );
 
-  if (isRetiro && !retirementReady) {
+  if ((isRetiro || isNewContract) && !retirementReady) {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Registrar retiro</h1>
-          <p className="text-sm text-slate-400 mt-1">Primero carga la orden para completar los datos.</p>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+            {isRetiro ? 'Registrar retiro' : 'Registrar nuevo contrato'}
+          </h1>
+          <p className="text-sm text-slate-400 mt-1">
+            Primero carga la orden para completar los datos.
+          </p>
         </div>
         <Card className="p-4 sm:p-6">{retirementUploadPanel}</Card>
       </div>
@@ -710,7 +727,7 @@ export default function SaleForm() {
            {error && <Alert type="error">{error}</Alert>}
            {success && <Alert type="success">{success}</Alert>}
 
-          {isRetiro && (
+          {(isRetiro || isNewContract) && (
             <div className="flex items-center justify-between gap-3 rounded-xl border border-brand-200 bg-brand-50/60 p-3">
               <p className="truncate text-sm font-semibold text-slate-700">{scanFile?.name || 'Orden procesada'}</p>
               <button type="button" onClick={clearScannedDocument} className="shrink-0 text-sm font-bold text-brand-700 hover:underline">
