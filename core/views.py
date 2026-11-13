@@ -87,7 +87,11 @@ class SaleDocumentScanView(APIView):
             class ExtractedSale(BaseModel):
                 documentType: str | None = Field(
                     default=None,
-                    description='Debe ser retiro_aparato únicamente si el encabezado visible dice "Retiro de aparato".',
+                    description=(
+                        'retiro_aparato si el encabezado dice "Retiro de aparato"; '
+                        'instalacion si dice "Instalación de Servicio de Internet" '
+                        'u otra instalación.'
+                    ),
                 )
                 clientCode: str | None = None
                 clientName: str | None = None
@@ -176,6 +180,13 @@ class SaleDocumentScanView(APIView):
 
             schema = self.ScanFields.model()
             client = genai.Client(api_key=api_key)
+            document_mode = request.data.get('document_mode', 'retirement')
+            is_installation = document_mode == 'installation'
+            expected_type = 'instalacion' if is_installation else 'retiro_aparato'
+            accepted_headline = (
+                '“Instalación de Servicio de Internet” (o el tipo de instalación visible)'
+                if is_installation else '“Retiro de aparato”'
+            )
             response = client.models.generate_content(
                 model='gemini-3.5-flash-lite',
                 contents=[
@@ -183,11 +194,17 @@ class SaleDocumentScanView(APIView):
                         data=uploaded.read(), mime_type=mime_type),
                     ('Extrae únicamente los datos visibles del documento. '
                       'No inventes valores. Devuelve null si un campo no aparece. '
-                      'Este lector acepta únicamente órdenes cuyo encabezado diga exactamente '
-                      '"Retiro de aparato". En documentType devuelve "retiro_aparato" solo '
-                      'si ese título es visible; para instalaciones u otros documentos devuelve '
-                      '"otro" o null. No confundas "Retiro de aparato" con una instalación. '
-                      'Usa exactamente los códigos indicados en el esquema. '
+                     f'Este lector está procesando una orden de {("instalación" if is_installation else "retiro")}. '
+                     f'Acepta únicamente documentos cuyo encabezado corresponda a {accepted_headline}. '
+                     f'En documentType devuelve "{expected_type}" solo si el encabezado es visible; '
+                     'para el tipo contrario u otros documentos devuelve "otro" o null. '
+                     'No confundas una instalación con un retiro. '
+                     + (
+                         'Para una instalación, usa como clientCode el número que aparece junto a '
+                         '"CONTRATO" y extrae el nombre, teléfono, servicio instalado y plan. '
+                         if is_installation else ''
+                     )
+                     + 'Usa exactamente los códigos indicados en el esquema. '
                       'La fecha impresa no debe extraerse ni usarse para completar el formulario.')
                 ],
                 config=types.GenerateContentConfig(
@@ -210,13 +227,23 @@ class SaleDocumentScanView(APIView):
 
         values = {key: self._clean(value) for key, value in extracted.model_dump().items()}
         document_type = (values.get('documentType') or '').casefold().replace('-', '_').replace(' ', '_')
-        if document_type not in {'retiro_aparato', 'retiro_de_aparato'}:
+        document_mode = request.data.get('document_mode', 'retirement')
+        if document_mode == 'installation':
+            valid_document_types = {'instalacion', 'instalación'}
+            invalid_message = (
+                'El documento no parece ser una orden de instalación. '
+                'Carga una orden cuyo encabezado indique una instalación.'
+            )
+        else:
+            valid_document_types = {'retiro_aparato', 'retiro_de_aparato'}
+            invalid_message = (
+                'El documento no parece ser una orden de retiro de aparato. '
+                'Carga una orden cuyo encabezado diga "Retiro de aparato".'
+            )
+        if document_type not in valid_document_types:
             return Response(
                 {
-                    'error': (
-                        'El documento no parece ser una orden de retiro de aparato. '
-                        'Carga una orden cuyo encabezado diga "Retiro de aparato".'
-                    ),
+                    'error': invalid_message,
                     'code': 'invalid_document_type',
                 },
                 status=422,
