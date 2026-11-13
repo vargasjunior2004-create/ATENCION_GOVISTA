@@ -85,6 +85,10 @@ class SaleDocumentScanView(APIView):
             from pydantic import BaseModel, Field
 
             class ExtractedSale(BaseModel):
+                documentType: str | None = Field(
+                    default=None,
+                    description='Debe ser retiro_aparato únicamente si el encabezado visible dice "Retiro de aparato".',
+                )
                 clientCode: str | None = None
                 clientName: str | None = None
                 clientCi: str | None = None
@@ -178,9 +182,13 @@ class SaleDocumentScanView(APIView):
                     types.Part.from_bytes(
                         data=uploaded.read(), mime_type=mime_type),
                     ('Extrae únicamente los datos visibles del documento. '
-                     'No inventes valores. Devuelve null si un campo no aparece. '
-                     'Usa exactamente los códigos indicados en el esquema. '
-                     'La información corresponde a una solicitud de venta.')
+                      'No inventes valores. Devuelve null si un campo no aparece. '
+                      'Este lector acepta únicamente órdenes cuyo encabezado diga exactamente '
+                      '"Retiro de aparato". En documentType devuelve "retiro_aparato" solo '
+                      'si ese título es visible; para instalaciones u otros documentos devuelve '
+                      '"otro" o null. No confundas "Retiro de aparato" con una instalación. '
+                      'Usa exactamente los códigos indicados en el esquema. '
+                      'La fecha impresa no debe extraerse ni usarse para completar el formulario.')
                 ],
                 config=types.GenerateContentConfig(
                     response_mime_type='application/json',
@@ -201,6 +209,18 @@ class SaleDocumentScanView(APIView):
                 status=502)
 
         values = {key: self._clean(value) for key, value in extracted.model_dump().items()}
+        document_type = (values.get('documentType') or '').casefold().replace('-', '_').replace(' ', '_')
+        if document_type not in {'retiro_aparato', 'retiro_de_aparato'}:
+            return Response(
+                {
+                    'error': (
+                        'El documento no parece ser una orden de retiro de aparato. '
+                        'Carga una orden cuyo encabezado diga "Retiro de aparato".'
+                    ),
+                    'code': 'invalid_document_type',
+                },
+                status=422,
+            )
         service_aliases = {
             'internet': 'internet', 'tv': 'tv', 'tv analogica': 'tv',
             'tv digital': 'tv_digital', 'tv cable': 'tv', 'combo': 'combo_analog',
@@ -229,7 +249,7 @@ class SaleDocumentScanView(APIView):
         if plan_from:
             fields['planFromId'] = plan_from.id
         warnings = []
-        for field in ('date', 'clientCode', 'clientName', 'serviceType', 'planId'):
+        for field in ('clientCode', 'clientName', 'serviceType', 'planId'):
             if field not in fields:
                 warnings.append(f'Campo faltante: {field}')
         return Response({
