@@ -3,6 +3,7 @@ import logging
 import os
 import threading
 import re
+import unicodedata
 from difflib import SequenceMatcher
 from urllib.parse import urlparse, parse_qs
 from decimal import Decimal, InvalidOperation
@@ -109,6 +110,10 @@ class SaleDocumentScanView(APIView):
                 transferCurrentAddress: str | None = None
                 transferNewAddress: str | None = None
                 transferReferences: str | None = None
+                neighborhood: str | None = None
+                address: str | None = None
+                province: str | None = None
+                crossStreets: str | None = None
 
             return ExtractedSale
 
@@ -148,6 +153,48 @@ class SaleDocumentScanView(APIView):
             return []
         if len(scored) > 1 and scored[0][0] - scored[1][0] < 0.08:
             return [plan for _, plan in scored[:3]]
+        return [scored[0][1]]
+
+    @staticmethod
+    def _location_key(value):
+        value = unicodedata.normalize('NFKD', str(value or ''))
+        value = ''.join(char for char in value if not unicodedata.combining(char))
+        return re.sub(r'[^a-z0-9 ]+', ' ', value.casefold()).strip()
+
+    @classmethod
+    def _match_coverage_zones(cls, values, zones):
+        neighborhood = cls._location_key(values.get('neighborhood'))
+        address = cls._location_key(values.get('address'))
+        province = cls._location_key(values.get('province'))
+        if not any((neighborhood, address, province)):
+            return []
+
+        scored = []
+        for zone in zones:
+            name = cls._location_key(zone.name)
+            description = cls._location_key(zone.description)
+            haystack = f'{name} {description}'.strip()
+            score = 0
+            if neighborhood and neighborhood in haystack:
+                score = 1
+            elif neighborhood:
+                score = max(
+                    SequenceMatcher(None, neighborhood, candidate).ratio()
+                    for candidate in (name, description)
+                    if candidate
+                )
+            if address and address in haystack:
+                score = max(score, 0.85)
+            if province and province in haystack:
+                score = max(score, 0.60)
+            if score:
+                scored.append((score, zone))
+
+        scored.sort(key=lambda item: item[0], reverse=True)
+        if not scored or scored[0][0] < 0.72:
+            return []
+        if len(scored) > 1 and scored[0][0] - scored[1][0] < 0.08:
+            return [zone for _, zone in scored[:3]]
         return [scored[0][1]]
 
     def post(self, request):
@@ -275,6 +322,13 @@ class SaleDocumentScanView(APIView):
                 }[plan.type]
         if plan_from:
             fields['planFromId'] = plan_from.id
+        coverage_matches = self._match_coverage_zones(
+            values,
+            list(CoverageZone.objects.filter(is_active=True)),
+        )
+        coverage_zone = coverage_matches[0] if len(coverage_matches) == 1 else None
+        if coverage_zone:
+            fields['coverageZoneId'] = coverage_zone.id
         warnings = []
         for field in ('clientCode', 'clientName', 'serviceType', 'planId'):
             if field not in fields:
@@ -284,6 +338,11 @@ class SaleDocumentScanView(APIView):
             'warnings': warnings,
             'plan_match': bool(plan),
             'plan_from_match': bool(plan_from),
+            'coverage_zone_match': bool(coverage_zone),
+            'coverage_zone_options': [
+                {'id': zone.id, 'name': zone.name}
+                for zone in coverage_matches if not coverage_zone
+            ],
             'plan_options': [
                 {'id': item.id, 'code': item.code, 'label': item.label, 'type': item.type}
                 for item in plan_matches if not plan

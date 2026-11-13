@@ -93,6 +93,7 @@ export default function SaleForm() {
   const [scanNotice, setScanNotice] = useState('');
   const [retirementReady, setRetirementReady] = useState(false);
   const [scanPreviewUrl, setScanPreviewUrl] = useState('');
+  const [coverageZoneOptions, setCoverageZoneOptions] = useState([]);
   const scanInputRef = useRef(null);
 
   const [query, setQuery] = useState('');
@@ -449,11 +450,23 @@ export default function SaleForm() {
         ),
         planId: extracted.planId ? String(extracted.planId) : prev.planId,
         planFromId: extracted.planFromId ? String(extracted.planFromId) : prev.planFromId,
+        coverageZoneId: extracted.coverageZoneId
+          ? String(extracted.coverageZoneId) : prev.coverageZoneId,
       }));
       if (extracted.clientName) setQuery(extracted.clientName);
       const warnings = result.warnings || [];
       if (result.plan_options?.length > 1) {
         warnings.push('Hay varias coincidencias de plan. Selecciona el plan manualmente.');
+      }
+      setCoverageZoneOptions(result.coverage_zone_options || []);
+      if (isNewContract && result.coverage_zone_options?.length > 1) {
+        warnings.push('Hay varias coincidencias de zona. Selecciona la zona manualmente.');
+      } else if (
+        isNewContract
+        && result.coverage_zone_options?.length === 0
+        && !result.fields?.coverageZoneId
+      ) {
+        warnings.push('No se pudo relacionar automáticamente la dirección con una zona.');
       }
       setRetirementReady(true);
       setScanNotice(warnings.length
@@ -475,6 +488,7 @@ export default function SaleForm() {
     setScanFile(null);
     setScanError('');
     setScanNotice('');
+    setCoverageZoneOptions([]);
     setRetirementReady(false);
     if (scanInputRef.current) scanInputRef.current.value = '';
     setForm((prev) => ({
@@ -614,6 +628,11 @@ export default function SaleForm() {
           Ver cobertura en el mapa
           <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
         </a>
+      )}
+      {coverageZoneOptions.length > 1 && (
+        <p className="text-xs font-semibold text-amber-700">
+          Revisa las coincidencias sugeridas por la orden antes de guardar.
+        </p>
       )}
     </div>
   );
