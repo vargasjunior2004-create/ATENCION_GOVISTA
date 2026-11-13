@@ -189,13 +189,6 @@ const api = {
     body.append('file', file);
     return request('/api/sales/escanear/', { method: 'POST', body });
   },
-  extractRetirementDocument: (file) => {
-    const body = new FormData();
-    body.append('file', file);
-    return request('/api/document-reader/extract-retirement/', {
-      method: 'POST', body,
-    });
-  },
   updateSale: (id, data) => request(`/api/sales/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteSale: (id) => request(`/api/sales/${id}`, { method: 'DELETE' }),
   restoreSale: (id) => request(`/api/sales/${id}/restore`, { method: 'POST' }),

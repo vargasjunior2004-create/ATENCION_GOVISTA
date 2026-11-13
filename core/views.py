@@ -85,7 +85,6 @@ class SaleDocumentScanView(APIView):
             from pydantic import BaseModel, Field
 
             class ExtractedSale(BaseModel):
-                date: str | None = None
                 clientCode: str | None = None
                 clientName: str | None = None
                 clientCi: str | None = None
@@ -93,12 +92,9 @@ class SaleDocumentScanView(APIView):
                 serviceType: str | None = Field(
                     default=None,
                     description='internet, tv, tv_digital, combo_analog o combo_digital')
-                requestType: str | None = None
-                additionType: str | None = None
                 planName: str | None = None
                 planCode: str | None = None
                 planFromName: str | None = None
-                changeReason: str | None = None
                 notes: str | None = None
                 meterNumber: str | None = None
                 equipmentSerial: str | None = None
@@ -116,24 +112,35 @@ class SaleDocumentScanView(APIView):
         return value or None
 
     @classmethod
-    def _match_plan(cls, name, code, plans):
+    def _match_plans(cls, name, code, service_type, plans):
         needle = cls._clean(code) or cls._clean(name)
         if not needle:
-            return None
+            return []
         needle = needle.casefold()
-        exact = next((plan for plan in plans if needle in {
+        service_family = {
+            'internet': 'internet', 'tv': 'tv', 'tv analogica': 'tv',
+            'tv digital': 'tv', 'tv cable': 'tv',
+            'combo': 'combo', 'combo analogico': 'combo',
+            'combo digital': 'combo',
+        }.get((service_type or '').casefold().replace('_', ' '))
+        filtered_plans = [p for p in plans if not service_family or p.type == service_family]
+        exact = [plan for plan in filtered_plans if needle in {
             plan.code.casefold(), plan.label.casefold(),
-        }), None)
+        }]
         if exact:
             return exact
         scored = []
-        for plan in plans:
-            candidates = (plan.code, plan.label)
+        for plan in filtered_plans:
+            plan_names = (plan.code, plan.label)
             score = max(SequenceMatcher(None, needle, candidate.casefold()).ratio()
-                        for candidate in candidates)
+                        for candidate in plan_names)
             scored.append((score, plan))
-        score, plan = max(scored, default=(0, None), key=lambda item: item[0])
-        return plan if score >= 0.62 else None
+        scored.sort(key=lambda item: item[0], reverse=True)
+        if not scored or scored[0][0] < 0.70:
+            return []
+        if len(scored) > 1 and scored[0][0] - scored[1][0] < 0.08:
+            return [plan for _, plan in scored[:3]]
+        return [scored[0][1]]
 
     def post(self, request):
         uploaded = request.FILES.get('file')
@@ -196,21 +203,29 @@ class SaleDocumentScanView(APIView):
         values = {key: self._clean(value) for key, value in extracted.model_dump().items()}
         service_aliases = {
             'internet': 'internet', 'tv': 'tv', 'tv analogica': 'tv',
-            'tv digital': 'tv_digital', 'combo': 'combo_analog',
+            'tv digital': 'tv_digital', 'tv cable': 'tv', 'combo': 'combo_analog',
             'combo analogico': 'combo_analog', 'combo digital': 'combo_digital',
         }
         if values.get('serviceType'):
             values['serviceType'] = service_aliases.get(
                 values['serviceType'].casefold().replace('_', ' '),
                 values['serviceType'])
-        plans = list(Plan.objects.filter(active=True, legacy=False))
-        plan = self._match_plan(values.get('planName'), values.get('planCode'), plans)
-        plan_from = self._match_plan(values.get('planFromName'), None, plans)
+        plans = list(Plan.objects.filter(active=True))
+        plan_matches = self._match_plans(
+            values.get('planName'), values.get('planCode'), values.get('serviceType'), plans)
+        plan_from_matches = self._match_plans(
+            values.get('planFromName'), None, values.get('serviceType'), plans)
         fields = {
             key: value for key, value in values.items() if value is not None
         }
+        plan = plan_matches[0] if len(plan_matches) == 1 else None
+        plan_from = plan_from_matches[0] if len(plan_from_matches) == 1 else None
         if plan:
             fields.update({'planId': plan.id, 'planName': plan.label, 'planCode': plan.code})
+            if not fields.get('serviceType'):
+                fields['serviceType'] = {
+                    'internet': 'internet', 'tv': 'tv', 'combo': 'combo_analog',
+                }[plan.type]
         if plan_from:
             fields['planFromId'] = plan_from.id
         warnings = []
@@ -222,6 +237,10 @@ class SaleDocumentScanView(APIView):
             'warnings': warnings,
             'plan_match': bool(plan),
             'plan_from_match': bool(plan_from),
+            'plan_options': [
+                {'id': item.id, 'code': item.code, 'label': item.label, 'type': item.type}
+                for item in plan_matches if not plan
+            ],
         })
 
 

@@ -9,7 +9,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/sales/escanear/', SaleDocumentScanView.as_view()),
     path('api/', include('core.urls')),
-    path('api/document-reader/', include('document_reader.urls')),
     path('api/admin/', include('administration.urls')),
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path(

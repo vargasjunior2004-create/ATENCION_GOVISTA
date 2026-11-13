@@ -39,24 +39,6 @@ const FAMILY_DEFAULT_SERVICE = {
 };
 
 const FAMILY_LABELS = { internet: 'INTERNET', tv: 'TV', combo: 'COMBO' };
-const SOTV_MAX_BYTES = 10 * 1024 * 1024;
-const SOTV_ACCEPTED_TYPES = new Set([
-  'application/pdf', 'image/jpeg', 'image/png', 'image/webp',
-]);
-
-const SOTV_FIELD_LABELS = {
-  date: 'la fecha',
-  clientCode: 'el Kardex',
-  clientName: 'el nombre del cliente',
-  equipmentSerial: 'la serie del equipo',
-};
-
-function readableSotvWarnings(warnings = []) {
-  return warnings.map((warning) => {
-    const field = warning.replace(/^Campo faltante:\s*/, '');
-    return `No se pudo leer ${SOTV_FIELD_LABELS[field] || `el campo ${field}`}. Complétalo manualmente.`;
-  });
-}
 
 const ADDITION_TYPES = [
   { value: 'adicion_internet', label: 'ADICION INTERNET' },
@@ -105,17 +87,13 @@ export default function SaleForm() {
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
-  const [sotvFile, setSotvFile] = useState(null);
-  const [sotvLoading, setSotvLoading] = useState(false);
-  const [sotvError, setSotvError] = useState('');
-  const [sotvNotice, setSotvNotice] = useState('');
-  const [extractedEquipmentSerial, setExtractedEquipmentSerial] = useState('');
-  const [sotvPreviewUrl, setSotvPreviewUrl] = useState('');
-  const [sotvDropActive, setSotvDropActive] = useState(false);
   const [scanFile, setScanFile] = useState(null);
   const [scanLoading, setScanLoading] = useState(false);
   const [scanError, setScanError] = useState('');
   const [scanNotice, setScanNotice] = useState('');
+  const [retirementReady, setRetirementReady] = useState(false);
+  const [scanPreviewUrl, setScanPreviewUrl] = useState('');
+  const scanInputRef = useRef(null);
 
   const [query, setQuery] = useState('');
   const [customers, setCustomers] = useState([]);
@@ -133,14 +111,14 @@ export default function SaleForm() {
   const [equipmentLookupError, setEquipmentLookupError] = useState('');
 
   useEffect(() => {
-    if (!sotvFile || !sotvFile.type.startsWith('image/')) {
-      setSotvPreviewUrl('');
+    if (!scanFile || !scanFile.type.startsWith('image/')) {
+      setScanPreviewUrl('');
       return undefined;
     }
-    const url = URL.createObjectURL(sotvFile);
-    setSotvPreviewUrl(url);
+    const url = URL.createObjectURL(scanFile);
+    setScanPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
-  }, [sotvFile]);
+  }, [scanFile]);
 
   useEffect(() => {
     api.getActivePlans().then(setPlans).catch(() => {});
@@ -383,6 +361,13 @@ export default function SaleForm() {
           next.transferReferences = '';
           next.transferHasSketch = null;
         }
+        if (nuevoModo === 'retiro' || modoOf(form.requestType) === 'retiro') {
+          setRetirementReady(false);
+          setScanFile(null);
+          setScanError('');
+          setScanNotice('');
+          if (scanInputRef.current) scanInputRef.current.value = '';
+        }
       }
       return next;
     });
@@ -413,39 +398,6 @@ export default function SaleForm() {
     }
   };
 
-  const acceptSotvFile = (file) => {
-    if (!file) return;
-    const extension = `.${file.name.split('.').pop().toLowerCase()}`;
-    const validType = SOTV_ACCEPTED_TYPES.has(file.type)
-      || ['.pdf', '.jpg', '.jpeg', '.png', '.webp'].includes(extension);
-    if (!validType) {
-      setSotvFile(null);
-      setSotvError('Formato no permitido. Usa PDF, JPG, JPEG, PNG o WEBP.');
-      return;
-    }
-    if (file.size > SOTV_MAX_BYTES) {
-      setSotvFile(null);
-      setSotvError('El archivo supera el máximo permitido de 10 MB.');
-      return;
-    }
-    setSotvFile(file);
-    setSotvError('');
-    setSotvNotice('');
-  };
-
-  const handleSotvPaste = (event) => {
-    if (!isRetiro) return;
-    const imageItem = [...(event.clipboardData?.items || [])]
-      .find((item) => item.kind === 'file' && item.type.startsWith('image/'));
-    const file = imageItem?.getAsFile();
-    if (file) {
-      event.preventDefault();
-      acceptSotvFile(new File([file], `captura-sotv-${Date.now()}.png`, {
-        type: file.type || 'image/png',
-      }));
-    }
-  };
-
   const acceptScanFile = (file) => {
     if (!file) return;
     const extension = `.${file.name.split('.').pop().toLowerCase()}`;
@@ -464,9 +416,11 @@ export default function SaleForm() {
     setScanFile(file);
     setScanError('');
     setScanNotice('');
+    setRetirementReady(false);
   };
 
   const handleDocumentPaste = (event) => {
+    if (!isRetiro || event.defaultPrevented) return;
     if (event.defaultPrevented) return;
     const imageItem = [...(event.clipboardData?.items || [])]
       .find((item) => item.kind === 'file' && item.type.startsWith('image/'));
@@ -490,10 +444,8 @@ export default function SaleForm() {
       setForm((prev) => ({
         ...prev,
         ...Object.fromEntries(
-          ['date', 'clientCode', 'clientName', 'clientCi', 'clientPhone',
-            'serviceType', 'requestType', 'additionType', 'changeReason',
-            'notes', 'meterNumber', 'equipmentSerial', 'transferCurrentAddress',
-            'transferNewAddress', 'transferReferences']
+          ['clientCode', 'clientName', 'clientCi', 'clientPhone',
+            'serviceType', 'notes', 'meterNumber', 'equipmentSerial']
             .filter((key) => extracted[key])
             .map((key) => [key, extracted[key]]),
         ),
@@ -502,6 +454,10 @@ export default function SaleForm() {
       }));
       if (extracted.clientName) setQuery(extracted.clientName);
       const warnings = result.warnings || [];
+      if (result.plan_options?.length > 1) {
+        warnings.push('Hay varias coincidencias de plan. Selecciona el plan manualmente.');
+      }
+      setRetirementReady(true);
       setScanNotice(warnings.length
         ? `Lectura terminada. ${warnings.join(' ')} Revisa y completa los campos faltantes.`
         : 'Lectura terminada. Revisa los datos antes de guardar.');
@@ -512,39 +468,32 @@ export default function SaleForm() {
     }
   };
 
-  const handleSotvDrop = (event) => {
+  const handleScanDrop = (event) => {
     event.preventDefault();
-    setSotvDropActive(false);
-    if (isRetiro) acceptSotvFile(event.dataTransfer.files?.[0]);
+    acceptScanFile(event.dataTransfer.files?.[0]);
   };
 
-  const extractSotvRetirement = async () => {
-    if (!sotvFile) return;
-    setSotvLoading(true);
-    setSotvError('');
-    setSotvNotice('');
-    try {
-      const result = await api.extractRetirementDocument(sotvFile);
-      const extracted = result.fields || {};
-      setForm((prev) => ({
-        ...prev,
-        date: extracted.date || prev.date,
-        clientCode: extracted.clientCode || prev.clientCode,
-        clientName: extracted.clientName || prev.clientName,
-        equipmentSerial: prev.equipmentDelivered
-          ? (extracted.equipmentSerial || prev.equipmentSerial) : prev.equipmentSerial,
-      }));
-      setQuery(extracted.clientName || query);
-      setExtractedEquipmentSerial(extracted.equipmentSerial || '');
-      const readableWarnings = readableSotvWarnings(result.warnings);
-      setSotvNotice(readableWarnings.length
-        ? `Lectura terminada. ${readableWarnings.join(' ')}`
-        : 'Lectura terminada. Revisa los datos antes de continuar.');
-    } catch (err) {
-      setSotvError(err?.error?.message || err?.error || 'No se pudo leer la orden SOTV.');
-    } finally {
-      setSotvLoading(false);
-    }
+  const clearScannedDocument = () => {
+    setScanFile(null);
+    setScanError('');
+    setScanNotice('');
+    setRetirementReady(false);
+    if (scanInputRef.current) scanInputRef.current.value = '';
+    setForm((prev) => ({
+      ...prev,
+      clientCode: '', clientName: '', clientCi: '', clientPhone: '',
+      serviceType: 'internet', planId: '', planFromId: '', serviceTypeFrom: '',
+      motivoId: '', additionType: '', equipmentDelivered: null,
+      equipmentSerial: '', equipmentRecoveryRequired: false,
+      notes: '', meterNumber: '', coverageZoneId: '', canalCaptacionId: '',
+      transferCurrentAddress: '', transferNewAddress: '', transferReferences: '',
+      transferHasSketch: null,
+    }));
+    setQuery('');
+    setSelectedCustomer(null);
+    setEquipmentLookup(null);
+    setEquipmentLookupError('');
+    setShowPreview(false);
   };
 
   const handleSubmit = async (e) => {
@@ -707,6 +656,59 @@ export default function SaleForm() {
     notes: form.notes,
   };
 
+  const retirementUploadPanel = (
+    <div
+      className="rounded-2xl border-2 border-dashed border-brand-200 bg-brand-50/40 p-5 sm:p-8"
+      onPaste={handleDocumentPaste}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={handleScanDrop}
+    >
+      <div className="mx-auto max-w-2xl text-center">
+        <p className="text-lg font-black text-slate-900">Carga la orden de retiro</p>
+        <p className="mt-2 text-sm text-slate-500">
+          Selecciona una fotografía o PDF, arrástralo aquí o pega una captura con Ctrl+V.
+        </p>
+        <div className="mt-6 flex flex-col items-center gap-3">
+          <input
+            ref={scanInputRef}
+            type="file"
+            accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*"
+            onChange={(event) => acceptScanFile(event.target.files?.[0])}
+            className="block w-full max-w-md text-sm text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-4 file:py-3 file:text-sm file:font-bold file:text-brand-700"
+          />
+          {scanFile && (
+            <div className="w-full max-w-md rounded-xl border border-brand-200 bg-white p-3 text-left">
+              <p className="truncate text-sm font-bold text-slate-800">{scanFile.name}</p>
+              {scanPreviewUrl && (
+                <img src={scanPreviewUrl} alt="Vista previa de la orden" className="mt-3 max-h-64 w-full rounded-lg object-contain" />
+              )}
+              <button type="button" onClick={clearScannedDocument} className="mt-3 text-sm font-bold text-red-600 hover:underline">
+                Quitar archivo
+              </button>
+            </div>
+          )}
+          <Button type="button" onClick={scanSaleDocument} disabled={!scanFile || scanLoading}>
+            {scanLoading ? 'Gemini está analizando el documento...' : 'Leer documento y completar formulario'}
+          </Button>
+        </div>
+        {scanError && <p className="mt-4 text-sm font-semibold text-red-600">{scanError}</p>}
+        {scanNotice && <p className="mt-4 text-sm font-semibold text-emerald-700">{scanNotice}</p>}
+      </div>
+    </div>
+  );
+
+  if (isRetiro && !retirementReady) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Registrar retiro</h1>
+          <p className="text-sm text-slate-400 mt-1">Primero carga la orden para completar los datos.</p>
+        </div>
+        <Card className="p-4 sm:p-6">{retirementUploadPanel}</Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -719,27 +721,14 @@ export default function SaleForm() {
            {error && <Alert type="error">{error}</Alert>}
            {success && <Alert type="success">{success}</Alert>}
 
-          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-            <p className="text-sm font-bold text-slate-800">Autocompletar desde documento</p>
-            <p className="mt-1 text-xs text-slate-500">
-              Selecciona un PDF o imagen, o pega una captura con Ctrl+V. La lectura solo
-              completa el formulario; revisa los datos antes de guardar.
-            </p>
-            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <input
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*"
-                onChange={(event) => acceptScanFile(event.target.files?.[0])}
-                className="block w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:text-xs file:font-bold file:text-brand-700"
-              />
-              <Button type="button" size="sm" onClick={scanSaleDocument} disabled={!scanFile || scanLoading}>
-                {scanLoading ? 'Leyendo...' : 'Autocompletar'}
-              </Button>
+          {isRetiro && (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-brand-200 bg-brand-50/60 p-3">
+              <p className="truncate text-sm font-semibold text-slate-700">{scanFile?.name || 'Orden procesada'}</p>
+              <button type="button" onClick={clearScannedDocument} className="shrink-0 text-sm font-bold text-brand-700 hover:underline">
+                Cambiar documento
+              </button>
             </div>
-            {scanFile && <p className="mt-2 truncate text-xs text-slate-500">{scanFile.name}</p>}
-            {scanError && <p className="mt-2 text-xs font-semibold text-red-600">{scanError}</p>}
-            {scanNotice && <p className="mt-2 text-xs font-semibold text-emerald-700">{scanNotice}</p>}
-          </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -1020,31 +1009,6 @@ export default function SaleForm() {
 
           {isRetiro && (
             <div className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
-              <div
-                className={`rounded-xl border p-4 transition-colors ${sotvDropActive ? 'border-brand-500 bg-brand-50' : 'border-brand-200 bg-white/80'}`}
-                onPaste={handleSotvPaste}
-                onDragOver={(event) => { event.preventDefault(); setSotvDropActive(true); }}
-                onDragLeave={() => setSotvDropActive(false)}
-                onDrop={handleSotvDrop}
-              >
-                <p className="text-sm font-bold text-slate-800">Leer orden SOTV (opcional)</p>
-                <p className="mt-1 text-xs text-slate-500">Prellena este mismo formulario. Puedes seleccionar, arrastrar o pegar una captura con Ctrl + V.</p>
-                <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <input
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.webp"
-                    onChange={(event) => acceptSotvFile(event.target.files?.[0])}
-                    className="block w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-xs file:font-bold file:text-brand-700"
-                  />
-                  <Button type="button" size="sm" onClick={extractSotvRetirement} disabled={!sotvFile || sotvLoading}>
-                    {sotvLoading ? 'Leyendo...' : 'Leer orden'}
-                  </Button>
-                </div>
-                {sotvFile && <p className="mt-2 truncate text-xs text-slate-500">{sotvFile.name}</p>}
-                {sotvPreviewUrl && <img src={sotvPreviewUrl} alt="Vista previa de la orden SOTV" className="mt-3 max-h-48 w-full rounded-lg border border-slate-200 object-contain" />}
-                {sotvError && <p className="mt-2 text-xs font-semibold text-red-600">{sotvError}</p>}
-                {sotvNotice && <p className="mt-2 text-xs font-semibold text-emerald-700">{sotvNotice}</p>}
-              </div>
               <Select label="Motivo del Retiro *" name="motivoId" value={form.motivoId} onChange={handleChange} required>
                 <option value="">Seleccionar motivo...</option>
                 {motivosRetiro.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
@@ -1057,8 +1021,7 @@ export default function SaleForm() {
                    ...prev,
                    equipmentDelivered: event.target.value === 'true',
                    equipmentRecoveryRequired: event.target.value !== 'true',
-                    equipmentSerial: event.target.value === 'true'
-                      ? (prev.equipmentSerial || extractedEquipmentSerial) : '',
+                    equipmentSerial: event.target.value === 'true' ? prev.equipmentSerial : '',
                  }))}
                 options={[
                   { value: 'true', label: 'Sí, trae equipo', description: 'Se enviará a recepción pendiente de Inventario.', icon: <Package size={15} /> },
