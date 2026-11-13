@@ -39,6 +39,24 @@ const FAMILY_DEFAULT_SERVICE = {
 };
 
 const FAMILY_LABELS = { internet: 'INTERNET', tv: 'TV', combo: 'COMBO' };
+const SOTV_MAX_BYTES = 10 * 1024 * 1024;
+const SOTV_ACCEPTED_TYPES = new Set([
+  'application/pdf', 'image/jpeg', 'image/png', 'image/webp',
+]);
+
+const SOTV_FIELD_LABELS = {
+  date: 'la fecha',
+  clientCode: 'el Kardex',
+  clientName: 'el nombre del cliente',
+  equipmentSerial: 'la serie del equipo',
+};
+
+function readableSotvWarnings(warnings = []) {
+  return warnings.map((warning) => {
+    const field = warning.replace(/^Campo faltante:\s*/, '');
+    return `No se pudo leer ${SOTV_FIELD_LABELS[field] || `el campo ${field}`}. Complétalo manualmente.`;
+  });
+}
 
 const ADDITION_TYPES = [
   { value: 'adicion_internet', label: 'ADICION INTERNET' },
@@ -87,6 +105,17 @@ export default function SaleForm() {
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [sotvFile, setSotvFile] = useState(null);
+  const [sotvLoading, setSotvLoading] = useState(false);
+  const [sotvError, setSotvError] = useState('');
+  const [sotvNotice, setSotvNotice] = useState('');
+  const [extractedEquipmentSerial, setExtractedEquipmentSerial] = useState('');
+  const [sotvPreviewUrl, setSotvPreviewUrl] = useState('');
+  const [sotvDropActive, setSotvDropActive] = useState(false);
+  const [scanFile, setScanFile] = useState(null);
+  const [scanLoading, setScanLoading] = useState(false);
+  const [scanError, setScanError] = useState('');
+  const [scanNotice, setScanNotice] = useState('');
 
   const [query, setQuery] = useState('');
   const [customers, setCustomers] = useState([]);
@@ -102,6 +131,16 @@ export default function SaleForm() {
   const [externalSellers, setExternalSellers] = useState([]);
   const [equipmentLookup, setEquipmentLookup] = useState(null);
   const [equipmentLookupError, setEquipmentLookupError] = useState('');
+
+  useEffect(() => {
+    if (!sotvFile || !sotvFile.type.startsWith('image/')) {
+      setSotvPreviewUrl('');
+      return undefined;
+    }
+    const url = URL.createObjectURL(sotvFile);
+    setSotvPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [sotvFile]);
 
   useEffect(() => {
     api.getActivePlans().then(setPlans).catch(() => {});
@@ -364,6 +403,140 @@ export default function SaleForm() {
     }
   };
 
+  const acceptSotvFile = (file) => {
+    if (!file) return;
+    const extension = `.${file.name.split('.').pop().toLowerCase()}`;
+    const validType = SOTV_ACCEPTED_TYPES.has(file.type)
+      || ['.pdf', '.jpg', '.jpeg', '.png', '.webp'].includes(extension);
+    if (!validType) {
+      setSotvFile(null);
+      setSotvError('Formato no permitido. Usa PDF, JPG, JPEG, PNG o WEBP.');
+      return;
+    }
+    if (file.size > SOTV_MAX_BYTES) {
+      setSotvFile(null);
+      setSotvError('El archivo supera el máximo permitido de 10 MB.');
+      return;
+    }
+    setSotvFile(file);
+    setSotvError('');
+    setSotvNotice('');
+  };
+
+  const handleSotvPaste = (event) => {
+    if (!isRetiro) return;
+    const imageItem = [...(event.clipboardData?.items || [])]
+      .find((item) => item.kind === 'file' && item.type.startsWith('image/'));
+    const file = imageItem?.getAsFile();
+    if (file) {
+      event.preventDefault();
+      acceptSotvFile(new File([file], `captura-sotv-${Date.now()}.png`, {
+        type: file.type || 'image/png',
+      }));
+    }
+  };
+
+  const acceptScanFile = (file) => {
+    if (!file) return;
+    const extension = `.${file.name.split('.').pop().toLowerCase()}`;
+    const validType = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(file.type)
+      || ['.pdf', '.jpg', '.jpeg', '.png', '.webp'].includes(extension);
+    if (!validType) {
+      setScanFile(null);
+      setScanError('Formato no permitido. Usa PDF, JPG, JPEG, PNG o WEBP.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setScanFile(null);
+      setScanError('El archivo supera el máximo permitido de 10 MB.');
+      return;
+    }
+    setScanFile(file);
+    setScanError('');
+    setScanNotice('');
+  };
+
+  const handleDocumentPaste = (event) => {
+    if (event.defaultPrevented) return;
+    const imageItem = [...(event.clipboardData?.items || [])]
+      .find((item) => item.kind === 'file' && item.type.startsWith('image/'));
+    const file = imageItem?.getAsFile();
+    if (file) {
+      event.preventDefault();
+      acceptScanFile(new File([file], `captura-venta-${Date.now()}.png`, {
+        type: file.type || 'image/png',
+      }));
+    }
+  };
+
+  const scanSaleDocument = async () => {
+    if (!scanFile) return;
+    setScanLoading(true);
+    setScanError('');
+    setScanNotice('');
+    try {
+      const result = await api.scanSaleDocument(scanFile);
+      const extracted = result.fields || {};
+      setForm((prev) => ({
+        ...prev,
+        ...Object.fromEntries(
+          ['date', 'clientCode', 'clientName', 'clientCi', 'clientPhone',
+            'serviceType', 'requestType', 'additionType', 'changeReason',
+            'notes', 'meterNumber', 'equipmentSerial', 'transferCurrentAddress',
+            'transferNewAddress', 'transferReferences']
+            .filter((key) => extracted[key])
+            .map((key) => [key, extracted[key]]),
+        ),
+        planId: extracted.planId ? String(extracted.planId) : prev.planId,
+        planFromId: extracted.planFromId ? String(extracted.planFromId) : prev.planFromId,
+      }));
+      if (extracted.clientName) setQuery(extracted.clientName);
+      const warnings = result.warnings || [];
+      setScanNotice(warnings.length
+        ? `Lectura terminada. ${warnings.join(' ')} Revisa y completa los campos faltantes.`
+        : 'Lectura terminada. Revisa los datos antes de guardar.');
+    } catch (err) {
+      setScanError(err?.error || 'No se pudo interpretar el documento.');
+    } finally {
+      setScanLoading(false);
+    }
+  };
+
+  const handleSotvDrop = (event) => {
+    event.preventDefault();
+    setSotvDropActive(false);
+    if (isRetiro) acceptSotvFile(event.dataTransfer.files?.[0]);
+  };
+
+  const extractSotvRetirement = async () => {
+    if (!sotvFile) return;
+    setSotvLoading(true);
+    setSotvError('');
+    setSotvNotice('');
+    try {
+      const result = await api.extractRetirementDocument(sotvFile);
+      const extracted = result.fields || {};
+      setForm((prev) => ({
+        ...prev,
+        date: extracted.date || prev.date,
+        clientCode: extracted.clientCode || prev.clientCode,
+        clientName: extracted.clientName || prev.clientName,
+        equipmentSerial: prev.equipmentDelivered
+          ? (extracted.equipmentSerial || prev.equipmentSerial) : prev.equipmentSerial,
+      }));
+      setQuery(extracted.clientName || query);
+      setExtractedEquipmentSerial(extracted.equipmentSerial || '');
+      const readableWarnings = readableSotvWarnings(result.warnings);
+      setSotvNotice(readableWarnings.length
+        ? `Lectura terminada. ${readableWarnings.join(' ')}`
+        : 'Lectura terminada. Revisa los datos antes de continuar.');
+    } catch (err) {
+      setSotvError(err?.error?.message || err?.error || 'No se pudo leer la orden SOTV.');
+    } finally {
+      setSotvLoading(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -531,15 +704,37 @@ export default function SaleForm() {
       </div>
 
       <Card className="p-6">
-        <form onSubmit={(e) => { e.preventDefault(); setShowPreview(true); }} className="space-y-5">
-          {error && <Alert type="error">{error}</Alert>}
-          {success && <Alert type="success">{success}</Alert>}
+        <form onSubmit={(e) => { e.preventDefault(); setShowPreview(true); }} onPaste={handleDocumentPaste} className="space-y-5">
+           {error && <Alert type="error">{error}</Alert>}
+           {success && <Alert type="success">{success}</Alert>}
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+            <p className="text-sm font-bold text-slate-800">Autocompletar desde documento</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Selecciona un PDF o imagen, o pega una captura con Ctrl+V. La lectura solo
+              completa el formulario; revisa los datos antes de guardar.
+            </p>
+            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*"
+                onChange={(event) => acceptScanFile(event.target.files?.[0])}
+                className="block w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:text-xs file:font-bold file:text-brand-700"
+              />
+              <Button type="button" size="sm" onClick={scanSaleDocument} disabled={!scanFile || scanLoading}>
+                {scanLoading ? 'Leyendo...' : 'Autocompletar'}
+              </Button>
+            </div>
+            {scanFile && <p className="mt-2 truncate text-xs text-slate-500">{scanFile.name}</p>}
+            {scanError && <p className="mt-2 text-xs font-semibold text-red-600">{scanError}</p>}
+            {scanNotice && <p className="mt-2 text-xs font-semibold text-emerald-700">{scanNotice}</p>}
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Fecha</label>
               <div className="w-full px-4 py-3 rounded-xl bg-brand-50 border border-brand-200 text-brand-800 font-bold text-sm">
-                {formatDate(today)}
+                {formatDate(form.date)}
               </div>
             </div>
             <Input label="Kardex *" name="clientCode" value={form.clientCode} onChange={handleChange} required placeholder="N° kardex" />
@@ -791,6 +986,31 @@ export default function SaleForm() {
 
           {isRetiro && (
             <div className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
+              <div
+                className={`rounded-xl border p-4 transition-colors ${sotvDropActive ? 'border-brand-500 bg-brand-50' : 'border-brand-200 bg-white/80'}`}
+                onPaste={handleSotvPaste}
+                onDragOver={(event) => { event.preventDefault(); setSotvDropActive(true); }}
+                onDragLeave={() => setSotvDropActive(false)}
+                onDrop={handleSotvDrop}
+              >
+                <p className="text-sm font-bold text-slate-800">Leer orden SOTV (opcional)</p>
+                <p className="mt-1 text-xs text-slate-500">Prellena este mismo formulario. Puedes seleccionar, arrastrar o pegar una captura con Ctrl + V.</p>
+                <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.webp"
+                    onChange={(event) => acceptSotvFile(event.target.files?.[0])}
+                    className="block w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-xs file:font-bold file:text-brand-700"
+                  />
+                  <Button type="button" size="sm" onClick={extractSotvRetirement} disabled={!sotvFile || sotvLoading}>
+                    {sotvLoading ? 'Leyendo...' : 'Leer orden'}
+                  </Button>
+                </div>
+                {sotvFile && <p className="mt-2 truncate text-xs text-slate-500">{sotvFile.name}</p>}
+                {sotvPreviewUrl && <img src={sotvPreviewUrl} alt="Vista previa de la orden SOTV" className="mt-3 max-h-48 w-full rounded-lg border border-slate-200 object-contain" />}
+                {sotvError && <p className="mt-2 text-xs font-semibold text-red-600">{sotvError}</p>}
+                {sotvNotice && <p className="mt-2 text-xs font-semibold text-emerald-700">{sotvNotice}</p>}
+              </div>
               <Select label="Motivo del Retiro *" name="motivoId" value={form.motivoId} onChange={handleChange} required>
                 <option value="">Seleccionar motivo...</option>
                 {motivosRetiro.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
@@ -803,7 +1023,8 @@ export default function SaleForm() {
                    ...prev,
                    equipmentDelivered: event.target.value === 'true',
                    equipmentRecoveryRequired: event.target.value !== 'true',
-                   equipmentSerial: event.target.value === 'true' ? prev.equipmentSerial : '',
+                    equipmentSerial: event.target.value === 'true'
+                      ? (prev.equipmentSerial || extractedEquipmentSerial) : '',
                  }))}
                 options={[
                   { value: 'true', label: 'Sí, trae equipo', description: 'Se enviará a recepción pendiente de Inventario.', icon: <Package size={15} /> },

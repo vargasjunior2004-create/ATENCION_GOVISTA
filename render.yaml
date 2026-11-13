@@ -30,3 +30,5 @@ services:
         value: .onrender.com
       - key: DJANGO_CSRF_TRUSTED_ORIGINS
         value: https://*.onrender.com
+      - key: GEMINI_API_KEY
+        sync: false

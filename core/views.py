@@ -3,6 +3,7 @@ import logging
 import os
 import threading
 import re
+from difflib import SequenceMatcher
 from urllib.parse import urlparse, parse_qs
 from decimal import Decimal, InvalidOperation
 from datetime import date, timedelta
@@ -61,6 +62,167 @@ from .location_storage import optimize_photo, upload_photo
 _backup_lock = threading.Lock()
 _backup_in_progress = False
 logger = logging.getLogger(__name__)
+
+
+class SaleDocumentScanView(APIView):
+    """Extrae datos de una captura, imagen o PDF sin crear la venta.
+
+    Gemini solo propone valores. Las validaciones definitivas y el cálculo
+    de importes siguen perteneciendo a SaleCreateSerializer.
+    """
+    parser_classes = (MultiPartParser, FormParser)
+    permission_classes = (IsAuthenticated,)
+    max_upload_bytes = 10 * 1024 * 1024
+    accepted_types = {
+        'application/pdf', 'image/jpeg', 'image/png', 'image/webp',
+    }
+
+    class ScanFields:
+        """Pydantic schema is imported lazily to keep startup lightweight."""
+
+        @staticmethod
+        def model():
+            from pydantic import BaseModel, Field
+
+            class ExtractedSale(BaseModel):
+                date: str | None = None
+                clientCode: str | None = None
+                clientName: str | None = None
+                clientCi: str | None = None
+                clientPhone: str | None = None
+                serviceType: str | None = Field(
+                    default=None,
+                    description='internet, tv, tv_digital, combo_analog o combo_digital')
+                requestType: str | None = None
+                additionType: str | None = None
+                planName: str | None = None
+                planCode: str | None = None
+                planFromName: str | None = None
+                changeReason: str | None = None
+                notes: str | None = None
+                meterNumber: str | None = None
+                equipmentSerial: str | None = None
+                transferCurrentAddress: str | None = None
+                transferNewAddress: str | None = None
+                transferReferences: str | None = None
+
+            return ExtractedSale
+
+    @staticmethod
+    def _clean(value):
+        if value is None:
+            return None
+        value = str(value).strip()
+        return value or None
+
+    @classmethod
+    def _match_plan(cls, name, code, plans):
+        needle = cls._clean(code) or cls._clean(name)
+        if not needle:
+            return None
+        needle = needle.casefold()
+        exact = next((plan for plan in plans if needle in {
+            plan.code.casefold(), plan.label.casefold(),
+        }), None)
+        if exact:
+            return exact
+        scored = []
+        for plan in plans:
+            candidates = (plan.code, plan.label)
+            score = max(SequenceMatcher(None, needle, candidate.casefold()).ratio()
+                        for candidate in candidates)
+            scored.append((score, plan))
+        score, plan = max(scored, default=(0, None), key=lambda item: item[0])
+        return plan if score >= 0.62 else None
+
+    def post(self, request):
+        uploaded = request.FILES.get('file')
+        if uploaded is None:
+            return Response({'error': 'Adjunta una imagen o PDF.'}, status=400)
+        if uploaded.size > self.max_upload_bytes:
+            return Response(
+                {'error': 'El archivo supera el máximo permitido de 10 MB.'},
+                status=413)
+        mime_type = (uploaded.content_type or '').lower()
+        extension = os.path.splitext(uploaded.name or '')[1].lower()
+        extension_types = {
+            '.pdf': 'application/pdf', '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
+        }
+        mime_type = mime_type if mime_type in self.accepted_types else extension_types.get(extension)
+        if mime_type not in self.accepted_types:
+            return Response(
+                {'error': 'Formato no permitido. Usa PDF, JPG, PNG o WEBP.'},
+                status=400)
+        api_key = os.environ.get('GEMINI_API_KEY', '').strip()
+        if not api_key:
+            return Response(
+                {'error': 'La lectura inteligente no está configurada en el servidor.'},
+                status=503)
+        try:
+            from google import genai
+            from google.genai import types
+
+            schema = self.ScanFields.model()
+            client = genai.Client(api_key=api_key)
+            response = client.models.generate_content(
+                model='gemini-3.5-flash-lite',
+                contents=[
+                    types.Part.from_bytes(
+                        data=uploaded.read(), mime_type=mime_type),
+                    ('Extrae únicamente los datos visibles del documento. '
+                     'No inventes valores. Devuelve null si un campo no aparece. '
+                     'Usa exactamente los códigos indicados en el esquema. '
+                     'La información corresponde a una solicitud de venta.')
+                ],
+                config=types.GenerateContentConfig(
+                    response_mime_type='application/json',
+                    response_schema=schema,
+                ),
+            )
+            extracted = response.parsed or schema.model_validate_json(response.text)
+        except Exception as exc:  # SDK errors vary between API versions.
+            code = getattr(exc, 'status_code', None) or getattr(exc, 'code', None)
+            message = str(exc).lower()
+            if code == 429 or '429' in message or 'quota' in message or 'resource exhausted' in message:
+                return Response(
+                    {'error': 'Se agotó temporalmente la cuota gratuita de Gemini. Intenta más tarde.'},
+                    status=429)
+            logger.exception('Error leyendo documento de venta con Gemini')
+            return Response(
+                {'error': 'No se pudo interpretar el documento. Revisa la imagen o PDF e inténtalo nuevamente.'},
+                status=502)
+
+        values = {key: self._clean(value) for key, value in extracted.model_dump().items()}
+        service_aliases = {
+            'internet': 'internet', 'tv': 'tv', 'tv analogica': 'tv',
+            'tv digital': 'tv_digital', 'combo': 'combo_analog',
+            'combo analogico': 'combo_analog', 'combo digital': 'combo_digital',
+        }
+        if values.get('serviceType'):
+            values['serviceType'] = service_aliases.get(
+                values['serviceType'].casefold().replace('_', ' '),
+                values['serviceType'])
+        plans = list(Plan.objects.filter(active=True, legacy=False))
+        plan = self._match_plan(values.get('planName'), values.get('planCode'), plans)
+        plan_from = self._match_plan(values.get('planFromName'), None, plans)
+        fields = {
+            key: value for key, value in values.items() if value is not None
+        }
+        if plan:
+            fields.update({'planId': plan.id, 'planName': plan.label, 'planCode': plan.code})
+        if plan_from:
+            fields['planFromId'] = plan_from.id
+        warnings = []
+        for field in ('date', 'clientCode', 'clientName', 'serviceType', 'planId'):
+            if field not in fields:
+                warnings.append(f'Campo faltante: {field}')
+        return Response({
+            'fields': fields,
+            'warnings': warnings,
+            'plan_match': bool(plan),
+            'plan_from_match': bool(plan_from),
+        })
 
 
 def _issue_session_token(user):
