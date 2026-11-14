@@ -71,6 +71,36 @@ MODO_ADICION = 'adicion'
 MODO_TRASLADO = 'traslado'
 MODO_SIMPLE = 'simple'
 
+# Estado comercial del movimiento. Se persiste en Sale; los estados operativos
+# futuros (por ejemplo, reinstalado) se podrán ampliar aquí sin que el cliente
+# pueda enviar valores arbitrarios.
+SOLICITUD_STATUS_CONTRATADO = 'contratado'
+SOLICITUD_STATUS_RECONTRATADO = 'recontratado'
+SOLICITUD_STATUS_CAMBIADO = 'cambiado'
+SOLICITUD_STATUS_RETIRADO = 'retirado'
+SOLICITUD_STATUS_CHOICES = (
+    (SOLICITUD_STATUS_CONTRATADO, 'Contratado'),
+    (SOLICITUD_STATUS_RECONTRATADO, 'Recontratado'),
+    (SOLICITUD_STATUS_CAMBIADO, 'Cambiado'),
+    (SOLICITUD_STATUS_RETIRADO, 'Retirado'),
+)
+
+
+def movement_status_for_request_type(request_type, catalog=None):
+    """Devuelve el estado comercial inicial de un movimiento.
+
+    Las recontrataciones tienen un estado comercial propio. El estado
+    operativo futuro ``Reinstalado`` todavía no se implementa.
+    """
+    if request_type == 'recontratacion':
+        return SOLICITUD_STATUS_RECONTRATADO
+    mode = request_type_mode(request_type, catalog)
+    return {
+        MODO_NUEVO: SOLICITUD_STATUS_CONTRATADO,
+        MODO_CAMBIO_PLAN: SOLICITUD_STATUS_CAMBIADO,
+        MODO_RETIRO: SOLICITUD_STATUS_RETIRADO,
+    }.get(mode)
+
 
 def plan_is_selectable(plan, mode=None, request_type=None):
     """Fuente unica para decidir si un plan puede usarse en un movimiento.
@@ -218,8 +248,14 @@ def sale_plan_labels(sale, catalog=None):
 
 
 def is_service_change(sale, catalog=None):
-    """True si el movimiento cambia de familia de servicio (Combo -> Internet)."""
-    if request_type_mode(sale.requestType, catalog) != MODO_CAMBIO_PLAN:
+    """True si el movimiento cambia de familia de servicio.
+
+    Las adiciones también son cambios de servicio: por ejemplo,
+    INTERNET -> COMBO. La etiqueta administrativa sigue siendo ``adicion``;
+    esta función solo expresa el movimiento real entre familias.
+    """
+    if request_type_mode(sale.requestType, catalog) not in (
+            MODO_CAMBIO_PLAN, MODO_ADICION):
         return False
     previous = previous_service_family(sale)
     current = SERVICE_TYPE_FAMILY.get(sale.serviceType)
@@ -229,7 +265,7 @@ def is_service_change(sale, catalog=None):
 def sale_service_label(sale, catalog=None):
     """Texto de la columna SERVICIO.
 
-    En un cambio de plan se muestra la conversion. Si cambia la familia se
+    En un cambio de plan o adición se muestra la conversión. Si cambia la familia se
     usan las etiquetas de familia (COMBO -> INTERNET); si solo cambia la
     variante dentro de la misma familia se usan etiquetas cortas
     (COMBO ANALOGICO -> COMBO DIGITAL). En el resto de movimientos se deja
@@ -237,7 +273,8 @@ def sale_service_label(sale, catalog=None):
     """
     current_label = SERVICE_TYPE_LABELS.get(
         sale.serviceType, sale.serviceType or '')
-    if request_type_mode(sale.requestType, catalog) != MODO_CAMBIO_PLAN:
+    if request_type_mode(sale.requestType, catalog) not in (
+            MODO_CAMBIO_PLAN, MODO_ADICION):
         return current_label
 
     previous_type = sale.serviceTypeFrom or None

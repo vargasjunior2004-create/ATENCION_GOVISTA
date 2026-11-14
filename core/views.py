@@ -2,30 +2,37 @@ import json
 import logging
 import os
 import threading
+import re
+import unicodedata
+from difflib import SequenceMatcher
+from urllib.parse import urlparse, parse_qs
 from decimal import Decimal, InvalidOperation
 from datetime import date, timedelta
-
 from django.db import IntegrityError, transaction
+from django.conf import settings
 from django.db.models import ProtectedError
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Max, Q, Sum
 from django.http import FileResponse
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.renderers import JSONRenderer
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.views import APIView
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
 from .models import (
-    User, Customer, Contract, Role, Permission, RolePermission, UserRole,
+    User, Customer, Contract, CoverageZone, Role, Permission, RolePermission, UserRole,
     TemporaryFunction, TemporaryAssignment, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
     TarifaTraslado, TarifaTrasladoHistorial, SaleIdempotencyKey, AuditLog,
-    InventarioMovimiento,
+    InventarioMovimiento, CanalCaptacion, CustomerLocation, CustomerLocationHistory,
+    UserSession,
 )
 from .serializers import (
     UserSerializer, UserWriteSerializer, PermissionSerializer, RoleSerializer,
@@ -35,16 +42,20 @@ from .serializers import (
     SaleCreateSerializer, BackupSerializer,
     PromotionSerializer, PromotionWriteSerializer,
     TipoSolicitudPublicSerializer, MotivoSerializer, MotivoPublicSerializer,
-    TarifaTrasladoSerializer, TarifaTrasladoHistorialSerializer,
+    CoverageZoneSerializer, TarifaTrasladoSerializer, TarifaTrasladoHistorialSerializer,
+    CanalCaptacionSerializer, CanalCaptacionPublicSerializer,
+    CustomerLocationSerializer, CustomerLocationHistorySerializer,
 )
 from .domain import (
     request_type_mode, request_type_catalog,
+    movement_status_for_request_type,
     MODO_RETIRO, MODO_CAMBIO_PLAN, MODO_ADICION,
     MODO_SIMPLE, MODO_TRASLADO,
 )
 from .reports import build_sales_pdf, build_sales_xlsx
-from .rbac import has_permission, is_system_admin
+from .rbac import can_supervise_productivity, has_permission, is_system_admin
 from .audit import record_audit
+from .location_storage import optimize_photo, upload_photo
 
 # Evita que dos respaldos corran a la vez. Con gunicorn --workers 2 este
 # lock es por proceso, lo cual es suficiente para el caso de un unico
@@ -52,6 +63,304 @@ from .audit import record_audit
 _backup_lock = threading.Lock()
 _backup_in_progress = False
 logger = logging.getLogger(__name__)
+
+
+class SaleDocumentScanView(APIView):
+    """Extrae datos de una captura, imagen o PDF sin crear la venta.
+
+    Gemini solo propone valores. Las validaciones definitivas y el cálculo
+    de importes siguen perteneciendo a SaleCreateSerializer.
+    """
+    parser_classes = (MultiPartParser, FormParser)
+    permission_classes = (IsAuthenticated,)
+    max_upload_bytes = 10 * 1024 * 1024
+    accepted_types = {
+        'application/pdf', 'image/jpeg', 'image/png', 'image/webp',
+    }
+
+    class ScanFields:
+        """Pydantic schema is imported lazily to keep startup lightweight."""
+
+        @staticmethod
+        def model():
+            from pydantic import BaseModel, Field
+
+            class ExtractedSale(BaseModel):
+                documentType: str | None = Field(
+                    default=None,
+                    description=(
+                        'retiro_aparato si el encabezado dice "Retiro de aparato"; '
+                        'instalacion si dice "Instalación de Servicio de Internet" '
+                        'u otra instalación.'
+                    ),
+                )
+                clientCode: str | None = None
+                clientName: str | None = None
+                clientCi: str | None = None
+                clientPhone: str | None = None
+                serviceType: str | None = Field(
+                    default=None,
+                    description='internet, tv, tv_digital, combo_analog o combo_digital')
+                planName: str | None = None
+                planCode: str | None = None
+                planFromName: str | None = None
+                notes: str | None = None
+                meterNumber: str | None = None
+                equipmentSerial: str | None = None
+                transferCurrentAddress: str | None = None
+                transferNewAddress: str | None = None
+                transferReferences: str | None = None
+                neighborhood: str | None = None
+                address: str | None = None
+                province: str | None = None
+                crossStreets: str | None = None
+
+            return ExtractedSale
+
+    @staticmethod
+    def _clean(value):
+        if value is None:
+            return None
+        value = str(value).strip()
+        return value or None
+
+    @classmethod
+    def _match_plans(cls, name, code, service_type, plans):
+        needle = cls._clean(code) or cls._clean(name)
+        if not needle:
+            return []
+        needle = needle.casefold()
+        service_family = {
+            'internet': 'internet', 'tv': 'tv', 'tv analogica': 'tv',
+            'tv digital': 'tv', 'tv cable': 'tv',
+            'combo': 'combo', 'combo analogico': 'combo',
+            'combo digital': 'combo',
+        }.get((service_type or '').casefold().replace('_', ' '))
+        filtered_plans = [p for p in plans if not service_family or p.type == service_family]
+        exact = [plan for plan in filtered_plans if needle in {
+            plan.code.casefold(), plan.label.casefold(),
+        }]
+        if exact:
+            return exact
+        scored = []
+        for plan in filtered_plans:
+            plan_names = (plan.code, plan.label)
+            score = max(SequenceMatcher(None, needle, candidate.casefold()).ratio()
+                        for candidate in plan_names)
+            scored.append((score, plan))
+        scored.sort(key=lambda item: item[0], reverse=True)
+        if not scored or scored[0][0] < 0.70:
+            return []
+        if len(scored) > 1 and scored[0][0] - scored[1][0] < 0.08:
+            return [plan for _, plan in scored[:3]]
+        return [scored[0][1]]
+
+    @staticmethod
+    def _location_key(value):
+        value = unicodedata.normalize('NFKD', str(value or ''))
+        value = ''.join(char for char in value if not unicodedata.combining(char))
+        return re.sub(r'[^a-z0-9 ]+', ' ', value.casefold()).strip()
+
+    @classmethod
+    def _match_coverage_zones(cls, values, zones):
+        neighborhood = cls._location_key(values.get('neighborhood'))
+        address = cls._location_key(values.get('address'))
+        province = cls._location_key(values.get('province'))
+        if not any((neighborhood, address, province)):
+            return []
+
+        scored = []
+        for zone in zones:
+            name = cls._location_key(zone.name)
+            description = cls._location_key(zone.description)
+            haystack = f'{name} {description}'.strip()
+            score = 0
+            if neighborhood and neighborhood in haystack:
+                score = 1
+            elif neighborhood:
+                score = max(
+                    SequenceMatcher(None, neighborhood, candidate).ratio()
+                    for candidate in (name, description)
+                    if candidate
+                )
+            if address and address in haystack:
+                score = max(score, 0.85)
+            if province and province in haystack:
+                score = max(score, 0.60)
+            if score:
+                scored.append((score, zone))
+
+        scored.sort(key=lambda item: item[0], reverse=True)
+        if not scored or scored[0][0] < 0.72:
+            return []
+        if len(scored) > 1 and scored[0][0] - scored[1][0] < 0.08:
+            return [zone for _, zone in scored[:3]]
+        return [scored[0][1]]
+
+    def post(self, request):
+        uploaded = request.FILES.get('file')
+        if uploaded is None:
+            return Response({'error': 'Adjunta una imagen o PDF.'}, status=400)
+        if uploaded.size > self.max_upload_bytes:
+            return Response(
+                {'error': 'El archivo supera el máximo permitido de 10 MB.'},
+                status=413)
+        mime_type = (uploaded.content_type or '').lower()
+        extension = os.path.splitext(uploaded.name or '')[1].lower()
+        extension_types = {
+            '.pdf': 'application/pdf', '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
+        }
+        mime_type = mime_type if mime_type in self.accepted_types else extension_types.get(extension)
+        if mime_type not in self.accepted_types:
+            return Response(
+                {'error': 'Formato no permitido. Usa PDF, JPG, PNG o WEBP.'},
+                status=400)
+        api_key = os.environ.get('GEMINI_API_KEY', '').strip()
+        if not api_key:
+            return Response(
+                {'error': 'La lectura inteligente no está configurada en el servidor.'},
+                status=503)
+        try:
+            from google import genai
+            from google.genai import types
+
+            schema = self.ScanFields.model()
+            client = genai.Client(api_key=api_key)
+            document_mode = request.data.get('document_mode', 'retirement')
+            is_installation = document_mode == 'installation'
+            expected_type = 'instalacion' if is_installation else 'retiro_aparato'
+            accepted_headline = (
+                '“Instalación de Servicio de Internet” (o el tipo de instalación visible)'
+                if is_installation else '“Retiro de aparato”'
+            )
+            response = client.models.generate_content(
+                model='gemini-3.5-flash-lite',
+                contents=[
+                    types.Part.from_bytes(
+                        data=uploaded.read(), mime_type=mime_type),
+                    ('Extrae únicamente los datos visibles del documento. '
+                      'No inventes valores. Devuelve null si un campo no aparece. '
+                     f'Este lector está procesando una orden de {("instalación" if is_installation else "retiro")}. '
+                     f'Acepta únicamente documentos cuyo encabezado corresponda a {accepted_headline}. '
+                     f'En documentType devuelve "{expected_type}" solo si el encabezado es visible; '
+                     'para el tipo contrario u otros documentos devuelve "otro" o null. '
+                     'No confundas una instalación con un retiro. '
+                     + (
+                         'Para una instalación, usa como clientCode el número que aparece junto a '
+                         '"CONTRATO" y extrae el nombre, teléfono, servicio instalado y plan. '
+                         if is_installation else ''
+                     )
+                     + 'Usa exactamente los códigos indicados en el esquema. '
+                      'La fecha impresa no debe extraerse ni usarse para completar el formulario.')
+                ],
+                config=types.GenerateContentConfig(
+                    response_mime_type='application/json',
+                    response_schema=schema,
+                ),
+            )
+            extracted = response.parsed or schema.model_validate_json(response.text)
+        except Exception as exc:  # SDK errors vary between API versions.
+            code = getattr(exc, 'status_code', None) or getattr(exc, 'code', None)
+            message = str(exc).lower()
+            if code == 429 or '429' in message or 'quota' in message or 'resource exhausted' in message:
+                return Response(
+                    {'error': 'Se agotó temporalmente la cuota gratuita de Gemini. Intenta más tarde.'},
+                    status=429)
+            logger.exception('Error leyendo documento de venta con Gemini')
+            return Response(
+                {'error': 'No se pudo interpretar el documento. Revisa la imagen o PDF e inténtalo nuevamente.'},
+                status=502)
+
+        values = {key: self._clean(value) for key, value in extracted.model_dump().items()}
+        document_type = (values.get('documentType') or '').casefold().replace('-', '_').replace(' ', '_')
+        document_mode = request.data.get('document_mode', 'retirement')
+        if document_mode == 'installation':
+            valid_document_types = {'instalacion', 'instalación'}
+            invalid_message = (
+                'El documento no parece ser una orden de instalación. '
+                'Carga una orden cuyo encabezado indique una instalación.'
+            )
+        else:
+            valid_document_types = {'retiro_aparato', 'retiro_de_aparato'}
+            invalid_message = (
+                'El documento no parece ser una orden de retiro de aparato. '
+                'Carga una orden cuyo encabezado diga "Retiro de aparato".'
+            )
+        if document_type not in valid_document_types:
+            return Response(
+                {
+                    'error': invalid_message,
+                    'code': 'invalid_document_type',
+                },
+                status=422,
+            )
+        service_aliases = {
+            'internet': 'internet', 'tv': 'tv', 'tv analogica': 'tv',
+            'tv digital': 'tv_digital', 'tv cable': 'tv', 'combo': 'combo_analog',
+            'combo analogico': 'combo_analog', 'combo digital': 'combo_digital',
+        }
+        if values.get('serviceType'):
+            values['serviceType'] = service_aliases.get(
+                values['serviceType'].casefold().replace('_', ' '),
+                values['serviceType'])
+        plans = list(Plan.objects.filter(active=True))
+        plan_matches = self._match_plans(
+            values.get('planName'), values.get('planCode'), values.get('serviceType'), plans)
+        plan_from_matches = self._match_plans(
+            values.get('planFromName'), None, values.get('serviceType'), plans)
+        fields = {
+            key: value for key, value in values.items() if value is not None
+        }
+        plan = plan_matches[0] if len(plan_matches) == 1 else None
+        plan_from = plan_from_matches[0] if len(plan_from_matches) == 1 else None
+        if plan:
+            fields.update({'planId': plan.id, 'planName': plan.label, 'planCode': plan.code})
+            if not fields.get('serviceType'):
+                fields['serviceType'] = {
+                    'internet': 'internet', 'tv': 'tv', 'combo': 'combo_analog',
+                }[plan.type]
+        if plan_from:
+            fields['planFromId'] = plan_from.id
+        coverage_matches = self._match_coverage_zones(
+            values,
+            list(CoverageZone.objects.filter(is_active=True)),
+        )
+        coverage_zone = coverage_matches[0] if len(coverage_matches) == 1 else None
+        if coverage_zone:
+            fields['coverageZoneId'] = coverage_zone.id
+        warnings = []
+        for field in ('clientCode', 'clientName', 'serviceType', 'planId'):
+            if field not in fields:
+                warnings.append(f'Campo faltante: {field}')
+        return Response({
+            'fields': fields,
+            'warnings': warnings,
+            'plan_match': bool(plan),
+            'plan_from_match': bool(plan_from),
+            'coverage_zone_match': bool(coverage_zone),
+            'coverage_zone_options': [
+                {'id': zone.id, 'name': zone.name}
+                for zone in coverage_matches if not coverage_zone
+            ],
+            'plan_options': [
+                {'id': item.id, 'code': item.code, 'label': item.label, 'type': item.type}
+                for item in plan_matches if not plan
+            ],
+        })
+
+
+def _issue_session_token(user):
+    """Crea una sesión persistente y emite un JWT asociado a ella."""
+    access_lifetime = settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME']
+    session = UserSession.objects.create(
+        user=user,
+        expires_at=timezone.now() + access_lifetime,
+    )
+    refresh = RefreshToken.for_user(user)
+    refresh['ver'] = user.token_version
+    refresh['sid'] = str(session.session_id)
+    return session, refresh
 
 
 class _BackupFileResponse(FileResponse):
@@ -103,9 +412,10 @@ def _user_payload(user):
         'code': assignment.role.code,
         'name': assignment.role.name,
         'is_system_role': assignment.role.is_system_role,
+        'grants_full_access': assignment.role.grants_full_access,
     } for assignment in assignments]
     permissions = sorted({
-        f'{role_permission.permission.module}.{role_permission.permission.action}'
+        role_permission.permission.code
         for assignment in assignments
         for role_permission in assignment.role.role_permissions.all()
         if role_permission.permission.active
@@ -113,9 +423,9 @@ def _user_payload(user):
     return {'id': user.id, 'name': user.name,
             'role': user.role, 'active': user.active, 'roles': roles,
             'permissions': permissions,
-            'isSystemAdmin': (
-                user.role == 'admin'
-                or any(role['is_system_role'] for role in roles))}
+            'mustChangePassword': user.must_change_password,
+            'lastLoginAt': user.last_login_at,
+            'isSystemAdmin': is_system_admin(user)}
 
 
 class IsAdminMixin:
@@ -146,7 +456,7 @@ class PermissionMixin:
 
 
 class PermissionListView(PermissionMixin, APIView):
-    permission_code = 'roles.view'
+    permission_code = 'roles.permisos.view'
 
     def get(self, request):
         error = self.check_permission(request)
@@ -158,55 +468,132 @@ class PermissionListView(PermissionMixin, APIView):
 
 
 class AuditLogListView(PermissionMixin, APIView):
-    permission_code = 'audit.view'
+    permission_code = 'auditoria.eventos.view'
 
     def get(self, request):
         error = self.check_permission(request)
         if error:
             return error
-        events = AuditLog.objects.select_related('actor').all()[:200]
-        return Response([{
-            'id': event.id,
-            'action': event.action,
-            'entity': event.entity,
-            'entityId': event.entity_id,
-            'actor': event.actor.name if event.actor else 'Sistema',
-            'before': event.before,
-            'after': event.after,
-            'ip': event.ip,
-            'createdAt': event.created_at,
-        } for event in events])
+        events = AuditLog.objects.select_related('actor').all()
+        actor = (request.query_params.get('actor') or '').strip()
+        if actor:
+            events = events.filter(actor__name__icontains=actor)
+        action = (request.query_params.get('action') or '').strip()
+        if action:
+            events = events.filter(action=action)
+        entity = (request.query_params.get('entity') or '').strip()
+        if entity:
+            events = events.filter(entity=entity)
+        module = (request.query_params.get('module') or '').strip()
+        if module:
+            events = events.filter(module=module)
+        entity_id = (request.query_params.get('entity_id') or '').strip()
+        if entity_id:
+            events = events.filter(entity_id=entity_id)
+        outcome = (request.query_params.get('outcome') or '').strip()
+        if outcome in ('success', 'failure'):
+            events = events.filter(outcome=outcome)
+        date_from = (request.query_params.get('from') or '').strip()
+        date_to = (request.query_params.get('to') or '').strip()
+        try:
+            if date_from:
+                events = events.filter(
+                    created_at__date=date.fromisoformat(date_from))
+            if date_to:
+                events = events.filter(
+                    created_at__date=date.fromisoformat(date_to))
+        except ValueError:
+            return Response({'error': 'Use fechas YYYY-MM-DD'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        total = events.count()
+        page, error = _query_int(request.query_params, 'page', 1)
+        if error:
+            return error
+        page_size, error = _query_int(
+            request.query_params, 'page_size', 50, maximum=200)
+        if error:
+            return error
+        start = (page - 1) * page_size
+        events = events[start:start + page_size]
+        return Response({
+            'count': total,
+            'page': page,
+            'page_size': page_size,
+            'results': [{
+                'id': event.id,
+                'action': event.action,
+                'entity': event.entity,
+                'entityId': event.entity_id,
+                'module': event.module,
+                'outcome': event.outcome,
+                'requestId': event.request_id,
+                'actor': event.actor.name if event.actor else 'Sistema',
+                'before': event.before,
+                'after': event.after,
+                'ip': event.ip,
+                'createdAt': event.created_at,
+            } for event in events],
+        })
 
 
 class RoleListView(PermissionMixin, APIView):
     def get(self, request):
-        error = self.check_permission(request, 'roles.view')
+        error = self.check_permission(request, 'roles.roles.view')
         if error:
             return error
-        return Response(RoleSerializer(
-            Role.objects.filter(active=True).prefetch_related(
-                'role_permissions__permission'), many=True).data)
+        roles = Role.objects.prefetch_related(
+            'role_permissions__permission', 'user_assignments')
+        include_inactive = request.query_params.get(
+            'include_inactive', '').lower() in ('1', 'true', 'yes')
+        if not include_inactive:
+            roles = roles.filter(active=True)
+        return Response(RoleSerializer(roles, many=True).data)
 
     def post(self, request):
-        error = self.check_permission(request, 'roles.manage')
+        error = self.check_permission(request, 'roles.roles.create')
         if error:
             return error
         serializer = RoleSerializer(data=request.data)
         if not serializer.is_valid():
-            return Response({'error': serializer.errors}, status=400)
-        role = serializer.save()
-        self._set_permissions(role, request.data.get('permissionIds', []))
-        record_audit(request, 'created', 'role', role.id,
-                     after={'code': role.code, 'name': role.name})
+            return Response({'error': serializer.errors, 'fields': serializer.errors},
+                            status=400)
+        role = serializer.save(is_system_role=False, grants_full_access=False)
+        try:
+            self._set_permissions(role, request.data.get('permissionIds', []),
+                                  request.user)
+        except ValueError as exc:
+            role.delete()
+            return Response({'error': str(exc)}, status=400)
+        record_audit(request, 'created', 'role', role.id, module='roles',
+                     after={'code': role.code, 'name': role.name,
+                            'permissions': sorted(
+                                role.role_permissions.values_list(
+                                    'permission__module',
+                                    'permission__resource',
+                                    'permission__action'))})
         return Response(RoleSerializer(role).data, status=201)
 
     @staticmethod
-    def _set_permissions(role, permission_ids):
+    def _set_permissions(role, permission_ids, actor=None):
         if permission_ids is None:
             return
+        if role.is_system_role:
+            raise ValueError('Los permisos de un rol protegido son de solo lectura.')
+        permissions = list(Permission.objects.filter(
+            id__in=permission_ids, active=True))
+        if len(permissions) != len(set(permission_ids)):
+            raise ValueError('Uno o más permisos no existen o están inactivos.')
+        from .rbac import can_grant_permission
+        if actor is not None:
+            for permission in permissions:
+                if not can_grant_permission(actor, permission):
+                    raise ValueError(
+                        f'No puedes asignar el permiso {permission.code}.')
         RolePermission.objects.filter(role=role).delete()
-        for permission in Permission.objects.filter(id__in=permission_ids, active=True):
-            RolePermission.objects.get_or_create(role=role, permission=permission)
+        for permission in permissions:
+            RolePermission.objects.get_or_create(
+                role=role, permission=permission)
 
 
 class RoleDetailView(PermissionMixin, APIView):
@@ -214,7 +601,7 @@ class RoleDetailView(PermissionMixin, APIView):
         return Role.objects.filter(pk=pk).first()
 
     def get(self, request, pk):
-        error = self.check_permission(request, 'roles.view')
+        error = self.check_permission(request, 'roles.roles.view')
         if error:
             return error
         role = self.get_object(pk)
@@ -223,23 +610,64 @@ class RoleDetailView(PermissionMixin, APIView):
         return Response(RoleSerializer(role).data)
 
     def put(self, request, pk):
-        error = self.check_permission(request, 'roles.manage')
+        error = self.check_permission(request, 'roles.roles.change')
         if error:
             return error
         role = self.get_object(pk)
         if role is None:
             return Response({'error': 'Rol no encontrado'}, status=404)
         if role.is_system_role:
-            return Response({'error': 'El rol del sistema no puede modificarse'}, status=400)
+            return Response(
+                {'error': 'El rol protegido no puede modificarse.'}, status=400)
         serializer = RoleSerializer(role, data=request.data, partial=True)
         if not serializer.is_valid():
-            return Response({'error': serializer.errors}, status=400)
-        before = {'name': role.name, 'active': role.active}
-        role = serializer.save()
-        RoleListView._set_permissions(role, request.data.get('permissionIds'))
-        record_audit(request, 'updated', 'role', role.id,
-                     before=before, after={'name': role.name, 'active': role.active})
+            return Response({'error': serializer.errors, 'fields': serializer.errors},
+                            status=400)
+        before = {
+            'name': role.name,
+            'active': role.active,
+            'permissions': sorted(role.role_permissions.values_list(
+                'permission__module', 'permission__resource',
+                'permission__action')),
+        }
+        try:
+            role = serializer.save()
+            RoleListView._set_permissions(
+                role, request.data.get('permissionIds'), request.user)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=400)
+        record_audit(
+            request, 'updated', 'role', role.id, module='roles',
+            before=before,
+            after={
+                'name': role.name,
+                'active': role.active,
+                'permissions': sorted(role.role_permissions.values_list(
+                    'permission__module', 'permission__resource',
+                    'permission__action')),
+            })
         return Response(RoleSerializer(role).data)
+
+    def delete(self, request, pk):
+        error = self.check_permission(request, 'roles.roles.delete')
+        if error:
+            return error
+        role = self.get_object(pk)
+        if role is None:
+            return Response({'error': 'Rol no encontrado'}, status=404)
+        if role.is_system_role:
+            return Response(
+                {'error': 'El rol protegido no puede eliminarse.'}, status=400)
+        if role.user_assignments.filter(active=True).exists():
+            return Response(
+                {'error': 'No se puede eliminar el rol porque tiene usuarios '
+                          'asignados. Desactívelo en su lugar.'},
+                status=status.HTTP_409_CONFLICT)
+        role.active = False
+        role.save(update_fields=['active', 'updated_at'])
+        record_audit(request, 'deactivated', 'role', role.id, module='roles',
+                     after={'active': False})
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class TemporaryFunctionListView(PermissionMixin, APIView):
@@ -253,7 +681,7 @@ class TemporaryFunctionListView(PermissionMixin, APIView):
 
 class UserRoleListView(PermissionMixin, APIView):
     def get(self, request, user_id):
-        error = self.check_permission(request, 'roles.view')
+        error = self.check_permission(request, 'roles.roles.view')
         if error:
             return error
         if not User.objects.filter(pk=user_id).exists():
@@ -262,35 +690,55 @@ class UserRoleListView(PermissionMixin, APIView):
         return Response(UserRoleSerializer(assignments, many=True).data)
 
     def post(self, request, user_id):
-        error = self.check_permission(request, 'roles.manage')
+        error = self.check_permission(request, 'roles.roles.change')
         if error:
             return error
         user = User.objects.filter(pk=user_id).first()
         role = Role.objects.filter(pk=request.data.get('role'), active=True).first()
         if user is None or role is None:
             return Response({'error': 'Usuario o rol no encontrado'}, status=404)
+        if role.is_system_role:
+            return Response(
+                {'error': 'Los roles protegidos se asignan mediante el flujo '
+                          'especial de administración.'},
+                status=status.HTTP_400_BAD_REQUEST)
         assignment, created = UserRole.objects.get_or_create(
             user=user, role=role, active=True,
             defaults={'assigned_by': request.user})
         if not created:
             return Response({'error': 'El usuario ya tiene ese rol activo'}, status=409)
         record_audit(request, 'assigned', 'user_role', assignment.id,
+                     module='roles',
                      after={'user_id': user.id, 'role': role.code})
         return Response(UserRoleSerializer(assignment).data, status=201)
 
 
 class UserRoleDetailView(PermissionMixin, APIView):
     def delete(self, request, pk):
-        error = self.check_permission(request, 'roles.manage')
+        error = self.check_permission(request, 'roles.roles.change')
         if error:
             return error
         assignment = UserRole.objects.select_related('role', 'user').filter(pk=pk).first()
         if assignment is None:
             return Response({'error': 'Asignación de rol no encontrada'}, status=404)
+        if assignment.role.grants_full_access:
+            from .rbac import is_last_superadmin
+            if is_last_superadmin(assignment.user):
+                return Response(
+                    {'error': 'No puedes revocar el acceso del último '
+                              'administrador de sistemas activo.'},
+                    status=status.HTTP_409_CONFLICT)
+            if assignment.user_id == request.user.id:
+                return Response(
+                    {'error': 'No puedes revocar tu propio acceso total.'},
+                    status=status.HTTP_400_BAD_REQUEST)
         assignment.active = False
         assignment.revoked_at = timezone.now()
         assignment.save(update_fields=['active', 'revoked_at'])
+        assignment.user.bump_token_version()
+        assignment.user.save(update_fields=['token_version', 'updated_at'])
         record_audit(request, 'revoked', 'user_role', assignment.id,
+                     module='roles',
                      after={'user_id': assignment.user_id, 'role': assignment.role.code})
         return Response(status=204)
 
@@ -401,6 +849,10 @@ class LoginView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        from .login_security import (
+            client_ip, lockout_remaining, register_failure, register_success)
+        from .models import normalize_user_name
+
         name = (request.data.get('name') or '').strip()
         password = request.data.get('password') or ''
 
@@ -411,16 +863,73 @@ class LoginView(APIView):
             return Response({'error': 'Contraseña requerida'},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        user = User.objects.filter(name__iexact=name, active=True).first()
-        if user and not user.check_password(password):
-            user = None
-
+        normalized = normalize_user_name(name)
+        ip = client_ip(request)
+        user = User.objects.filter(
+            name_normalized=normalized, active=True).first()
+        # Compatibilidad con usuarios creados/importados antes de que
+        # ``name_normalized`` existiera o mediante una actualización directa.
+        # No se usa una coincidencia parcial: el nombre sigue siendo exacto,
+        # insensible a mayúsculas y espacios externos.
         if user is None:
+            user = User.objects.filter(
+                name__iexact=name, active=True).first()
+            if user is not None and user.name_normalized != normalized:
+                user.name_normalized = normalized
+                user.save(update_fields=['name_normalized'])
+
+        remaining = lockout_remaining(normalized, ip)
+        if remaining:
+            record_audit(
+                request, 'login', 'user', user.pk if user else '', module='auth',
+                outcome='failure', after={'reason': 'locked'})
+            return Response(
+                {'error': 'Demasiados intentos. Intente más tarde.'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+                headers={'Retry-After': str(remaining)})
+
+        if user is None or not user.check_password(password):
+            register_failure(
+                user, normalized, ip,
+                request.META.get('HTTP_USER_AGENT', ''))
+            record_audit(
+                request, 'login', 'user', user.pk if user else '',
+                module='auth', outcome='failure',
+                after={'username': normalized})
             return Response({'error': 'Credenciales inválidas'},
                             status=status.HTTP_401_UNAUTHORIZED)
 
-        token = RefreshToken.for_user(user)
-        return Response({'token': str(token.access_token), 'user': _user_payload(user)})
+        register_success(
+            user, normalized, ip, request.META.get('HTTP_USER_AGENT', ''))
+        _, refresh = _issue_session_token(user)
+        record_audit(
+            request, 'login', 'user', user.pk, module='auth',
+            actor=user, after={'username': user.name})
+        return Response({
+            'token': str(refresh.access_token),
+            'user': _user_payload(user),
+        })
+
+
+@extend_schema(responses={200: dict, 401: dict})
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        session_id = request.auth.get('sid') if request.auth else None
+        if session_id:
+            updated = UserSession.objects.filter(
+                session_id=session_id,
+                user=request.user,
+                revoked_at__isnull=True,
+            ).update(
+                revoked_at=timezone.now(),
+                revoked_reason='logout',
+            )
+            return Response({'revoked': bool(updated)})
+        # Tokens emitidos antes de las sesiones individuales siguen siendo
+        # compatibles hasta expirar, pero nunca pueden revocar otra sesión.
+        return Response({'revoked': False, 'legacy': True})
 
 
 @extend_schema(responses={200: dict})
@@ -436,15 +945,16 @@ class ChangePasswordView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        from .passwords import (
+            PasswordPolicyError, validate_password, validate_password_confirmation)
+
         current = request.data.get('current_password', '')
         new_password = request.data.get('new_password', '')
+        confirmation = request.data.get(
+            'new_password_confirm', request.data.get('confirm_password', ''))
 
         if not current or not new_password:
             return Response({'error': 'Completa ambos campos'},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        if len(new_password) < 6:
-            return Response({'error': 'La nueva contrasena debe tener al menos 6 caracteres'},
                             status=status.HTTP_400_BAD_REQUEST)
 
         user = request.user
@@ -452,9 +962,32 @@ class ChangePasswordView(APIView):
             return Response({'error': 'La contrasena actual es incorrecta'},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        user.set_password(new_password)
-        user.save()
-        return Response({'message': 'Contrasena actualizada correctamente'})
+        try:
+            validate_password_confirmation(new_password, confirmation)
+            validate_password(new_password, user)
+        except PasswordPolicyError as exc:
+            return Response({'error': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            user.set_password(new_password)
+            user.save(update_fields=[
+                'password', 'password_changed_at', 'token_version',
+                'must_change_password', 'updated_at'])
+            UserSession.objects.filter(
+                user=user, revoked_at__isnull=True).update(
+                    revoked_at=timezone.now(),
+                    revoked_reason='password_changed',
+                )
+            _, refresh = _issue_session_token(user)
+        record_audit(
+            request, 'password_changed', 'user', user.pk, module='auth',
+            after={'must_change_password': False})
+        return Response({
+            'message': 'Contrasena actualizada correctamente',
+            'token': str(refresh.access_token),
+            'user': _user_payload(user),
+        })
 
 
 @extend_schema_view(
@@ -535,6 +1068,103 @@ class ActivePlansView(APIView):
     def get(self, request):
         plans = Plan.objects.filter(active=True).order_by('type', 'code')
         return Response(PlanPublicSerializer(plans, many=True).data)
+
+
+class ActiveCoverageZoneListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        zones = CoverageZone.objects.all()
+        if request.query_params.get('active', '').lower() in {'true', '1'}:
+            zones = zones.filter(is_active=True)
+        return Response(CoverageZoneSerializer(zones, many=True).data)
+
+
+class CoverageZoneAdminListView(IsAdminMixin, APIView):
+    permission_code = 'coverage.manage'
+
+    def get(self, request):
+        error = self.check_admin(request)
+        if error:
+            return error
+        zones = CoverageZone.objects.all()
+        return Response(CoverageZoneSerializer(zones, many=True).data)
+
+    def post(self, request):
+        if not has_permission(request.user, 'coverage.create'):
+            return Response(
+                {'error': 'No tienes permiso para realizar esta operación'},
+                status=status.HTTP_403_FORBIDDEN)
+        if not request.data.get('google_maps_url'):
+            return Response(
+                {'error': 'La URL de Google Maps es obligatoria'},
+                status=status.HTTP_400_BAD_REQUEST)
+        serializer = CoverageZoneSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({'error': _first_error(serializer)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            zone = serializer.save(created_by=request.user, is_active=True)
+        except IntegrityError:
+            return Response(
+                {'error': 'Ya existe una zona con ese nombre'},
+                status=status.HTTP_400_BAD_REQUEST)
+        record_audit(
+            request, 'created', 'coverage_zone', zone.id,
+            after={
+                'name': zone.name,
+                'google_maps_url': zone.google_maps_url,
+                'is_active': zone.is_active,
+            })
+        return Response(
+            CoverageZoneSerializer(zone).data,
+            status=status.HTTP_201_CREATED)
+
+
+class CoverageZoneDetailView(IsAdminMixin, APIView):
+    permission_code = 'coverage.manage'
+
+    def patch(self, request, pk):
+        permission_code = (
+            'coverage.manage' if 'is_active' in request.data
+            else 'coverage.change')
+        if not (has_permission(request.user, permission_code)
+                or has_permission(request.user, 'coverage.manage')):
+            return Response(
+                {'error': 'No tienes permiso para realizar esta operación'},
+                status=status.HTTP_403_FORBIDDEN)
+        try:
+            zone = CoverageZone.objects.get(pk=pk)
+        except CoverageZone.DoesNotExist:
+            return Response(
+                {'error': 'Zona de cobertura no encontrada'},
+                status=status.HTTP_404_NOT_FOUND)
+
+        before = {
+            'name': zone.name,
+            'google_maps_url': zone.google_maps_url,
+            'is_active': zone.is_active,
+        }
+        serializer = CoverageZoneSerializer(
+            zone, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response({'error': _first_error(serializer)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            zone = serializer.save()
+        except IntegrityError:
+            return Response(
+                {'error': 'Ya existe una zona con ese nombre'},
+                status=status.HTTP_400_BAD_REQUEST)
+        record_audit(
+            request, 'updated', 'coverage_zone', zone.id,
+            before=before,
+            after={
+                'name': zone.name,
+                'google_maps_url': zone.google_maps_url,
+                'is_active': zone.is_active,
+            })
+        return Response(CoverageZoneSerializer(zone).data)
 
 
 @extend_schema(responses={200: TipoSolicitudPublicSerializer(many=True)})
@@ -646,6 +1276,117 @@ class MotivoDetailView(IsAdminMixin, APIView):
                      after={'categoria': motivo.categoria,
                             'activo': motivo.activo})
         return Response(serializer.data)
+
+
+@extend_schema_view(
+    get=extend_schema(responses={200: CanalCaptacionSerializer(many=True)}),
+    post=extend_schema(request=CanalCaptacionSerializer,
+                       responses={201: CanalCaptacionSerializer, 400: dict}),
+)
+class CanalCaptacionListView(PermissionMixin, APIView):
+    """Catalogo administrable de canales de captacion."""
+
+    def get(self, request):
+        error = self.check_permission(request, 'captacion.view')
+        if error:
+            return error
+        return Response(CanalCaptacionSerializer(
+            CanalCaptacion.objects.all(), many=True).data)
+
+    def post(self, request):
+        error = self.check_permission(request, 'captacion.manage')
+        if error:
+            return error
+        serializer = CanalCaptacionSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({'error': _first_error(serializer)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            canal = serializer.save()
+        except IntegrityError:
+            return Response(
+                {'error': 'Ya existe un canal con ese nombre'},
+                status=status.HTTP_400_BAD_REQUEST)
+        record_audit(request, 'created', 'canal_captacion', canal.id,
+                     after={'nombre': canal.nombre, 'activo': canal.activo})
+        return Response(CanalCaptacionSerializer(canal).data,
+                        status=status.HTTP_201_CREATED)
+
+
+@extend_schema(responses={200: CanalCaptacionPublicSerializer(many=True)})
+class ActiveCanalesCaptacionView(APIView):
+    """Canales activos para el selector "¿Como nos conocio?".
+
+    Sin permisos administrativos: el operador que registra solicitudes
+    necesita el catalogo aunque no pueda modificarlo.
+    """
+
+    def get(self, request):
+        return Response(CanalCaptacionPublicSerializer(
+            CanalCaptacion.objects.filter(activo=True), many=True).data)
+
+
+@extend_schema_view(
+    put=extend_schema(request=CanalCaptacionSerializer,
+                      responses={200: CanalCaptacionSerializer, 400: dict, 404: dict}),
+    patch=extend_schema(request=CanalCaptacionSerializer,
+                        responses={200: CanalCaptacionSerializer, 400: dict, 404: dict}),
+    delete=extend_schema(responses={204: None, 404: dict}),
+)
+class CanalCaptacionDetailView(PermissionMixin, APIView):
+    """Edita o desactiva un canal. Nunca se borra fisicamente."""
+
+    def _get_canal(self, pk):
+        return CanalCaptacion.objects.filter(pk=pk).first()
+
+    def put(self, request, pk):
+        return self._update(request, pk, partial=False)
+
+    def patch(self, request, pk):
+        return self._update(request, pk, partial=True)
+
+    def _update(self, request, pk, partial):
+        error = self.check_permission(request, 'captacion.manage')
+        if error:
+            return error
+        canal = self._get_canal(pk)
+        if canal is None:
+            return Response({'error': 'Canal de captacion no encontrado'},
+                            status=status.HTTP_404_NOT_FOUND)
+        serializer = CanalCaptacionSerializer(
+            canal, data=request.data, partial=partial)
+        if not serializer.is_valid():
+            return Response({'error': _first_error(serializer)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        before = {'nombre': canal.nombre, 'activo': canal.activo,
+                  'descripcion': canal.descripcion}
+        try:
+            canal = serializer.save()
+        except IntegrityError:
+            return Response(
+                {'error': 'Ya existe un canal con ese nombre'},
+                status=status.HTTP_400_BAD_REQUEST)
+        record_audit(request, 'updated', 'canal_captacion', canal.id,
+                     before=before,
+                     after={'nombre': canal.nombre, 'activo': canal.activo,
+                            'descripcion': canal.descripcion})
+        return Response(CanalCaptacionSerializer(canal).data)
+
+    def delete(self, request, pk):
+        error = self.check_permission(request, 'captacion.manage')
+        if error:
+            return error
+        canal = self._get_canal(pk)
+        if canal is None:
+            return Response({'error': 'Canal de captacion no encontrado'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if not canal.activo:
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        canal.activo = False
+        canal.save(update_fields=['activo', 'updated_at'])
+        record_audit(request, 'deactivated', 'canal_captacion', canal.id,
+                     before={'activo': True}, after={'activo': False})
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @extend_schema_view(
@@ -965,12 +1706,206 @@ class CustomerListView(APIView):
         return Response(CustomerSerializer(qs[:20], many=True).data)
 
 
+def _maps_url_coordinates(value):
+    """Extrae coordenadas de formatos comunes de Google Maps, si existen."""
+    parsed = urlparse(value)
+    host = (parsed.hostname or '').lower()
+    valid_hosts = ('google.com', 'www.google.com', 'maps.google.com',
+                   'goo.gl', 'maps.app.goo.gl')
+    if parsed.scheme != 'https' or not any(host == item or host.endswith('.' + item) for item in valid_hosts):
+        raise ValueError('La URL debe ser un enlace HTTPS válido de Google Maps')
+    text = parsed.path + '?' + parsed.query
+    patterns = [
+        r'@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)',
+        r'!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return Decimal(match.group(1)), Decimal(match.group(2))
+    query = parse_qs(parsed.query).get('q', [])
+    if query:
+        match = re.match(r'^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)', query[0])
+        if match:
+            return Decimal(match.group(1)), Decimal(match.group(2))
+    return None, None
+
+
+def _location_values(data, current=None):
+    """Valida la ubicación recibida y devuelve valores normalizados."""
+    source = data.get('source') or (current.source if current else '')
+    maps_url = (data.get('maps_url') if 'maps_url' in data else (current.maps_url if current else '')) or ''
+    latitude = data.get('latitude') if 'latitude' in data else (current.latitude if current else None)
+    longitude = data.get('longitude') if 'longitude' in data else (current.longitude if current else None)
+    accuracy = data.get('accuracy_meters') if 'accuracy_meters' in data else (current.accuracy_meters if current else None)
+    captured_at = data.get('captured_at') if 'captured_at' in data else (current.captured_at if current else None)
+    if source == CustomerLocation.SOURCE_MAPS_URL:
+        if not maps_url:
+            raise ValueError('Pega una URL de Google Maps')
+        url_lat, url_lng = _maps_url_coordinates(maps_url)
+        latitude = latitude if latitude is not None else url_lat
+        longitude = longitude if longitude is not None else url_lng
+    elif source == CustomerLocation.SOURCE_GPS:
+        if latitude in (None, '') or longitude in (None, ''):
+            raise ValueError('La ubicación GPS está incompleta')
+        try:
+            latitude, longitude = Decimal(str(latitude)), Decimal(str(longitude))
+            if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+                raise ValueError
+        except (InvalidOperation, ValueError):
+            raise ValueError('Las coordenadas GPS no son válidas')
+    else:
+        raise ValueError('Indica si la ubicación proviene de GPS o Google Maps')
+    if accuracy not in (None, ''):
+        try:
+            accuracy = Decimal(str(accuracy))
+            if accuracy < 0:
+                raise ValueError
+        except (InvalidOperation, ValueError):
+            raise ValueError('La precisión GPS no es válida')
+    if isinstance(captured_at, str):
+        captured_at = parse_datetime(captured_at)
+        if captured_at is None:
+            raise ValueError('La fecha de captura no es válida')
+    return {
+        'source': source, 'maps_url': maps_url,
+        'latitude': latitude, 'longitude': longitude,
+        'accuracy_meters': accuracy, 'captured_at': captured_at,
+    }
+
+
+class CustomerLocationListView(PermissionMixin, APIView):
+    permission_code = 'ubicaciones.clientes.view'
+
+    def get(self, request):
+        error = self.check_permission(request)
+        if error:
+            return error
+        query = (request.query_params.get('q') or '').strip()
+        customers = Customer.objects.filter(active=True)
+        if query:
+            customers = customers.filter(Q(code__icontains=query) | Q(name__icontains=query))
+        locations = CustomerLocation.objects.filter(customer__in=customers).select_related(
+            'customer', 'created_by', 'updated_by').order_by('-updated_at')[:20]
+        return Response(CustomerLocationSerializer(locations, many=True).data)
+
+
+class CustomerLocationDetailView(PermissionMixin, APIView):
+    permission_code = 'ubicaciones.clientes.view'
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_object(self, pk, lock=False):
+        qs = CustomerLocation.objects.select_related(
+            'customer', 'created_by', 'updated_by')
+        if lock:
+            qs = qs.select_for_update()
+        return qs.filter(pk=pk).first()
+
+    def get(self, request, pk):
+        error = self.check_permission(request)
+        if error:
+            return error
+        location = self.get_object(pk)
+        if location is None:
+            return Response({'error': 'Ubicación no encontrada'}, status=404)
+        return Response(CustomerLocationSerializer(location).data)
+
+    def patch(self, request, pk):
+        error = self.check_permission(request, 'ubicaciones.clientes.change')
+        if error:
+            return error
+        with transaction.atomic():
+            location = self.get_object(pk, lock=True)
+            if location is None:
+                return Response({'error': 'Ubicación no encontrada'}, status=404)
+            try:
+                values = _location_values(request.data, location)
+                photo = request.FILES.get('photo')
+                new_photo_path = location.photo_path
+                if photo:
+                    content, content_type = optimize_photo(photo)
+                    new_photo_path = upload_photo(content, content_type, location.customer_id)
+            except (ValueError, RuntimeError) as exc:
+                return Response({'error': str(exc)}, status=400 if isinstance(exc, ValueError) else 503)
+            before = CustomerLocationSerializer(location).data
+            previous_photo_path = location.photo_path
+            for key, value in values.items():
+                setattr(location, key, value)
+            location.photo_path = new_photo_path
+            location.updated_by = request.user
+            location.save()
+            CustomerLocationHistory.objects.create(
+                location=location, changed_by=request.user, change_type='updated',
+                previous_photo_path=previous_photo_path,
+                new_photo_path=new_photo_path,
+                previous_latitude=before.get('latitude'), previous_longitude=before.get('longitude'),
+                previous_accuracy_meters=before.get('accuracy_meters'), previous_maps_url=before.get('maps_url', ''),
+                previous_source=before.get('source', ''), new_latitude=location.latitude,
+                new_longitude=location.longitude, new_accuracy_meters=location.accuracy_meters,
+                new_maps_url=location.maps_url, new_source=location.source)
+            record_audit(request, 'updated', 'customer_location', location.id,
+                         module='ubicaciones', before=before,
+                         after={'customer_id': location.customer_id, 'source': location.source})
+        return Response(CustomerLocationSerializer(location).data)
+
+
+class CustomerLocationCreateView(PermissionMixin, APIView):
+    permission_code = 'ubicaciones.clientes.create'
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def post(self, request):
+        error = self.check_permission(request)
+        if error:
+            return error
+        customer_id = request.data.get('customer')
+        try:
+            customer = Customer.objects.get(pk=customer_id, active=True)
+        except (Customer.DoesNotExist, TypeError, ValueError):
+            return Response({'error': 'Cliente no encontrado'}, status=404)
+        if CustomerLocation.objects.filter(customer=customer).exists():
+            return Response({'error': 'El cliente ya tiene una ubicación; usa actualizar'}, status=409)
+        photo = request.FILES.get('photo')
+        if not photo:
+            return Response({'error': 'La fotografía de fachada es obligatoria'}, status=400)
+        try:
+            values = _location_values(request.data)
+            content, content_type = optimize_photo(photo)
+            photo_path = upload_photo(content, content_type, customer.id)
+        except (ValueError, RuntimeError) as exc:
+            return Response({'error': str(exc)}, status=400 if isinstance(exc, ValueError) else 503)
+        with transaction.atomic():
+            location = CustomerLocation.objects.create(
+                customer=customer, photo_path=photo_path, created_by=request.user,
+                updated_by=request.user, **values)
+            CustomerLocationHistory.objects.create(
+                location=location, changed_by=request.user, change_type='created',
+                new_photo_path=photo_path, new_latitude=location.latitude,
+                new_longitude=location.longitude, new_accuracy_meters=location.accuracy_meters,
+                new_maps_url=location.maps_url, new_source=location.source)
+            record_audit(request, 'created', 'customer_location', location.id,
+                         module='ubicaciones', after={'customer_id': customer.id})
+        return Response(CustomerLocationSerializer(location).data, status=201)
+
+
+class CustomerLocationHistoryView(PermissionMixin, APIView):
+    permission_code = 'ubicaciones.historial.view'
+
+    def get(self, request, pk):
+        error = self.check_permission(request)
+        if error:
+            return error
+        if not CustomerLocation.objects.filter(pk=pk).exists():
+            return Response({'error': 'Ubicación no encontrada'}, status=404)
+        history = CustomerLocationHistory.objects.filter(location_id=pk).select_related('changed_by')
+        return Response(CustomerLocationHistorySerializer(history, many=True).data)
+
+
 class CustomerDetailView(APIView):
     """Ficha consolidada del cliente: contratos y movimientos reales."""
 
     def get_customer(self, pk):
         return Customer.objects.prefetch_related(
-            'contracts__plan', 'contracts__created_by',
+            'contracts__plan', 'contracts__sale', 'contracts__created_by',
             'contracts__meter_reviewed_by',
         ).filter(pk=pk).first()
 
@@ -1000,7 +1935,8 @@ class CustomerDetailView(APIView):
             item['meterMatches'] = matches_by_meter.get(item['meter_number'], [])
 
         sales = Sale.objects.filter(customer=customer).select_related(
-            'plan', 'planFromId', 'createdBy').order_by('-date', '-id')
+            'plan', 'planFromId', 'createdBy', 'coverage_zone', 'canal_captacion'
+        ).order_by('-date', '-id')
         timeline = SaleSerializer(
             sales, many=True, context={'catalog': request_type_catalog()}).data
         return Response({
@@ -1307,8 +2243,9 @@ class SaleListView(APIView):
             return Response(
                 {'error': {'serviceTypeFrom': 'Tipo de servicio desconocido'}},
                 status=status.HTTP_400_BAD_REQUEST)
-        qs = Sale.objects.select_related('plan', 'planFromId', 'createdBy').filter(
-            deleted_at__isnull=not archived).order_by('-date', '-id')
+        qs = Sale.objects.select_related(
+            'plan', 'planFromId', 'createdBy', 'coverage_zone', 'canal_captacion'
+        ).filter(deleted_at__isnull=not archived).order_by('-date', '-id')
         if from_date:
             qs = qs.filter(date__gte=from_date)
         if to_date:
@@ -1484,9 +2421,14 @@ class SaleDetailView(IsAdminMixin, APIView):
             motivo_categoria_de_modo, plan_is_selectable)
         from .serializers import (
             SaleSerializer, resolve_sale_prices, validate_cambio_plan,
+            validate_adicion,
             resolve_motivo)
 
         data = request.data
+        if 'status' in data:
+            return Response(
+                {'error': 'El estado se determina automáticamente según el tipo de solicitud.'},
+                status=status.HTTP_400_BAD_REQUEST)
         if 'version' in data:
             try:
                 requested_version = int(data['version'])
@@ -1657,17 +2599,55 @@ class SaleDetailView(IsAdminMixin, APIView):
             if errors:
                 return Response({'error': next(iter(errors.values()))},
                                 status=status.HTTP_400_BAD_REQUEST)
+        elif mode == MODO_ADICION:
+            errors = validate_adicion(
+                plan=plan, service_type=service_type,
+                plan_from=plan_from,
+                service_type_from=service_type_from,
+                addition_type=data.get('additionType', sale.additionType))
+            if errors:
+                return Response({'error': next(iter(errors.values()))},
+                                status=status.HTTP_400_BAD_REQUEST)
+            plan_from = None
         else:
             service_type_from = None
             plan_from = None
             if mode != MODO_ADICION:
                 data = {**data, 'additionType': ''}
 
+        canal_captacion = None
+        if request_type == 'nuevo_contrato':
+            if 'canalCaptacionId' not in data:
+                if sale.requestType == 'nuevo_contrato':
+                    canal_captacion = sale.canal_captacion
+                else:
+                    return Response(
+                        {'error': 'Seleccione cómo nos conoció para registrar el nuevo contrato'},
+                        status=status.HTTP_400_BAD_REQUEST)
+            elif data.get('canalCaptacionId') in (None, ''):
+                return Response(
+                    {'error': 'Seleccione cómo nos conoció para registrar el nuevo contrato'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            elif str(data['canalCaptacionId']) == str(sale.canal_captacion_id):
+                canal_captacion = sale.canal_captacion
+            else:
+                canal_captacion = CanalCaptacion.objects.filter(
+                    id=data['canalCaptacionId'], activo=True).first()
+                if canal_captacion is None:
+                    return Response(
+                        {'error': 'El canal de captacion no existe o esta inactivo'},
+                        status=status.HTTP_400_BAD_REQUEST)
+        elif data.get('canalCaptacionId') not in (None, ''):
+            return Response(
+                {'error': 'El canal de captación solo aplica a nuevos contratos'},
+                status=status.HTTP_400_BAD_REQUEST)
+
         sale.date = data.get('date', sale.date)
         sale.clientCode = data.get('clientCode', sale.clientCode)
         sale.clientName = data.get('clientName', sale.clientName)
         sale.serviceType = service_type
         sale.requestType = request_type
+        sale.status = movement_status_for_request_type(request_type, catalog)
         sale.additionType = data.get('additionType', sale.additionType)
         sale.changeReason = change_reason
         sale.motivo = motivo
@@ -1675,6 +2655,7 @@ class SaleDetailView(IsAdminMixin, APIView):
         sale.plan = plan
         if plan.id != old_plan_id or not sale.planName:
             sale.planName = plan.label
+        sale.canal_captacion = canal_captacion
         sale.planFromId = plan_from
         if plan_from is None:
             sale.planFrom = ''
@@ -1818,13 +2799,43 @@ def _sync_user_roles(user, roles, assigned_by):
 
 class UserListView(IsAdminMixin, APIView):
     permission_code = 'users.manage'
+
     def get(self, request):
         error = self.check_admin(request)
         if error:
             return error
         users = User.objects.prefetch_related(
-            'role_assignments__role').order_by('id')
-        return Response(UserSerializer(users, many=True).data)
+            'role_assignments__role').order_by('name', 'id')
+        query = (request.query_params.get('q') or '').strip()
+        if query:
+            users = users.filter(
+                Q(name__icontains=query) | Q(name_normalized__icontains=query))
+        active = request.query_params.get('active')
+        if active in ('true', 'false'):
+            users = users.filter(active=(active == 'true'))
+        role_code = request.query_params.get('role')
+        if role_code:
+            users = users.filter(
+                role_assignments__active=True,
+                role_assignments__role__code=role_code)
+
+        total = users.count()
+        page, error = _query_int(request.query_params, 'page', 1)
+        if error:
+            return error
+        page_size, error = _query_int(
+            request.query_params, 'page_size', 25, maximum=100)
+        if error:
+            return error
+        start = (page - 1) * page_size
+        page_items = users[start:start + page_size]
+        return Response({
+            'count': total,
+            'page': page,
+            'page_size': page_size,
+            'results': UserSerializer(
+                page_items, many=True).data,
+        })
 
     def post(self, request):
         error = self.check_admin(request)
@@ -1832,10 +2843,16 @@ class UserListView(IsAdminMixin, APIView):
             return error
         serializer = UserWriteSerializer(data=request.data)
         if not serializer.is_valid():
-            return Response({'error': _first_error(serializer)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': _first_error(serializer),
+                             'fields': serializer.errors},
+                            status=status.HTTP_400_BAD_REQUEST)
         if not request.data.get('password'):
             return Response({'error': 'La contraseña es requerida'},
                             status=status.HTTP_400_BAD_REQUEST)
+        if not request.data.get('password_confirm'):
+            return Response(
+                {'error': {'password_confirm': 'Confirme la contraseña.'}},
+                status=status.HTTP_400_BAD_REQUEST)
         role_ids = serializer.validated_data.get('roleIds')
         if not role_ids:
             return Response(
@@ -1863,6 +2880,21 @@ class UserListView(IsAdminMixin, APIView):
 )
 class UserDetailView(IsAdminMixin, APIView):
     permission_code = 'users.manage'
+
+    def _guard_deactivation(self, request, user, new_active):
+        if new_active is False and user == request.user:
+            return Response(
+                {'error': 'No puedes desactivar tu propia cuenta.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if new_active is False:
+            from .rbac import is_last_superadmin
+            if is_last_superadmin(user):
+                return Response(
+                    {'error': 'No puedes desactivar al último administrador '
+                              'de sistemas activo.'},
+                    status=status.HTTP_409_CONFLICT)
+        return None
+
     def delete(self, request, pk):
         error = self.check_admin(request)
         if error:
@@ -1871,18 +2903,18 @@ class UserDetailView(IsAdminMixin, APIView):
             user = User.objects.get(id=pk)
         except User.DoesNotExist:
             return Response({'error': 'Usuario no encontrado'}, status=status.HTTP_404_NOT_FOUND)
-        if user == request.user:
-            return Response({'error': 'No puedes eliminarte a ti mismo'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        guard = self._guard_deactivation(request, user, False)
+        if guard:
+            return guard
         try:
             user.active = False
-            user.save(update_fields=['active'])
+            user.bump_token_version()
+            user.save(update_fields=['active', 'token_version', 'updated_at'])
         except ProtectedError:
             return Response(
                 {'error': 'No se puede eliminar el usuario porque tiene '
                           'registros asociados.'},
                 status=status.HTTP_409_CONFLICT)
-        from .audit import record_audit
         record_audit(request, 'deactivated', 'user', pk,
                      after={'active': False})
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -1895,9 +2927,19 @@ class UserDetailView(IsAdminMixin, APIView):
             user = User.objects.get(id=pk)
         except User.DoesNotExist:
             return Response({'error': 'Usuario no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+
+        new_active = request.data.get('active')
+        if new_active is not None:
+            guard = self._guard_deactivation(
+                request, user, new_active is True)
+            if guard:
+                return guard
+
         serializer = UserWriteSerializer(user, data=request.data, partial=True)
         if not serializer.is_valid():
-            return Response({'error': _first_error(serializer)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': _first_error(serializer),
+                             'fields': serializer.errors},
+                            status=status.HTTP_400_BAD_REQUEST)
         role_ids = serializer.validated_data.get('roleIds')
         roles = None
         if role_ids is not None:
@@ -1908,17 +2950,28 @@ class UserDetailView(IsAdminMixin, APIView):
             roles, error = _resolve_assignable_roles(role_ids)
             if error:
                 return error
-        before = {'role': user.role, 'active': user.active}
+        before = {
+            'role': user.role,
+            'active': user.active,
+            'roles': list(user.role_assignments.filter(
+                active=True).values_list('role__code', flat=True)),
+        }
         with transaction.atomic():
+            was_active = user.active
             serializer.save()
+            if was_active and not user.active:
+                user.bump_token_version()
+                user.save(update_fields=['token_version', 'updated_at'])
             if roles is not None:
                 _sync_user_roles(user, roles, request.user)
+            after_roles = list(user.role_assignments.filter(
+                active=True).values_list('role__code', flat=True))
             record_audit(
                 request, 'updated', 'user', user.id, before=before,
                 after={
                     'role': user.role,
                     'active': user.active,
-                    'roles': [role.name for role in roles or []],
+                    'roles': after_roles,
                 })
         return Response(UserSerializer(user).data)
 
@@ -1928,7 +2981,7 @@ class DashboardStatsView(APIView):
     MOVEMENT_TYPES = {
         'all', 'nuevo_contrato', 'recontrataciones', 'instalaciones',
         'retiros', 'cambios_plan',
-        'adiciones', 'otros',
+        'adiciones', 'traslados', 'otros',
     }
 
     @staticmethod
@@ -1963,15 +3016,22 @@ class DashboardStatsView(APIView):
         }
         classified = set(categories['nuevo_contrato']) | set(
             categories['recontrataciones'])
-        for name, mode in (
-            ('retiros', MODO_RETIRO),
-            ('cambios_plan', MODO_CAMBIO_PLAN),
-            ('adiciones', MODO_ADICION),
-        ):
+        # Una adición es un cambio de servicio con una etiqueta comercial
+        # distinta. Se agrupa junto a cambios_plan para no duplicar métricas;
+        # requestType sigue conservando "adicion" para reportes y auditoría.
+        mode_groups = (
+            ('retiros', (MODO_RETIRO,)),
+            ('cambios_plan', (MODO_CAMBIO_PLAN, MODO_ADICION)),
+            ('traslados', (MODO_TRASLADO,)),
+        )
+        for name, modes in mode_groups:
             categories[name] = [
                 code for code, tipo in catalog.items()
-                if code not in classified and tipo.modo == mode]
+                if code not in classified and tipo.modo in modes]
             classified.update(categories[name])
+        # Se conserva la clave para clientes antiguos del endpoint, pero ya
+        # no clasifica movimientos: las adiciones viven en cambios_plan.
+        categories['adiciones'] = []
         # Compatibilidad para consumidores antiguos del endpoint. No se
         # expone como categoría nueva ni se incluye en el desglose.
         categories['instalaciones'] = (
@@ -1993,6 +3053,153 @@ class DashboardStatsView(APIView):
             'count': data['count'] or 0,
             'total': cls._amount(data['total']),
         }
+
+    @staticmethod
+    def _zone_rows(queryset, categories):
+        zone_request_codes = (
+            categories['nuevo_contrato']
+            + categories['recontrataciones']
+            + categories['traslados'])
+        return list(
+            queryset.filter(
+                requestType__in=zone_request_codes,
+                coverage_zone__isnull=False,
+            ).values(
+                'coverage_zone_id', 'coverage_zone__name'
+            ).annotate(
+                count=Count('id')
+            ).order_by('-count', 'coverage_zone__name'))
+
+    @staticmethod
+    def _category_rows(queryset, categories, movement_type, from_date, to_date):
+        """Aggregate only the category selected in the dashboard."""
+        codes = categories.get(movement_type, [])
+        selected = queryset.filter(requestType__in=codes)
+        plans = list(selected.values(
+            'planName', 'plan__label', 'plan__type'
+        ).annotate(count=Count('id'), total=Sum('total'))
+             .order_by('-count', 'planName', 'plan__label'))
+        plan_type_labels = {
+            'internet': 'Internet', 'tv': 'TV', 'combo': 'Combo',
+        }
+        plan_rows = [{
+            'label': row['planName'] or row['plan__label'],
+            'plan_name': row['planName'],
+            'catalog_label': row['plan__label'],
+            'type': row['plan__type'],
+            'type_label': plan_type_labels.get(row['plan__type'], row['plan__type']),
+            'count': row['count'],
+            'total': float(row['total'] or 0),
+        } for row in plans]
+
+        motive_rows = list(selected.filter(motivo__isnull=False).values(
+            'motivo_id', 'motivo__nombre'
+        ).annotate(count=Count('id')).order_by('-count', 'motivo__nombre'))
+        motives = [{
+            'id': row['motivo_id'],
+            'label': row['motivo__nombre'],
+            'count': row['count'],
+        } for row in motive_rows]
+
+        transitions = []
+        if movement_type == 'cambios_plan':
+            from .domain import SERVICE_TYPE_FAMILY, SERVICE_FAMILY_LABELS
+
+            transition_rows = selected.values(
+                'serviceTypeFrom', 'serviceType',
+                'planFromId__type', 'plan__type',
+                'planFromId__label', 'planName', 'plan__label')
+            transition_counts = {}
+            for row in transition_rows:
+                old_family = (SERVICE_TYPE_FAMILY.get(row['serviceTypeFrom'])
+                              or row['planFromId__type'])
+                new_family = SERVICE_TYPE_FAMILY.get(row['serviceType'])
+                if old_family and new_family and old_family != new_family:
+                    transition = (
+                        SERVICE_FAMILY_LABELS.get(old_family, old_family),
+                        SERVICE_FAMILY_LABELS.get(new_family, new_family))
+                else:
+                    transition = (
+                        row['planFromId__label'] or 'Sin plan anterior',
+                        row['planName'] or row['plan__label'] or 'Sin plan nuevo')
+                transition_counts[transition] = transition_counts.get(transition, 0) + 1
+            transitions = [{
+                'from': old,
+                'to': new,
+                'count': count,
+            } for (old, new), count in sorted(
+                transition_counts.items(), key=lambda item: (-item[1], item[0]))]
+
+        if movement_type == 'adiciones':
+            addition_rows = selected.values('additionType').annotate(
+                count=Count('id'), total=Sum('total')).order_by('additionType')
+            services = [{
+                'serviceType': row['additionType'],
+                'label': {
+                    'adicion_tv': 'TV cable adicionada',
+                    'adicion_internet': 'Internet adicionado',
+                }.get(row['additionType'], 'Adición'),
+                'count': row['count'],
+                'total': float(row['total'] or 0),
+            } for row in addition_rows]
+        else:
+            service_rows = selected.values('serviceType').annotate(
+                count=Count('id'), total=Sum('total')).order_by('serviceType')
+            service_labels = {
+                'internet': 'Internet',
+                'tv': 'TV analógica',
+                'tv_digital': 'TV digital',
+                'combo_analog': 'Internet + TV analógica',
+                'combo_digital': 'Internet + TV digital',
+            }
+            services = [{
+                'serviceType': row['serviceType'],
+                'label': service_labels.get(row['serviceType'], row['serviceType']),
+                'count': row['count'],
+                'total': float(row['total'] or 0),
+            } for row in service_rows]
+
+        zone_rows = []
+        if movement_type in {'nuevo_contrato', 'recontrataciones', 'traslados'}:
+            zone_rows = list(selected.filter(coverage_zone__isnull=False).values(
+                'coverage_zone__name'
+            ).annotate(count=Count('id')).order_by('-count', 'coverage_zone__name'))
+        zone_total = sum(row['count'] for row in zone_rows)
+        zones = [{
+            'name': row['coverage_zone__name'],
+            'count': row['count'],
+            'percentage': round(row['count'] * 100 / zone_total, 1)
+            if zone_total else 0,
+        } for row in zone_rows]
+
+        daily = selected.values('date').annotate(count=Count('id')).order_by('date')
+        daily_by_date = {row['date']: row['count'] for row in daily}
+        series = []
+        current = from_date
+        while current <= to_date:
+            series.append({'date': current.isoformat(), 'count': daily_by_date.get(current, 0)})
+            current += timedelta(days=1)
+
+        return {
+            'plans': plan_rows,
+            'motivos': motives,
+            'transiciones': transitions,
+            'servicios': services,
+            'zonas': zones,
+            'series': series,
+        }
+
+    @staticmethod
+    def _selected_sales(categories, from_date, to_date, movement_type):
+        queryset = Sale.objects.filter(
+            deleted_at__isnull=True,
+            date__gte=from_date,
+            date__lte=to_date,
+        )
+        if movement_type != 'all':
+            queryset = queryset.filter(
+                requestType__in=categories[movement_type])
+        return queryset
 
     @classmethod
     def _analytics(cls, queryset, categories, from_date, to_date,
@@ -2040,6 +3247,9 @@ class DashboardStatsView(APIView):
             })
             current += timedelta(days=1)
 
+        # Resumen general por servicio. El análisis de una categoría tiene
+        # su propia agregación en _category_rows, pero el dashboard general
+        # también necesita este bloque.
         service_rows = queryset.values('serviceType').annotate(
             count=Count('id'), total=Sum('total')).order_by('serviceType')
         service_labels = {
@@ -2049,15 +3259,107 @@ class DashboardStatsView(APIView):
             'combo_analog': 'Internet + TV analógica',
             'combo_digital': 'Internet + TV digital',
         }
-        services = [
+        services = [{
+            'serviceType': row['serviceType'],
+            'label': service_labels.get(row['serviceType'], row['serviceType']),
+            'count': row['count'],
+            'total': cls._amount(row['total']),
+        } for row in service_rows]
+
+        channel_queryset = queryset.filter(
+            requestType__in=categories['nuevo_contrato'])
+        channel_rows = list(
+            channel_queryset.values(
+                'canal_captacion_id', 'canal_captacion__nombre'
+            ).annotate(count=Count('id'))
+        )
+        channel_rows.sort(
+            key=lambda row: (
+                -row['count'],
+                row['canal_captacion__nombre'] or 'Sin especificar',
+            ))
+        channel_total = sum(row['count'] for row in channel_rows)
+        channels = [
             {
-                'serviceType': row['serviceType'],
-                'label': service_labels.get(row['serviceType'], row['serviceType']),
+                'id': row['canal_captacion_id'],
+                'key': (
+                    f"channel-{row['canal_captacion_id']}"
+                    if row['canal_captacion_id'] is not None
+                    else 'channel-none'
+                ),
+                'name': row['canal_captacion__nombre'] or 'Sin especificar',
+                'count': row['count'],
+                'percentage': (
+                    round(row['count'] * 100 / channel_total, 2)
+                    if channel_total else 0
+                ),
+            }
+            for row in channel_rows
+        ]
+        if channels:
+            channels[-1]['percentage'] = round(
+                channels[-1]['percentage']
+                + 100
+                - sum(channel['percentage'] for channel in channels),
+                2,
+            )
+
+        daily_channel_rows = channel_queryset.values(
+            'date', 'canal_captacion_id'
+        ).annotate(count=Count('id'))
+        daily_channel_counts = {
+            (row['date'], row['canal_captacion_id']): row['count']
+            for row in daily_channel_rows
+        }
+        channels_by_day = []
+        current = from_date
+        while current <= to_date:
+            day = {'date': current.isoformat()}
+            for channel in channels:
+                day[channel['key']] = daily_channel_counts.get(
+                    (current, channel['id']), 0)
+            channels_by_day.append(day)
+            current += timedelta(days=1)
+
+        demand_codes = (
+            categories['nuevo_contrato'] + categories['recontrataciones'])
+        plan_rows = queryset.filter(
+            requestType__in=demand_codes
+        ).values(
+            'planName', 'plan__label', 'plan__type'
+        ).annotate(
+            count=Count('id'), total=Sum('total')
+        ).order_by('-count', 'planName', 'plan__label')
+        plan_type_labels = {
+            'internet': 'Internet',
+            'tv': 'TV',
+            'combo': 'Combo',
+        }
+        plans = [
+            {
+                'label': row['planName'] or row['plan__label'],
+                'plan_name': row['planName'],
+                'catalog_label': row['plan__label'],
+                'type': row['plan__type'],
+                'type_label': plan_type_labels.get(
+                    row['plan__type'], row['plan__type']),
                 'count': row['count'],
                 'total': cls._amount(row['total']),
             }
-            for row in service_rows
+            for row in plan_rows
         ]
+
+        zone_rows = cls._zone_rows(queryset, categories)
+        zone_request_total = sum(row['count'] for row in zone_rows)
+        top_zone_rows = zone_rows
+        zones = [
+            {
+                'name': row['coverage_zone__name'],
+                'count': row['count'],
+                'percentage': round(row['count'] * 100 / zone_request_total, 1),
+            }
+            for row in top_zone_rows
+        ] if zone_request_total else []
 
         movement_breakdown = [
             {
@@ -2075,6 +3377,12 @@ class DashboardStatsView(APIView):
             for name in ('nuevo_contrato', 'recontrataciones', 'retiros', 'cambios_plan',
                          'adiciones', 'otros')
         ]
+
+        selected_summary = cls._summary(queryset)
+        category_analysis = None
+        if movement_type != 'all':
+            category_analysis = cls._category_rows(
+                queryset, categories, movement_type, from_date, to_date)
 
         return {
             'period': {
@@ -2095,7 +3403,17 @@ class DashboardStatsView(APIView):
             'series': series,
             'comparativa': series,
             'servicios': services,
+            'planes': plans,
+            'zonas': zones,
+            'canales_captacion': {
+                'total': channel_total,
+                'principal': channels[0] if channels else None,
+                'items': channels,
+                'series': channels_by_day,
+            },
             'categorias': movement_breakdown,
+            'selected': selected_summary,
+            'category_analysis': category_analysis,
         }
 
     def get(self, request):
@@ -2111,7 +3429,7 @@ class DashboardStatsView(APIView):
                     'allowed': sorted(self.MOVEMENT_TYPES),
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            is_admin = getattr(request.user, 'role', '') == 'admin'
+            is_admin = can_supervise_productivity(request.user)
             if is_admin:
                 try:
                     from_date, to_date = self._parse_range(
@@ -2120,9 +3438,13 @@ class DashboardStatsView(APIView):
                     return Response({'error': str(exc)},
                                     status=status.HTTP_400_BAD_REQUEST)
             else:
+                # El período personal siempre es hoy. No se confía en
+                # from/to enviados por el cliente.
                 from_date = to_date = today
 
             all_sales = Sale.objects.filter(deleted_at__isnull=True)
+            if not is_admin:
+                all_sales = all_sales.filter(createdBy=request.user)
             # Retiros y cambios se derivan del MODO del catálogo. Los dos
             # tipos de alta comerciales se separan por su código histórico.
             catalog = request_type_catalog()
@@ -2176,11 +3498,8 @@ class DashboardStatsView(APIView):
                 'role': request.user.role,
             }
 
-            selected_sales = all_sales.filter(
-                date__gte=from_date, date__lte=to_date)
-            if movement_type != 'all':
-                selected_sales = selected_sales.filter(
-                    requestType__in=categories[movement_type])
+            selected_sales = self._selected_sales(
+                categories, from_date, to_date, movement_type)
 
             return Response({
                 **legacy,
@@ -2197,6 +3516,434 @@ class DashboardStatsView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@extend_schema(responses={200: dict, 400: dict, 500: dict})
+class DashboardDrilldownView(APIView):
+    INDICATOR_CATEGORIES = {
+        'nuevo_contrato': ('nuevo_contrato',),
+        'recontrataciones': ('recontrataciones',),
+        'retiros': ('retiros',),
+        'cambios_plan': ('cambios_plan',),
+        'traslados': ('traslados',),
+        'adiciones': ('adiciones',),
+        'altas_comerciales': ('nuevo_contrato', 'recontrataciones'),
+        'balance_neto': (
+            'nuevo_contrato', 'recontrataciones', 'retiros'),
+        'zone': (),
+        'plan': (),
+        'channel': (),
+        'motive': (),
+    }
+
+    def get(self, request):
+        indicator = request.query_params.get('indicator', '')
+        if indicator not in self.INDICATOR_CATEGORIES:
+            return Response(
+                {'error': {'indicator': 'Indicador no válido'}},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        dashboard = DashboardStatsView()
+        movement_type = request.query_params.get('movement_type', 'all')
+        if movement_type not in dashboard.MOVEMENT_TYPES:
+            return Response({
+                'error': 'movement_type no válido',
+                'allowed': sorted(dashboard.MOVEMENT_TYPES),
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        page, error = _query_int(request.query_params, 'page', 1)
+        if error:
+            return error
+        page_size, error = _query_int(
+            request.query_params, 'page_size', 25, maximum=100)
+        if error:
+            return error
+
+        search = request.query_params.get('search', '').strip()
+        if len(search) > 100:
+            return Response(
+                {'error': {'search': 'No puede superar 100 caracteres'}},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        today = timezone.localdate()
+        if can_supervise_productivity(request.user):
+            try:
+                from_date, to_date = dashboard._parse_range(
+                    request.query_params, today)
+            except ValueError as exc:
+                return Response(
+                    {'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            # El detalle respeta la misma regla que los indicadores: solo hoy.
+            from_date = to_date = today
+
+        try:
+            catalog = request_type_catalog()
+            categories = dashboard._category_codes(catalog)
+            filtered_sales = dashboard._selected_sales(
+                categories, from_date, to_date, movement_type)
+            breakdown = []
+            zone_count = None
+            plan_count = None
+            channel_count = None
+            motive_count = None
+            category = None
+            if indicator == 'zone':
+                zone_name = request.query_params.get('zone_name', '').strip()
+                if not zone_name or len(zone_name) > 120:
+                    return Response(
+                        {'error': {'zone_name': 'Zona no válida'}},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+                zone_rows = dashboard._zone_rows(filtered_sales, categories)
+                zone_request_codes = (
+                    categories['nuevo_contrato']
+                    + categories['recontrataciones']
+                    + categories['traslados'])
+                if zone_name == 'Otros barrios':
+                    other_rows = zone_rows[5:]
+                    zone_ids = [row['coverage_zone_id'] for row in other_rows]
+                    zone_count = sum(row['count'] for row in other_rows)
+                    selected_sales = filtered_sales.filter(
+                        requestType__in=zone_request_codes,
+                        coverage_zone_id__in=zone_ids)
+                else:
+                    selected_zone = next(
+                        (row for row in zone_rows
+                         if row['coverage_zone__name'] == zone_name),
+                        None)
+                    zone_count = selected_zone['count'] if selected_zone else 0
+                    selected_sales = (
+                        filtered_sales.filter(
+                            requestType__in=zone_request_codes,
+                            coverage_zone_id=selected_zone['coverage_zone_id'])
+                        if selected_zone else filtered_sales.none())
+            elif indicator == 'plan':
+                plan_name = request.query_params.get('plan_name', '')
+                catalog_label = request.query_params.get(
+                    'catalog_label', '').strip()
+                plan_type = request.query_params.get('plan_type', '').strip()
+                if (
+                        len(plan_name) > 120
+                        or not catalog_label or len(catalog_label) > 120
+                        or plan_type not in {'internet', 'tv', 'combo'}):
+                    return Response(
+                        {'error': {'plan': 'Plan no válido'}},
+                        status=status.HTTP_400_BAD_REQUEST)
+                demand_codes = (
+                    categories.get(movement_type)
+                    if movement_type != 'all' else
+                    categories['nuevo_contrato']
+                    + categories['recontrataciones'])
+                selected_sales = filtered_sales.filter(
+                    requestType__in=demand_codes,
+                    plan__type=plan_type,
+                    planName=plan_name,
+                    plan__label=catalog_label,
+                )
+                plan_count = selected_sales.count()
+            elif indicator == 'channel':
+                channel_key = request.query_params.get('channel_key', '')
+                channel_codes = categories['nuevo_contrato']
+                if channel_key == 'channel-none':
+                    channel_name = 'Sin especificar'
+                    selected_sales = filtered_sales.filter(
+                        requestType__in=channel_codes,
+                        canal_captacion__isnull=True)
+                elif channel_key.startswith('channel-') and channel_key[8:].isdigit():
+                    channel_id = int(channel_key[8:])
+                    channel = CanalCaptacion.objects.filter(
+                        id=channel_id).first()
+                    if channel is None:
+                        return Response(
+                            {'error': {'channel_key': 'Canal no válido'}},
+                            status=status.HTTP_400_BAD_REQUEST)
+                    channel_name = channel.nombre
+                    selected_sales = filtered_sales.filter(
+                        requestType__in=channel_codes,
+                        canal_captacion_id=channel_id)
+                else:
+                    return Response(
+                        {'error': {'channel_key': 'Canal no válido'}},
+                        status=status.HTTP_400_BAD_REQUEST)
+                channel_count = selected_sales.count()
+            elif indicator == 'motive':
+                motive_id = request.query_params.get('motive_id', '').strip()
+                if not motive_id.isdigit():
+                    return Response(
+                        {'error': {'motive_id': 'Motivo no válido'}},
+                        status=status.HTTP_400_BAD_REQUEST)
+                motive = Motivo.objects.filter(id=int(motive_id)).first()
+                if motive is None:
+                    return Response(
+                        {'error': {'motive_id': 'Motivo no válido'}},
+                        status=status.HTTP_400_BAD_REQUEST)
+                selected_sales = filtered_sales.filter(motivo_id=motive.id)
+                motive_count = selected_sales.count()
+            else:
+                relevant_categories = self.INDICATOR_CATEGORIES[indicator]
+                category = request.query_params.get(
+                    'category', relevant_categories[0])
+                if category not in relevant_categories:
+                    return Response(
+                        {'error': {'category': 'Categoría no válida para el indicador'}},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+                for name in relevant_categories:
+                    summary = dashboard._summary(
+                        filtered_sales.filter(requestType__in=categories[name]))
+                    breakdown.append({
+                        'category': name,
+                        'label': {
+                            'nuevo_contrato': 'Nuevos contratos',
+                            'recontrataciones': 'Recontrataciones',
+                            'retiros': 'Retiros',
+                            'cambios_plan': 'Cambios de plan',
+                            'traslados': 'Traslados externos',
+                            'adiciones': 'Adiciones',
+                        }[name],
+                        **summary,
+                    })
+
+                selected_sales = filtered_sales.filter(
+                    requestType__in=categories[category])
+
+            if search:
+                selected_sales = selected_sales.filter(
+                    Q(clientName__icontains=search)
+                    | Q(clientCode__icontains=search))
+
+            total = selected_sales.count()
+            start = (page - 1) * page_size
+            items = selected_sales.select_related(
+                'plan', 'planFromId', 'createdBy', 'coverage_zone',
+                'canal_captacion', 'motivo', 'traslado_externo',
+            ).order_by('-date', '-id')[start:start + page_size]
+
+            serialized_items = SaleSerializer(
+                items, many=True,
+                context={'catalog': catalog}).data
+            if indicator in {'zone', 'plan', 'channel'}:
+                for item in serialized_items:
+                    request_type = catalog.get(item['requestType'])
+                    item['requestTypeLabel'] = (
+                        request_type.nombre if request_type
+                        else item['requestType'])
+
+            if indicator == 'zone':
+                indicator_count = zone_count
+            elif indicator == 'plan':
+                indicator_count = plan_count
+            elif indicator == 'channel':
+                indicator_count = channel_count
+            elif indicator == 'motive':
+                indicator_count = motive_count
+            elif indicator == 'balance_neto':
+                totals = {item['category']: item['count'] for item in breakdown}
+                indicator_count = (
+                    totals['nuevo_contrato'] + totals['recontrataciones']
+                    - totals['retiros'])
+            else:
+                indicator_count = sum(item['count'] for item in breakdown)
+
+            response_data = {
+                'indicator': indicator,
+                'category': category,
+                'period': {
+                    'from': from_date.isoformat(),
+                    'to': to_date.isoformat(),
+                    'movement_type': movement_type,
+                },
+                'indicator_count': indicator_count,
+                'breakdown': breakdown,
+                'items': serialized_items,
+                'total': total,
+                'page': page,
+                'page_size': page_size,
+                'total_pages': max(1, (total + page_size - 1) // page_size),
+            }
+            if indicator == 'zone':
+                response_data['zone_name'] = zone_name
+                response_data['zone_count'] = zone_count
+            elif indicator == 'plan':
+                response_data['plan_name'] = plan_name
+                response_data['catalog_label'] = catalog_label
+                response_data['plan_type'] = plan_type
+                response_data['plan_count'] = plan_count
+            elif indicator == 'channel':
+                response_data['channel_key'] = channel_key
+                response_data['channel_name'] = channel_name
+                response_data['channel_count'] = channel_count
+            elif indicator == 'motive':
+                response_data['motive_id'] = motive.id
+                response_data['motive_name'] = motive.nombre
+                response_data['motive_count'] = motive_count
+            return Response(response_data)
+        except Exception:
+            logger.exception(
+                'Error consultando detalle del dashboard comercial')
+            return Response(
+                {'error': 'No se pudo consultar el detalle comercial'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class CommercialProductivityView(APIView):
+    """Productividad comercial con alcance decidido exclusivamente en backend.
+
+    ``Sale.createdBy`` representa quién registró la solicitud. El modelo no
+    tiene una relación confiable de atención/completado, por lo que esas
+    métricas se exponen explícitamente como no disponibles.
+    """
+
+    def get(self, request):
+        user = request.user
+        if not (
+            has_permission(user, 'dashboard.view')
+            or has_permission(user, 'comercial.view')
+        ):
+            return Response(
+                {'error': 'No tienes permiso para consultar productividad'},
+                status=status.HTTP_403_FORBIDDEN)
+
+        today = timezone.localdate()
+        if can_supervise_productivity(user):
+            try:
+                from_date, to_date = DashboardStatsView._parse_range(
+                    request.query_params, today)
+            except ValueError as exc:
+                return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            # La productividad personal no admite consultas históricas.
+            from_date = to_date = today
+
+        movement_type = request.query_params.get('movement_type', 'all')
+        if movement_type not in DashboardStatsView.MOVEMENT_TYPES:
+            return Response(
+                {'error': 'movement_type no válido'},
+                status=status.HTTP_400_BAD_REQUEST)
+        page, error = _query_int(request.query_params, 'page', 1)
+        if error:
+            return error
+        page_size, error = _query_int(
+            request.query_params, 'page_size', 25, maximum=100)
+        if error:
+            return error
+
+        catalog = request_type_catalog()
+        categories = DashboardStatsView._category_codes(catalog)
+        sales = Sale.objects.filter(
+            deleted_at__isnull=True,
+            created_at__date__gte=from_date,
+            created_at__date__lte=to_date,
+        )
+        if movement_type != 'all':
+            sales = sales.filter(requestType__in=categories[movement_type])
+
+        supervisor = can_supervise_productivity(user)
+        requested_user_id = request.query_params.get('user_id')
+        if requested_user_id not in (None, ''):
+            try:
+                requested_user_id = int(requested_user_id)
+            except (TypeError, ValueError):
+                return Response({'error': 'user_id no válido'}, status=status.HTTP_400_BAD_REQUEST)
+            if not supervisor and requested_user_id != user.id:
+                return Response(
+                    {'error': 'Solo puedes consultar tu propia productividad'},
+                    status=status.HTTP_403_FORBIDDEN)
+            sales = sales.filter(createdBy_id=requested_user_id)
+        if not supervisor:
+            # Nunca se toma un user_id enviado por el cliente: el alcance
+            # personal siempre se deriva de request.user.
+            sales = sales.filter(createdBy=user)
+
+        grouped = list(sales.values(
+            'createdBy_id', 'createdBy__name',
+        ).annotate(
+            registered=Count('id'),
+            last_activity=Max('created_at'),
+        ).order_by('-registered', 'createdBy__name', 'createdBy_id'))
+
+        if not supervisor:
+            # La respuesta personal no filtra por nombres del cliente ni por
+            # IDs externos; solo devuelve la cuenta autenticada.
+            grouped = [{
+                'createdBy_id': user.id,
+                'createdBy__name': user.name,
+                'registered': grouped[0]['registered'] if grouped else 0,
+                'last_activity': grouped[0]['last_activity'] if grouped else None,
+            }]
+
+        total_registered = sales.count()
+        active_users = len([row for row in grouped if row['registered']])
+        total = sales.count()
+        start = (page - 1) * page_size
+        items = sales.select_related(
+            'plan', 'createdBy', 'motivo', 'customer',
+        ).order_by('-created_at', '-id')[start:start + page_size]
+        serialized = SaleSerializer(items, many=True, context={'catalog': catalog}).data
+        for payload, item in zip(serialized, items):
+            payload['createdAt'] = item.created_at.isoformat() if item.created_at else None
+            payload['registeredBy'] = {
+                'id': item.createdBy_id,
+                'name': item.createdBy.name,
+            }
+            # No existe actualmente un responsable/fecha de atención fiable.
+            payload['attendedBy'] = None
+            payload['attendedAt'] = None
+
+        def user_row(row):
+            return {
+                'userId': row['createdBy_id'],
+                'userName': row['createdBy__name'],
+                'registered': row['registered'],
+                'attended': None,
+                'lastActivity': (
+                    row['last_activity'].isoformat()
+                    if row['last_activity'] else None
+                ),
+            }
+
+        rows = [user_row(row) for row in grouped]
+        daily = sales.values('created_at__date').annotate(
+            registered=Count('id'),
+        ).order_by('created_at__date')
+        daily_map = {row['created_at__date']: row['registered'] for row in daily}
+        series = []
+        current = from_date
+        while current <= to_date:
+            series.append({
+                'date': current.isoformat(),
+                'registered': daily_map.get(current, 0),
+                'attended': None,
+            })
+            current += timedelta(days=1)
+
+        return Response({
+            'scope': 'general' if supervisor else 'personal',
+            'viewer': {
+                'id': user.id,
+                'name': user.name,
+                'role': user.role,
+            },
+            'period': {
+                'from': from_date.isoformat(),
+                'to': to_date.isoformat(),
+                'movement_type': movement_type,
+            },
+            'summary': {
+                'registered': total_registered,
+                'activeUsers': active_users,
+                'attended': None,
+                'attendedAvailable': False,
+            },
+            'users': rows if supervisor else rows[:1],
+            'series': series,
+            'items': serialized,
+            'page': page,
+            'page_size': page_size,
+            'total': total,
+            'total_pages': max(1, (total + page_size - 1) // page_size),
+        })
+
+
 def _first_error(serializer):
     errors = serializer.errors
     if isinstance(errors, dict):
@@ -2208,12 +3955,12 @@ def _first_error(serializer):
 
 
 @extend_schema(exclude=True)
-class BackupListView(IsAdminMixin, APIView):
-    permission_code = 'roles.manage'
+class BackupListView(PermissionMixin, APIView):
+    permission_code = 'respaldos.backups.view'
     """Historial de respaldos. Solo metadatos: el archivo nunca se conserva."""
 
     def get(self, request):
-        error = self.check_admin(request)
+        error = self.check_permission(request)
         if error:
             return error
         backups = Backup.objects.all()[:50]
@@ -2222,7 +3969,7 @@ class BackupListView(IsAdminMixin, APIView):
 
     def post(self, request):
         global _backup_in_progress
-        error = self.check_admin(request)
+        error = self.check_permission(request, 'respaldos.backups.create')
         if error:
             return error
 
@@ -2264,6 +4011,11 @@ class BackupListView(IsAdminMixin, APIView):
 
             # El archivo se transmite y lo borra _BackupFileResponse al
             # terminar la respuesta: en el servidor no queda nada.
+            record_audit(
+                request, 'backup_created', 'backup', backup.id,
+                module='respaldos',
+                after={'filename': backup.filename, 'size': backup.size,
+                       'checksum': backup.checksum})
             response = _stream_backup_file(
                 filepath, backup.filename, backup.checksum)
             return response
@@ -2283,10 +4035,10 @@ class BackupListView(IsAdminMixin, APIView):
 
 
 @extend_schema(responses={204: None, 404: dict})
-class BackupDeleteView(IsAdminMixin, APIView):
-    permission_code = 'roles.manage'
+class BackupDeleteView(PermissionMixin, APIView):
+    permission_code = 'respaldos.backups.delete'
     def delete(self, request, pk):
-        error = self.check_admin(request)
+        error = self.check_permission(request)
         if error:
             return error
         try:
@@ -2301,5 +4053,9 @@ class BackupDeleteView(IsAdminMixin, APIView):
                 os.remove(backup.storage_path)
             except OSError:
                 pass
+        record_audit(request, 'backup_deleted', 'backup', backup.id,
+                     module='respaldos',
+                     before={'filename': backup.filename,
+                             'size': backup.size})
         backup.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

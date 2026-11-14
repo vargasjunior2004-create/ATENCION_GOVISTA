@@ -3,10 +3,13 @@ from django.urls import path, include, re_path
 from drf_spectacular.views import (
     SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView,
 )
+from core.views import SaleDocumentScanView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api/sales/escanear/', SaleDocumentScanView.as_view()),
     path('api/', include('core.urls')),
+    path('api/admin/', include('administration.urls')),
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path(
         'api/schema/swagger-ui/',
