@@ -846,25 +846,22 @@ export default function SaleForm() {
           </div>}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-{requestTypeSelector}
+            {requestTypeSelector}
+            <Select
+              label={(isCambio || isAdicion) ? 'Tipo de Servicio Nuevo *' : 'Tipo de Servicio *'}
+              name="serviceType"
+              value={form.serviceType}
+              onChange={handleChange}
+            >
+              {SERVICE_TYPES
+                .filter((t) => !isAdicion
+                  || SERVICE_TYPE_TO_PLAN_TYPE[t.value] === 'combo')
+                .map((t) => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+            </Select>
+          </div>
 
-<Select
-  label={(isCambio || isAdicion)
-    ? 'Tipo de Servicio Nuevo *'
-    : 'Tipo de Servicio *'}
-  name="serviceType"
-  value={form.serviceType}
-  onChange={handleChange}
->
-  {SERVICE_TYPES
-    .filter((t) => !isAdicion
-      || SERVICE_TYPE_TO_PLAN_TYPE[t.value] === 'combo')
-    .map((t) => (
-      <option key={t.value} value={t.value}>
-        {t.label}
-      </option>
-    ))}
-</Select>
            {isAdicion && (
              <div className="space-y-4 rounded-2xl border-2 border-dashed border-emerald-200 bg-emerald-50/40 p-4">
                <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider">
