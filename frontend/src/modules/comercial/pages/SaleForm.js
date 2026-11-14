@@ -61,7 +61,7 @@ export default function SaleForm() {
   const [coverageZonesError, setCoverageZonesError] = useState('');
   const [form, setForm] = useState({
     date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet',
-    requestType: 'nuevo_contrato', additionType: '', planFromId: '',
+    requestType: '', additionType: '', planFromId: '',
     serviceTypeFrom: '', motivoId: '', notes: '',
     planId: '', coverageZoneId: '',
     canalCaptacionId: '',
@@ -150,10 +150,11 @@ export default function SaleForm() {
     return () => { active = false; };
   }, []);
 
-  // El tipo por defecto viene sembrado, pero si un administrador lo
-  // desactiva el formulario no puede quedar con un valor que ya no existe.
+  // El usuario elige el tipo antes de entrar al formulario correspondiente.
+  // Si el tipo seleccionado deja de estar disponible, se corrige al primero.
   useEffect(() => {
     if (!requestTypes.length) return;
+    if (!form.requestType) return;
     if (requestTypes.some((t) => t.code === form.requestType)) return;
     setForm((f) => ({ ...f, requestType: requestTypes[0].code }));
   }, [requestTypes, form.requestType]);
@@ -570,7 +571,7 @@ export default function SaleForm() {
       }
       await api.createSale(payload);
       setSuccess('Registro guardado correctamente');
-        setForm({ date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', coverageZoneId: '', canalCaptacionId: '', equipmentRetained: null, requiresTechnicalVisit: null, equipmentDelivered: null, equipmentSerial: '', equipmentRecoveryRequired: false, meterNumber: '', sellerUserId: '', debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferReferences: '', transferHasSketch: null });
+        setForm({ date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet', requestType: '', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', coverageZoneId: '', canalCaptacionId: '', equipmentRetained: null, requiresTechnicalVisit: null, equipmentDelivered: null, equipmentSerial: '', equipmentRecoveryRequired: false, meterNumber: '', sellerUserId: '', debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferReferences: '', transferHasSketch: null });
        setEquipmentLookup(null); setEquipmentLookupError('');
       setSelectedPlan(null); setSelectedCustomer(null); setQuery(''); setCustomers([]);
       setPromotions([]); setSelectedPromotion(null); setPriceMode('normal');
@@ -672,6 +673,21 @@ export default function SaleForm() {
     notes: form.notes,
   };
 
+  const requestTypeSelector = (
+    <Select
+      label="Tipo de Solicitud *"
+      name="requestType"
+      value={form.requestType}
+      onChange={handleChange}
+      required
+    >
+      <option value="">Seleccione una solicitud...</option>
+      {requestTypes.map((t) => (
+        <option key={t.code} value={t.code}>{t.nombre}</option>
+      ))}
+    </Select>
+  );
+
   const retirementUploadPanel = (
     <div
       className="rounded-2xl border-2 border-dashed border-brand-200 bg-brand-50/40 p-5 sm:p-8"
@@ -718,6 +734,24 @@ export default function SaleForm() {
     </div>
   );
 
+  if (!form.requestType) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+            Registrar Solicitud
+          </h1>
+          <p className="text-sm text-slate-400 mt-1">
+            Selecciona el tipo de solicitud para continuar.
+          </p>
+        </div>
+        <Card className="p-4 sm:p-6">
+          {requestTypeSelector}
+        </Card>
+      </div>
+    );
+  }
+
   if ((isRetiro || isNewContract) && !retirementReady) {
     return (
       <div className="space-y-6">
@@ -729,7 +763,10 @@ export default function SaleForm() {
             Primero carga la orden para completar los datos.
           </p>
         </div>
-        <Card className="p-4 sm:p-6">{retirementUploadPanel}</Card>
+        <Card className="p-4 sm:p-6">
+          <div className="mb-5">{requestTypeSelector}</div>
+          {retirementUploadPanel}
+        </Card>
       </div>
     );
   }
@@ -798,11 +835,7 @@ export default function SaleForm() {
           </div>}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Select label="Tipo de Solicitud *" name="requestType" value={form.requestType} onChange={handleChange} required>
-              {requestTypes.map((t) => (
-                <option key={t.code} value={t.code}>{t.nombre}</option>
-              ))}
-            </Select>
+             {requestTypeSelector}
              <Select
                label={isCambio ? 'Tipo de Servicio Nuevo *' : 'Tipo de Servicio *'}
                name="serviceType"
