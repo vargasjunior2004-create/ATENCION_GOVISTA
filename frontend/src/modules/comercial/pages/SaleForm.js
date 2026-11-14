@@ -582,7 +582,7 @@ export default function SaleForm() {
       }
       await api.createSale(payload);
       setSuccess('Registro guardado correctamente');
-        setForm({ date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet', requestType: '', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', coverageZoneId: '', canalCaptacionId: '', equipmentRetained: null, requiresTechnicalVisit: null, equipmentDelivered: null, equipmentSerial: '', equipmentRecoveryRequired: false, meterNumber: '', sellerUserId: '', debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferReferences: '', transferHasSketch: null });
+        setForm({ date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet', requestType: form.requestType, additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', coverageZoneId: '', canalCaptacionId: '', equipmentRetained: null, requiresTechnicalVisit: null, equipmentDelivered: null, equipmentSerial: '', equipmentRecoveryRequired: false, meterNumber: '', sellerUserId: '', debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferReferences: '', transferHasSketch: null });
        setEquipmentLookup(null); setEquipmentLookupError('');
       setSelectedPlan(null); setSelectedCustomer(null); setQuery(''); setCustomers([]);
       setPromotions([]); setSelectedPromotion(null); setPriceMode('normal');
