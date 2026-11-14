@@ -519,11 +519,6 @@ export default function SaleForm() {
     setShowPreview(false);
   };
 
-  const backToRequestTypeSelector = () => {
-    clearScannedDocument();
-    setForm((prev) => ({ ...prev, requestType: '' }));
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -780,16 +775,6 @@ export default function SaleForm() {
           </p>
         </div>
         <Card className="p-4 sm:p-6">
-          <div className="mb-5">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={backToRequestTypeSelector}
-            >
-              Volver a seleccionar tipo de solicitud
-            </Button>
-          </div>
           <div className="mb-5">{requestTypeSelector}</div>
           {retirementUploadPanel}
         </Card>
