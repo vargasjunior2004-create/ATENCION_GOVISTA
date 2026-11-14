@@ -78,25 +78,26 @@ def validate_service_from(plan_from, service_type_from, errors):
             f'({plan_from.code})')
 
 
-def validate_cambio_plan(plan, plan_from, service_type, service_type_from,
-                         change_reason):
-    """Reglas de un cambio de plan. Devuelve {} o un dict de errores.
+def validate_service_movement(plan, plan_from, service_type, service_type_from,
+                              *, movement='cambio_plan', change_reason='',
+                              addition_type=None):
+    """Valida el movimiento común de servicio/plan.
 
-    La comparten el alta y la edicion: si cada ruta validara por su cuenta,
-    volverian a divergir, que es como el PUT termino sin comprobar nada.
+    Una adición y un cambio de plan son el mismo movimiento de dominio:
+    parten de un servicio/plan y llegan a otro. ``movement`` solo determina
+    la clasificación comercial: la adición exige coherencia con el servicio
+    incorporado, mientras el cambio de plan exige plan anterior y motivo.
     """
     errors = {}
-    if plan_from is None:
+    is_addition = movement == MODO_ADICION
+    if not is_addition and plan_from is None:
         errors['planFromId'] = 'Debe seleccionar el plan anterior'
-        return errors
-
-    if not (change_reason or '').strip():
+    if movement == MODO_CAMBIO_PLAN and not (change_reason or '').strip():
         errors['changeReason'] = 'Debe indicar el motivo del cambio de plan'
 
-    # Un cambio de plan que no cambia nada no es un cambio de plan.
-    # Se admite el mismo plan si lo que cambia es la variante del servicio
-    # (por ejemplo combo analogico -> combo digital).
-    if plan_from.id == plan.id:
+    # Un movimiento que no cambia nada no es válido. Se admite el mismo plan
+    # si cambia la variante del servicio (combo analógico -> digital).
+    if plan_from is not None and plan_from.id == plan.id:
         same_service = (not service_type_from
                         or service_type_from == service_type)
         if same_service:
@@ -105,7 +106,45 @@ def validate_cambio_plan(plan, plan_from, service_type, service_type_from,
                 'registre la solicitud con otro tipo')
 
     validate_service_from(plan_from, service_type_from, errors)
+
+    if is_addition:
+        current_family = SERVICE_TYPE_FAMILY.get(service_type_from)
+        new_family = SERVICE_TYPE_FAMILY.get(service_type)
+        if not service_type_from:
+            errors['serviceTypeFrom'] = 'Debe seleccionar el servicio actual'
+        elif current_family not in ('internet', 'tv'):
+            errors['serviceTypeFrom'] = (
+                'El servicio actual de una adición debe ser Internet o TV')
+        if new_family != 'combo':
+            errors['serviceType'] = (
+                'El servicio nuevo de una adición debe ser un Combo')
+        expected_addition = {
+            'internet': 'adicion_tv',
+            'tv': 'adicion_internet',
+        }.get(current_family)
+        if expected_addition and addition_type != expected_addition:
+            errors['additionType'] = (
+                'El tipo de adición no corresponde al servicio que se incorpora')
+        if current_family and new_family == current_family:
+            errors['serviceTypeFrom'] = (
+                'La adición debe incorporar el servicio que falta')
     return errors
+
+
+def validate_cambio_plan(plan, plan_from, service_type, service_type_from,
+                         change_reason):
+    """Compatibilidad: delega en la validación común de movimientos."""
+    return validate_service_movement(
+        plan, plan_from, service_type, service_type_from,
+        movement=MODO_CAMBIO_PLAN, change_reason=change_reason)
+
+
+def validate_adicion(plan, plan_from, service_type, service_type_from,
+                     addition_type):
+    """Compatibilidad: delega en la validación común de movimientos."""
+    return validate_service_movement(
+        plan, plan_from, service_type, service_type_from,
+        movement=MODO_ADICION, addition_type=addition_type)
 
 
 def resolve_motivo(motivo_id, mode, errors):
@@ -739,7 +778,8 @@ class SaleSerializer(serializers.ModelSerializer):
     @extend_schema_field(dict)
     def get_previousService(self, obj):
         """Servicio anterior del movimiento, deducido si no se registro."""
-        if request_type_mode(obj.requestType, sale_catalog(self)) != MODO_CAMBIO_PLAN:
+        if request_type_mode(obj.requestType, sale_catalog(self)) not in (
+                MODO_CAMBIO_PLAN, MODO_ADICION):
             return None
         family = previous_service_family(obj)
         if not family:
@@ -1074,17 +1114,26 @@ class SaleCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {'serviceType': 'El plan no pertenece al tipo de servicio seleccionado'})
 
-        # additionType requerido cuando el tipo es ADICION
+        # Una adición incorpora el servicio faltante y siempre termina en
+        # Combo. No exige motivo; additionType identifica lo incorporado.
+        service_type_from = attrs.get('serviceTypeFrom') or None
+
         if mode == MODO_ADICION:
             if not attrs.get('additionType'):
                 raise serializers.ValidationError(
                     {'additionType': 'Debe seleccionar el tipo de adicion (Internet o TV)'})
+            addition_errors = validate_adicion(
+                plan=plan,
+                plan_from=None,
+                service_type=attrs['serviceType'],
+                service_type_from=service_type_from,
+                addition_type=attrs.get('additionType'))
+            if addition_errors:
+                raise serializers.ValidationError(addition_errors)
         else:
             attrs['additionType'] = ''
 
         plan_from = None
-        service_type_from = attrs.get('serviceTypeFrom') or None
-
         # Motivo del cambio / del retiro. Se resuelve primero para usar su
         # nombre como motivo, pero sus errores se reportan al final para no
         # tapar los mensajes de plan anterior o compatibilidad de servicio.
@@ -1109,7 +1158,7 @@ class SaleCreateSerializer(serializers.Serializer):
                 change_reason=attrs['changeReason'])
             if errors:
                 raise serializers.ValidationError(errors)
-        else:
+        elif mode != MODO_ADICION:
             service_type_from = None
 
         if reason_errors:
