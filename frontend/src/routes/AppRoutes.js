@@ -34,7 +34,6 @@ import AtencionesLayout from '../modules/atenciones/AtencionesLayout';
 import AtencionesDashboard from '../modules/atenciones/pages/AtencionesDashboard';
 import AtencionesList from '../modules/atenciones/pages/AtencionesList';
 import AtencionForm from '../modules/atenciones/pages/AtencionForm';
-import PagoAtendidoForm from '../modules/atenciones/pages/PagoAtendidoForm';
 
 export default function AppRoutes() {
   return (
@@ -110,7 +109,6 @@ export default function AppRoutes() {
           <Route path="dashboard" element={<AtencionesDashboard />} />
           <Route path="listado" element={<AtencionesList />} />
           <Route path="registrar" element={<AtencionForm />} />
-          <Route path="pagos" element={<PagoAtendidoForm />} />
         </Route>
 
         <Route path="/nueva-venta" element={<LegacyRedirect to="/comercial/solicitudes/nueva" />} />

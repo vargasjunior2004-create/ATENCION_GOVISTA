@@ -1,20 +1,22 @@
-from django.db.models import Count, Sum
-from django.db.models.functions import Coalesce
+from django.db.models import Avg, Count, FloatField, Q, Sum, Value
+from django.db.models.functions import Coalesce, TruncDay
 from django.shortcuts import get_object_or_404
 from django.utils.dateparse import parse_date
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .atencion_serializers import (
     AtencionAccionSerializer, AtencionCatalogoSerializer,
-    AtencionSerializer, PagoAtendidoSerializer,
+    AtencionSerializer, AtencionStartSerializer, PagoAtendidoSerializer,
 )
 from .atencion_services import (
-    add_attention_action, finish_attention, start_attention,
+    add_attention_action, create_started_attention, finish_attention,
+    get_open_attention, start_attention,
     validate_catalog_type,
 )
-from .models import Atencion, AtencionAccion, AtencionCatalogo, PagoAtendido
+from .models import Atencion, AtencionAccion, AtencionCatalogo, PagoAtendido, User
 from .rbac import has_permission, is_system_admin
 
 
@@ -33,8 +35,16 @@ def permission_error():
 
 
 def filter_attentions(queryset, params):
-    start = parse_date(params.get('from', ''))
-    end = parse_date(params.get('to', ''))
+    start_value = params.get('from', '')
+    end_value = params.get('to', '')
+    start = parse_date(start_value)
+    end = parse_date(end_value)
+    if start_value and not start:
+        raise ValidationError({'from': 'La fecha inicial no es válida.'})
+    if end_value and not end:
+        raise ValidationError({'to': 'La fecha final no es válida.'})
+    if start and end and start > end:
+        raise ValidationError({'to': 'La fecha final debe ser posterior a la inicial.'})
     if start:
         queryset = queryset.filter(created_at__date__gte=start)
     if end:
@@ -43,11 +53,39 @@ def filter_attentions(queryset, params):
         ('agent', 'agent_id'), ('channel', 'channel_id'),
         ('attention_type', 'attention_type_id'),
         ('classification', 'classification_id'), ('status', 'status'),
+        ('service_type', 'service_type'), ('plan', 'plan_id'),
     ):
         value = params.get(parameter)
         if value:
             queryset = queryset.filter(**{field: value})
+    if params.get('action'):
+        queryset = queryset.filter(
+            acciones__action_id=params['action']).distinct()
+    if params.get('complaints') == 'true':
+        queryset = queryset.filter(
+            attention_type__code__in=('queja', 'reclamo'))
     return queryset
+
+
+def create_started_attention_response(request):
+    if not has_attention_access(request.user, 'atenciones.create'):
+        return permission_error()
+    idempotency_key = (request.headers.get('Idempotency-Key') or '').strip()
+    if not idempotency_key or len(idempotency_key) > 128:
+        raise ValidationError({
+            'Idempotency-Key': 'Debes enviar una clave de idempotencia válida.'
+        })
+    serializer = AtencionStartSerializer(
+        data=request.data, context={'user': request.user})
+    serializer.is_valid(raise_exception=True)
+    attention, created = create_started_attention(
+        serializer, request.user, idempotency_key)
+    response_status = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+    return Response(
+        AtencionSerializer(
+            attention, context={'user': request.user}).data,
+        status=response_status,
+    )
 
 
 class AtencionListView(APIView):
@@ -56,40 +94,62 @@ class AtencionListView(APIView):
             return permission_error()
         queryset = filter_attentions(
             Atencion.objects.select_related(
-                'agent', 'customer', 'attention_type', 'classification', 'channel'
+                'agent', 'customer', 'contract', 'plan',
+                'attention_type', 'classification', 'channel'
             ).prefetch_related('acciones__action', 'acciones__executed_by'),
             request.query_params,
         )
-        return Response(AtencionSerializer(queryset, many=True).data)
+        if (getattr(request.user, 'role', None) == 'call-center'
+                and not has_attention_access(request.user, 'atenciones.view_all')):
+            queryset = queryset.filter(agent=request.user)
+        return Response(AtencionSerializer(
+            queryset, many=True, context={'user': request.user}).data)
 
     def post(self, request):
-        if not has_attention_access(request.user, 'atenciones.create'):
+        return create_started_attention_response(request)
+
+
+class AtencionStartCreateView(APIView):
+    def post(self, request):
+        return create_started_attention_response(request)
+
+
+class AtencionOpenView(APIView):
+    def get(self, request):
+        if not has_attention_access(request.user, 'atenciones.view'):
             return permission_error()
-        serializer = AtencionSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        attention = serializer.save(
-            registered_by=request.user, agent=request.user)
-        return Response(
-            AtencionSerializer(attention).data, status=status.HTTP_201_CREATED)
+        attention = get_open_attention(request.user)
+        if not attention:
+            return Response(None)
+        attention = Atencion.objects.select_related(
+            'agent', 'customer', 'contract', 'plan',
+            'attention_type', 'classification', 'channel',
+        ).prefetch_related('acciones__action', 'acciones__executed_by').get(
+            pk=attention.pk)
+        return Response(AtencionSerializer(
+            attention, context={'user': request.user}).data)
 
 
 class AtencionDetailView(APIView):
     def get_object(self, pk):
         return get_object_or_404(Atencion.objects.select_related(
-            'agent', 'customer', 'attention_type', 'classification', 'channel'
+            'agent', 'customer', 'contract', 'plan',
+            'attention_type', 'classification', 'channel'
         ).prefetch_related('acciones__action', 'acciones__executed_by'), pk=pk)
 
     def get(self, request, pk):
         if not has_attention_access(request.user, 'atenciones.view'):
             return permission_error()
-        return Response(AtencionSerializer(self.get_object(pk)).data)
+        return Response(AtencionSerializer(
+            self.get_object(pk), context={'user': request.user}).data)
 
     def patch(self, request, pk):
         if not has_attention_access(request.user, 'atenciones.change'):
             return permission_error()
         attention = self.get_object(pk)
         serializer = AtencionSerializer(
-            attention, data=request.data, partial=True)
+            attention, data=request.data, partial=True,
+            context={'user': request.user})
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
@@ -139,22 +199,63 @@ class AtencionDashboardView(APIView):
             ).filter(status='finished'),
             request.query_params,
         )
+        total = queryset.count()
         by_agent = queryset.values('agent_id', 'agent__name').annotate(
             attention_count=Count('id'),
-            duration_seconds=Coalesce(Sum('duration_seconds'), 0),
+            duration_seconds=Coalesce(Sum('duration_seconds'), Value(0)),
         )
+        complaints = queryset.filter(
+            attention_type__code__in=('queja', 'reclamo')).count()
+        complaint_queryset = queryset.filter(
+            attention_type__code__in=('queja', 'reclamo'))
+        series = queryset.annotate(day=TruncDay('started_at')).values(
+            'day').annotate(
+                total=Count('id'),
+                complaints=Count(
+                    'id',
+                    filter=Q(attention_type__code__in=('queja', 'reclamo'))),
+                duration_seconds=Coalesce(Sum('duration_seconds'), Value(0)),
+            ).order_by('day')
+
+        def breakdown(query):
+            return [
+                {**row, 'percentage': round(
+                    row['total'] * 100 / total, 2) if total else 0}
+                for row in query
+            ]
+
         return Response({
-            'total': queryset.count(),
+            'summary': {
+                'total_attentions': total,
+                'total_complaints': complaints,
+                'total_duration_seconds': queryset.aggregate(
+                    value=Coalesce(Sum('duration_seconds'), Value(0)))['value'],
+                'average_duration_seconds': queryset.aggregate(
+                value=Coalesce(
+                    Avg('duration_seconds'),
+                    Value(0.0, output_field=FloatField()),
+                ))['value'],
+            },
+            'total': total,
             'by_agent': list(by_agent),
-            'by_channel': list(queryset.values(
+            'by_channel': breakdown(queryset.values(
                 'channel_id', 'channel__name').annotate(total=Count('id'))),
-            'by_classification': list(queryset.values(
+            'by_classification': breakdown(queryset.values(
                 'classification_id', 'classification__name').annotate(total=Count('id'))),
-            'by_attention_type': list(queryset.values(
+            'by_attention_type': breakdown(queryset.values(
                 'attention_type_id', 'attention_type__name').annotate(total=Count('id'))),
+            'by_service': breakdown(complaint_queryset.values(
+                'service_type').annotate(total=Count('id'))),
+            'by_plan': breakdown(complaint_queryset.values(
+                'plan_id', 'plan_name').annotate(total=Count('id'))),
             'by_action': list(AtencionAccion.objects.filter(
                 atencion__in=queryset
             ).values('action_id', 'action__name').annotate(total=Count('id'))),
+            'series': list(series),
+            'agent_options': list(User.objects.filter(
+                role='call-center',
+                active=True,
+            ).values('id', 'name')),
         })
 
 

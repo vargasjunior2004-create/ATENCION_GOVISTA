@@ -822,6 +822,15 @@ class Atencion(models.Model):
     contract = models.ForeignKey(
         Contract, null=True, blank=True, on_delete=models.SET_NULL,
         related_name='atenciones')
+    service_type = models.CharField(
+        max_length=20, blank=True, default='',
+        help_text='Snapshot del tipo de servicio al registrar la atención')
+    plan = models.ForeignKey(
+        Plan, null=True, blank=True, on_delete=models.PROTECT,
+        related_name='atenciones')
+    plan_name = models.CharField(
+        max_length=120, blank=True, default='',
+        help_text='Snapshot del nombre del plan al registrar la atención')
     attention_type = models.ForeignKey(
         AtencionCatalogo, on_delete=models.PROTECT,
         related_name='atenciones_por_tipo')
@@ -846,6 +855,15 @@ class Atencion(models.Model):
             models.Index(fields=['agent', 'status']),
             models.Index(fields=['created_at']),
             models.Index(fields=['channel', 'created_at']),
+            models.Index(fields=['service_type', 'created_at']),
+            models.Index(fields=['plan', 'created_at']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['agent'],
+                condition=models.Q(status='open'),
+                name='unique_open_atencion_per_agent',
+            ),
         ]
 
 
@@ -867,6 +885,24 @@ class AtencionAccion(models.Model):
             models.UniqueConstraint(
                 fields=['atencion', 'action'],
                 name='unique_action_per_atencion',
+            ),
+        ]
+
+
+class AtencionIdempotencyKey(models.Model):
+    """Garantiza que reintentar el inicio no cree otro ticket."""
+    user = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='atenciones_idempotency_keys')
+    key = models.CharField(max_length=128)
+    atencion = models.ForeignKey(
+        Atencion, on_delete=models.PROTECT, related_name='idempotency_keys')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'key'],
+                name='unique_atencion_idempotency_user_key',
             ),
         ]
 

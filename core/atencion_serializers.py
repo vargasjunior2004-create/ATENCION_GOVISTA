@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
-from .atencion_services import validate_catalog_entry
+from .atencion_services import validate_call_center_channel, validate_catalog_entry
+from .domain import SERVICE_TYPE_LABELS, SERVICE_TYPE_TO_PLAN_TYPE
 from .models import AtencionCatalogo, Atencion, AtencionAccion, PagoAtendido
 
 
@@ -30,6 +31,7 @@ class AtencionAccionSerializer(serializers.ModelSerializer):
 
 class AtencionSerializer(serializers.ModelSerializer):
     agent_name = serializers.CharField(source='agent.name', read_only=True)
+    plan_display_name = serializers.SerializerMethodField()
     customer_display_name = serializers.SerializerMethodField()
     actions = AtencionAccionSerializer(many=True, read_only=True)
 
@@ -38,7 +40,8 @@ class AtencionSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'registered_by', 'agent', 'agent_name', 'customer',
             'customer_code', 'customer_name', 'customer_display_name',
-            'contract', 'attention_type', 'classification', 'channel',
+            'contract', 'service_type', 'plan', 'plan_name', 'plan_display_name',
+            'attention_type', 'classification', 'channel',
             'notes', 'started_at', 'ended_at', 'duration_seconds', 'status',
             'actions', 'created_at', 'updated_at',
         )
@@ -50,6 +53,9 @@ class AtencionSerializer(serializers.ModelSerializer):
     def get_customer_display_name(self, obj):
         return obj.customer.name if obj.customer else obj.customer_name
 
+    def get_plan_display_name(self, obj):
+        return obj.plan_name or (obj.plan.label if obj.plan else '')
+
     def validate(self, attrs):
         catalog_fields = (
             ('attention_type', 'attention_type'),
@@ -59,7 +65,43 @@ class AtencionSerializer(serializers.ModelSerializer):
         for field, catalog_type in catalog_fields:
             if field in attrs:
                 validate_catalog_entry(attrs[field], catalog_type)
+        channel = attrs.get('channel')
+        user = self.context.get('user')
+        if channel and user:
+            validate_call_center_channel(channel, user)
+
+        contract = attrs.get('contract')
+        plan = attrs.get('plan')
+        service_type = attrs.get('service_type', '')
+        if contract:
+            if service_type and service_type != contract.service_type:
+                raise serializers.ValidationError(
+                    {'service_type': 'El servicio no coincide con el contrato.'})
+            if plan and plan.id != contract.plan_id:
+                raise serializers.ValidationError(
+                    {'plan': 'El plan no coincide con el contrato.'})
+            attrs['service_type'] = contract.service_type
+            attrs['plan'] = contract.plan
+
+        if service_type and service_type not in SERVICE_TYPE_LABELS:
+            raise serializers.ValidationError(
+                {'service_type': 'Tipo de servicio no válido.'})
+        if plan and service_type:
+            expected_plan_type = SERVICE_TYPE_TO_PLAN_TYPE[service_type]
+            if plan.type != expected_plan_type:
+                raise serializers.ValidationError(
+                    {'plan': 'El plan no corresponde al tipo de servicio.'})
+            attrs['plan_name'] = plan.label
+        elif plan:
+            attrs['plan_name'] = plan.label
         return attrs
+
+
+class AtencionStartSerializer(AtencionSerializer):
+    class Meta(AtencionSerializer.Meta):
+        read_only_fields = AtencionSerializer.Meta.read_only_fields + (
+            'status', 'started_at', 'ended_at', 'duration_seconds',
+        )
 
 
 class PagoAtendidoSerializer(serializers.ModelSerializer):
