@@ -7,14 +7,7 @@ import useRequestTypes from '../../../hooks/useRequestTypes';
 import useMotivos from '../../../hooks/useMotivos';
 import useCanalesCaptacion from '../../../hooks/useCanalesCaptacion';
 import SalePreviewModal from '../../../components/SalePreview';
-
-const SERVICE_TYPES = [
-  { value: 'internet', label: 'INTERNET' },
-  { value: 'tv', label: 'TV ANALOGA' },
-  { value: 'tv_digital', label: 'TV DIGITAL' },
-  { value: 'combo_analog', label: 'INTERNET + TV ANALOGA' },
-  { value: 'combo_digital', label: 'INTERNET + TV DIGITAL' },
-];
+import { SERVICE_TYPES, SERVICE_TYPE_TO_PLAN_TYPE } from '../serviceTypes';
 
 const SERVICE_TYPE_LABELS = Object.fromEntries(
   SERVICE_TYPES.map((t) => [t.value, t.label]));
@@ -22,13 +15,6 @@ const SERVICE_TYPE_LABELS = Object.fromEntries(
 // Tipo de servicio -> familia de plan que ese servicio puede contratar.
 // El catalogo de planes distingue tres familias, no cinco servicios: por eso
 // TV analoga y TV digital comparten 'tv', y los combos comparten 'combo'.
-const SERVICE_TYPE_TO_PLAN_TYPE = {
-  internet: 'internet',
-  tv: 'tv',
-  tv_digital: 'tv',
-  combo_analog: 'combo',
-  combo_digital: 'combo',
-};
 
 // Servicio anterior que se presume por defecto segun la familia del plan
 // elegido. El operador puede corregirlo si el cliente tiene otra variante.

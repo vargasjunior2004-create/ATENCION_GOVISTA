@@ -1,12 +1,12 @@
 import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { BarChart3, ClipboardList, CreditCard, Headphones, Plus } from 'lucide-react';
+import { BarChart3, ClipboardList, Headphones, Plus } from 'lucide-react';
+import AtencionesErrorBoundary from './AtencionesErrorBoundary';
 
 const navigation = [
   { to: '/atenciones/dashboard', label: 'Dashboard', icon: BarChart3 },
   { to: '/atenciones/listado', label: 'Atenciones', icon: ClipboardList },
   { to: '/atenciones/registrar', label: 'Registrar atención', icon: Plus },
-  { to: '/atenciones/pagos', label: 'Pagos', icon: CreditCard },
 ];
 
 export default function AtencionesLayout() {
@@ -34,7 +34,9 @@ export default function AtencionesLayout() {
           </nav>
         </div>
       </header>
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6"><Outlet /></main>
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+        <AtencionesErrorBoundary><Outlet /></AtencionesErrorBoundary>
+      </main>
     </div>
   );
 }

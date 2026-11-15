@@ -4,13 +4,16 @@ from . import report_views
 from .atencion_views import (
     AtencionActionView, AtencionCatalogoListView, AtencionDashboardView,
     AtencionDetailView, AtencionFinishView, AtencionListView, AtencionStartView,
-    AtencionCatalogoDetailView, PagoAtendidoDetailView, PagoAtendidoListView,
+    AtencionCatalogoDetailView, AtencionOpenView, AtencionStartCreateView,
+    PagoAtendidoDetailView, PagoAtendidoListView,
 )
 
 urlpatterns = [
     path('health', views.HealthView.as_view()),
     path('ready', views.ReadyView.as_view()),
     path('atenciones', AtencionListView.as_view()),
+    path('atenciones/iniciar', AtencionStartCreateView.as_view()),
+    path('atenciones/abierta', AtencionOpenView.as_view()),
     path('atenciones/<uuid:pk>', AtencionDetailView.as_view()),
     path('atenciones/<uuid:pk>/acciones', AtencionActionView.as_view()),
     path('atenciones/<uuid:pk>/iniciar', AtencionStartView.as_view()),

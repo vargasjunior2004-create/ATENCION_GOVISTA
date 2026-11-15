@@ -328,11 +328,17 @@ const api = {
   createAtencion: (data) => request('/api/atenciones', {
     method: 'POST', body: JSON.stringify(data),
   }),
-  createPagoAtendido: (data) => request('/api/pagos-atendidos', {
+  startAtencion: (data, idempotencyKey) => request('/api/atenciones/iniciar', {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify(data),
+  }),
+  startExistingAtencion: (id) => request(`/api/atenciones/${id}/iniciar`, { method: 'POST' }),
+  getOpenAtencion: () => request('/api/atenciones/abierta'),
+  finishAtencion: (id) => request(`/api/atenciones/${id}/finalizar`, { method: 'POST' }),
+  addAtencionAction: (id, data) => request(`/api/atenciones/${id}/acciones`, {
     method: 'POST', body: JSON.stringify(data),
   }),
-  startAtencion: (id) => request(`/api/atenciones/${id}/iniciar`, { method: 'POST' }),
-  finishAtencion: (id) => request(`/api/atenciones/${id}/finalizar`, { method: 'POST' }),
   getAtencionesDashboard: (filters = {}) => {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([key, value]) => {
