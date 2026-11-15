@@ -1,10 +1,25 @@
 from django.urls import path
 from . import views
 from . import report_views
+from .atencion_views import (
+    AtencionActionView, AtencionCatalogoListView, AtencionDashboardView,
+    AtencionDetailView, AtencionFinishView, AtencionListView, AtencionStartView,
+    AtencionCatalogoDetailView, PagoAtendidoDetailView, PagoAtendidoListView,
+)
 
 urlpatterns = [
     path('health', views.HealthView.as_view()),
     path('ready', views.ReadyView.as_view()),
+    path('atenciones', AtencionListView.as_view()),
+    path('atenciones/<uuid:pk>', AtencionDetailView.as_view()),
+    path('atenciones/<uuid:pk>/acciones', AtencionActionView.as_view()),
+    path('atenciones/<uuid:pk>/iniciar', AtencionStartView.as_view()),
+    path('atenciones/<uuid:pk>/finalizar', AtencionFinishView.as_view()),
+    path('call-center/dashboard', AtencionDashboardView.as_view()),
+    path('call-center/catalogs', AtencionCatalogoListView.as_view()),
+    path('call-center/catalogs/<int:pk>', AtencionCatalogoDetailView.as_view()),
+    path('pagos-atendidos', PagoAtendidoListView.as_view()),
+    path('pagos-atendidos/<int:pk>', PagoAtendidoDetailView.as_view()),
     path('auth/login', views.LoginView.as_view()),
     path('auth/logout', views.LogoutView.as_view()),
     path('auth/me', views.MeView.as_view()),

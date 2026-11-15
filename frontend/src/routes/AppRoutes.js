@@ -30,6 +30,11 @@ import SecurityPage from '../modules/administracion/pages/SecurityPage';
 import UbicacionesLayout from '../modules/ubicaciones/UbicacionesLayout';
 import UbicacionesPage from '../modules/ubicaciones/UbicacionesPage';
 import ProfilePage from '../modules/ubicaciones/ProfilePage';
+import AtencionesLayout from '../modules/atenciones/AtencionesLayout';
+import AtencionesDashboard from '../modules/atenciones/pages/AtencionesDashboard';
+import AtencionesList from '../modules/atenciones/pages/AtencionesList';
+import AtencionForm from '../modules/atenciones/pages/AtencionForm';
+import PagoAtendidoForm from '../modules/atenciones/pages/PagoAtendidoForm';
 
 export default function AppRoutes() {
   return (
@@ -99,6 +104,13 @@ export default function AppRoutes() {
             path="tarifas-traslados"
             element={<AdminRoute permission="commercial_config.manage"><TransferTariffs /></AdminRoute>}
           />
+        </Route>
+        <Route path="/atenciones" element={<AtencionesLayout />}>
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<AtencionesDashboard />} />
+          <Route path="listado" element={<AtencionesList />} />
+          <Route path="registrar" element={<AtencionForm />} />
+          <Route path="pagos" element={<PagoAtendidoForm />} />
         </Route>
 
         <Route path="/nueva-venta" element={<LegacyRedirect to="/comercial/solicitudes/nueva" />} />
