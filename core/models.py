@@ -770,6 +770,130 @@ class AuditLog(models.Model):
         ]
 
 
+class AtencionCatalogo(models.Model):
+    """Catálogo administrable usado por el módulo de atenciones."""
+    TYPE_CHOICES = [
+        ('attention_type', 'Tipo de atención'),
+        ('classification', 'Clasificación'),
+        ('channel', 'Canal'),
+        ('support_action', 'Acción de soporte'),
+    ]
+
+    catalog_type = models.CharField(max_length=24, choices=TYPE_CHOICES)
+    code = models.SlugField(max_length=60)
+    name = models.CharField(max_length=120)
+    description = models.CharField(max_length=255, blank=True, default='')
+    active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['catalog_type', 'sort_order', 'name', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['catalog_type', 'code'],
+                name='unique_atencion_catalog_type_code',
+            ),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class Atencion(models.Model):
+    """Atención registrada por un agente de Call Center."""
+    STATUS_CHOICES = [
+        ('open', 'Abierta'),
+        ('finished', 'Finalizada'),
+        ('cancelled', 'Cancelada'),
+    ]
+
+    id = models.UUIDField(default=uuid.uuid4, primary_key=True, editable=False)
+    registered_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='atenciones_registradas')
+    agent = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='atenciones_asignadas')
+    customer = models.ForeignKey(
+        Customer, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='atenciones')
+    customer_code = models.CharField(max_length=40, blank=True, default='')
+    customer_name = models.CharField(max_length=160, blank=True, default='')
+    contract = models.ForeignKey(
+        Contract, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='atenciones')
+    attention_type = models.ForeignKey(
+        AtencionCatalogo, on_delete=models.PROTECT,
+        related_name='atenciones_por_tipo')
+    classification = models.ForeignKey(
+        AtencionCatalogo, on_delete=models.PROTECT,
+        related_name='atenciones_por_clasificacion')
+    channel = models.ForeignKey(
+        AtencionCatalogo, on_delete=models.PROTECT,
+        related_name='atenciones_por_canal')
+    notes = models.TextField(blank=True, default='')
+    started_at = models.DateTimeField(null=True, blank=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    duration_seconds = models.PositiveIntegerField(null=True, blank=True)
+    status = models.CharField(
+        max_length=12, choices=STATUS_CHOICES, default='open')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['agent', 'status']),
+            models.Index(fields=['created_at']),
+            models.Index(fields=['channel', 'created_at']),
+        ]
+
+
+class AtencionAccion(models.Model):
+    """Acción de soporte ejecutada durante una atención."""
+    atencion = models.ForeignKey(
+        Atencion, on_delete=models.CASCADE, related_name='acciones')
+    action = models.ForeignKey(
+        AtencionCatalogo, on_delete=models.PROTECT,
+        related_name='acciones_ejecutadas')
+    executed_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='acciones_de_atencion')
+    notes = models.CharField(max_length=500, blank=True, default='')
+    executed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-executed_at', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['atencion', 'action'],
+                name='unique_action_per_atencion',
+            ),
+        ]
+
+
+class PagoAtendido(models.Model):
+    """Registro informativo de un pago reportado al Call Center."""
+    atencion = models.ForeignKey(
+        Atencion, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='pagos')
+    registered_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='pagos_atendidos')
+    customer = models.ForeignKey(
+        Customer, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='pagos_atendidos')
+    customer_code = models.CharField(max_length=40, blank=True, default='')
+    customer_name = models.CharField(max_length=160, blank=True, default='')
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    paid_on = models.DateField()
+    payment_channel = models.CharField(max_length=80, blank=True, default='')
+    reference = models.CharField(max_length=120, blank=True, default='')
+    notes = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-paid_on', '-id']
+
+
 class CustomerLocation(models.Model):
     """Ubicación vigente y fotografía de fachada de un cliente."""
     SOURCE_GPS = 'gps'

@@ -8,7 +8,10 @@ import ModuleCard from './ModuleCard';
 export default function ModuleSelector() {
   const { user, isAdmin, hasPermission } = useAuth();
   const availableModules = MODULES.filter(
-    (module) => !module.permission || isAdmin || hasPermission(module.permission),
+    (module) => (
+      (!module.permission || isAdmin || hasPermission(module.permission))
+      && (!module.role || isAdmin || user?.role === module.role)
+    ),
   );
 
   return (

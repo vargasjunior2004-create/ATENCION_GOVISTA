@@ -309,6 +309,38 @@ const api = {
     });
   },
   deleteBackup: (id) => request(`/api/admin/respaldos/${id}`, { method: 'DELETE' }),
+
+  getAtencionCatalogs: (catalogType = '') => {
+    const query = catalogType ? `?catalog_type=${encodeURIComponent(catalogType)}` : '';
+    return request(`/api/call-center/catalogs${query}`);
+  },
+  updateAtencionCatalog: (id, data) => request(`/api/call-center/catalogs/${id}`, {
+    method: 'PATCH', body: JSON.stringify(data),
+  }),
+  getAtenciones: (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) params.set(key, value);
+    });
+    const query = params.toString();
+    return request(`/api/atenciones${query ? `?${query}` : ''}`);
+  },
+  createAtencion: (data) => request('/api/atenciones', {
+    method: 'POST', body: JSON.stringify(data),
+  }),
+  createPagoAtendido: (data) => request('/api/pagos-atendidos', {
+    method: 'POST', body: JSON.stringify(data),
+  }),
+  startAtencion: (id) => request(`/api/atenciones/${id}/iniciar`, { method: 'POST' }),
+  finishAtencion: (id) => request(`/api/atenciones/${id}/finalizar`, { method: 'POST' }),
+  getAtencionesDashboard: (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) params.set(key, value);
+    });
+    const query = params.toString();
+    return request(`/api/call-center/dashboard${query ? `?${query}` : ''}`);
+  },
 };
 
 export default api;

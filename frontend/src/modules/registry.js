@@ -38,10 +38,13 @@ export const MODULES = [
   },
   {
     id: 'atencion',
-    name: 'Gestion operativa',
-    description: 'Tickets, atenciones, quejas, reclamos y acciones de soporte.',
+    name: 'Gestión de atenciones',
+    description: 'Atenciones, quejas, reclamos y productividad de Call Center.',
     icon: Headphones,
-    status: 'soon',
+    to: '/atenciones/dashboard',
+    permission: 'atenciones.view',
+    role: 'call-center',
+    status: 'available',
   },
   {
     id: 'equipos',
