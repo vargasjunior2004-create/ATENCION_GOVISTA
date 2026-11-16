@@ -495,6 +495,59 @@ class Customer(models.Model):
         return f'{self.code} {self.name}'
 
 
+class CustomerService(models.Model):
+    """Servicio reportado por un sistema externo, sin convertirlo en contrato."""
+    SOURCE_SOFTV = 'softv'
+    SOURCE_CHOICES = [(SOURCE_SOFTV, 'SOFTV')]
+
+    HOMOLOGATION_PENDING = 'pending'
+    HOMOLOGATION_VERIFIED = 'verified'
+    HOMOLOGATION_UNMATCHED = 'unmatched'
+    HOMOLOGATION_CHOICES = [
+        (HOMOLOGATION_PENDING, 'Pendiente'),
+        (HOMOLOGATION_VERIFIED, 'Verificado'),
+        (HOMOLOGATION_UNMATCHED, 'Sin equivalencia'),
+    ]
+
+    customer = models.ForeignKey(
+        Customer, on_delete=models.PROTECT, related_name='external_services')
+    source = models.CharField(
+        max_length=20, choices=SOURCE_CHOICES, default=SOURCE_SOFTV)
+    source_customer_code = models.CharField(max_length=40, db_index=True)
+    raw_name = models.CharField(max_length=255)
+    raw_name_normalized = models.CharField(max_length=255)
+    plan = models.ForeignKey(
+        Plan, null=True, blank=True, on_delete=models.PROTECT,
+        related_name='external_customer_services')
+    homologation_status = models.CharField(
+        max_length=20, choices=HOMOLOGATION_CHOICES,
+        default=HOMOLOGATION_PENDING)
+    # SOFTV no proporciona este dato actualmente. NULL significa
+    # "desconocido", no un estado operativo inventado.
+    service_status = models.CharField(max_length=40, null=True, blank=True)
+    source_period = models.CharField(max_length=40, blank=True, default='')
+    source_year = models.PositiveIntegerField(null=True, blank=True)
+    source_file = models.CharField(max_length=255, blank=True, default='')
+    source_row = models.PositiveIntegerField(null=True, blank=True)
+    first_seen_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['source', 'customer', 'raw_name_normalized'],
+                name='unique_external_service_per_customer',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['customer', 'source']),
+            models.Index(fields=['source', 'homologation_status']),
+        ]
+
+    def __str__(self):
+        return f'{self.source_customer_code} {self.raw_name}'
+
+
 class Contract(models.Model):
     """Contrato histórico de una contratación o recontratación.
 

@@ -853,6 +853,20 @@ export default function SaleForm() {
                  </div>
                </div>
              )}
+             {selectedCustomer?.softvServices?.length > 0 && (
+               <div className="mt-2 rounded-xl border border-sky-100 bg-sky-50/70 p-3">
+                 <p className="text-xs font-bold uppercase tracking-wide text-sky-700">
+                   Servicios reportados por SOFTV
+                 </p>
+                 <div className="mt-1 flex flex-wrap gap-2">
+                   {selectedCustomer.softvServices.map((service) => (
+                     <span key={service.id} className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-sky-800">
+                       {service.raw_name} · {service.serviceStatusLabel}
+                     </span>
+                   ))}
+                 </div>
+               </div>
+             )}
              {!query && !selectedCustomer && (
               <p className="text-xs text-slate-400 mt-1">Ingrese nombre o kardex; si no existe, se creara automaticamente.</p>
             )}

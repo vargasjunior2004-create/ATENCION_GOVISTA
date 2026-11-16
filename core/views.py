@@ -39,7 +39,7 @@ from .serializers import (
     UserRoleSerializer, TemporaryFunctionSerializer, TemporaryAssignmentSerializer,
     PlanSerializer,
     PlanPublicSerializer, CustomerSerializer, CustomerLookupSerializer,
-    ContractSerializer, SaleSerializer,
+    CustomerServiceSerializer, ContractSerializer, SaleSerializer,
     SaleCreateSerializer, BackupSerializer,
     PromotionSerializer, PromotionWriteSerializer,
     TipoSolicitudPublicSerializer, MotivoSerializer, MotivoPublicSerializer,
@@ -1697,8 +1697,9 @@ class CustomerListView(APIView):
     """Busqueda de clientes por kardex o nombre (para autocompletar)."""
     def get(self, request):
         q = request.query_params.get('q', '').strip()
-        qs = Customer.objects.prefetch_related('contracts__plan').all().order_by(
-            'name', 'code')
+        qs = Customer.objects.prefetch_related(
+            'contracts__plan', 'external_services__plan',
+        ).all().order_by('name', 'code')
         if q:
             qs = qs.filter(
                 Q(code__icontains=q) | Q(name__icontains=q)
@@ -1908,7 +1909,7 @@ class CustomerDetailView(APIView):
     def get_customer(self, pk):
         return Customer.objects.prefetch_related(
             'contracts__plan', 'contracts__sale', 'contracts__created_by',
-            'contracts__meter_reviewed_by',
+            'contracts__meter_reviewed_by', 'external_services__plan',
         ).filter(pk=pk).first()
 
     def get(self, request, pk):
@@ -1943,6 +1944,8 @@ class CustomerDetailView(APIView):
             sales, many=True, context={'catalog': request_type_catalog()}).data
         return Response({
             'customer': CustomerSerializer(customer).data,
+            'softvServices': CustomerServiceSerializer(
+                customer.external_services.all(), many=True).data,
             'summary': {
                 'contracts': len(contracts),
                 'meters': len({c.meter_number for c in contracts if c.meter_number}),
