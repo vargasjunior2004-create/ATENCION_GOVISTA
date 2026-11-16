@@ -848,6 +848,8 @@ class SaleCreateSerializer(serializers.Serializer):
     clientName = serializers.CharField(max_length=160)
     clientCi = serializers.CharField(required=False, allow_blank=True, max_length=30)
     clientPhone = serializers.CharField(required=False, allow_blank=True, max_length=40)
+    customerId = serializers.IntegerField(
+        required=False, allow_null=True, write_only=True, source='customer_id')
     serviceType = serializers.ChoiceField(
         choices=[c[0] for c in Sale.TYPE_CHOICES])
     requestType = serializers.CharField(
@@ -897,6 +899,23 @@ class SaleCreateSerializer(serializers.Serializer):
         if 'status' in self.initial_data:
             raise serializers.ValidationError(
                 {'status': 'El estado se determina automáticamente según el tipo de solicitud.'})
+        selected_customer = None
+        selected_customer_id = attrs.get('customer_id')
+        if selected_customer_id is not None:
+            selected_customer = Customer.objects.filter(
+                pk=selected_customer_id, active=True).first()
+            if selected_customer is None:
+                raise serializers.ValidationError(
+                    {'customerId': 'El cliente seleccionado no existe o está inactivo'})
+            code = (attrs.get('clientCode') or '').strip()
+            if code and code != selected_customer.code:
+                raise serializers.ValidationError(
+                    {'clientCode': 'El Kardex no corresponde al cliente seleccionado'})
+            ci = (attrs.get('clientCi') or '').strip()
+            if ci and selected_customer.ci and ci != selected_customer.ci:
+                raise serializers.ValidationError(
+                    {'clientCi': 'El CI no corresponde al cliente seleccionado'})
+            attrs['_selected_customer'] = selected_customer
         editable_origin_fields = {'contractOrigin', 'externalSeller'}
         if editable_origin_fields.intersection(self.initial_data):
             raise serializers.ValidationError(
@@ -1202,18 +1221,23 @@ class SaleCreateSerializer(serializers.Serializer):
         plan_from = validated_data.pop('planFromPlan', None)
         service_type_from = validated_data.pop('serviceTypeFromValue', None)
         motivo = validated_data.pop('motivoValue', None)
+        selected_customer = validated_data.pop('_selected_customer', None)
+        validated_data.pop('customer_id', None)
         request_type = validated_data.get('requestType', 'nuevo_contrato')
         movement_status = movement_status_for_request_type(
             request_type, request_type_catalog())
 
         code = validated_data.get('clientCode', '').strip()
         ci = validated_data.get('clientCi', '').strip()
-        customer = Customer.objects.filter(ci=ci).first() if ci else None
-        by_code = Customer.objects.filter(code=code).first()
-        if customer and by_code and customer.id != by_code.id:
-            raise serializers.ValidationError(
-                {'clientCi': 'El CI y el código corresponden a clientes distintos'})
-        customer = customer or by_code
+        if selected_customer is not None:
+            customer = selected_customer
+        else:
+            customer = Customer.objects.filter(ci=ci).first() if ci else None
+            by_code = Customer.objects.filter(code=code).first()
+            if customer and by_code and customer.id != by_code.id:
+                raise serializers.ValidationError(
+                    {'clientCi': 'El CI y el código corresponden a clientes distintos'})
+            customer = customer or by_code
         if customer is None and code:
             customer = Customer(
                 code=code, name=validated_data['clientName'], ci=ci,

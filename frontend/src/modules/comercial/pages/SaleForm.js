@@ -60,7 +60,7 @@ export default function SaleForm() {
   const [coverageZonesLoading, setCoverageZonesLoading] = useState(true);
   const [coverageZonesError, setCoverageZonesError] = useState('');
   const [form, setForm] = useState({
-    date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet',
+    date: today, customerId: '', clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet',
     requestType: '', additionType: '', planFromId: '',
     serviceTypeFrom: '', motivoId: '', notes: '',
     planId: '', coverageZoneId: '',
@@ -171,7 +171,14 @@ export default function SaleForm() {
 
   const pickCustomer = (c) => {
     setSelectedCustomer(c);
-    setForm((prev) => ({ ...prev, clientCode: c.code, clientName: c.name, clientCi: c.ci || '', clientPhone: c.phone || '' }));
+    setForm((prev) => ({
+      ...prev,
+      customerId: c.id,
+      clientCode: c.code,
+      clientName: c.name,
+      clientCi: c.ci || '',
+      clientPhone: c.phone || '',
+    }));
     setQuery(c.name);
     setCustomers([]);
     setShowDropdown(false);
@@ -319,6 +326,9 @@ export default function SaleForm() {
     const { name, value } = e.target;
     const UPPERCASE_FIELDS = ['clientCode', 'clientName', 'notes'];
     const finalValue = UPPERCASE_FIELDS.includes(name) ? value.toUpperCase() : value;
+    if (['clientCode', 'clientName', 'clientCi', 'clientPhone'].includes(name)) {
+      setSelectedCustomer(null);
+    }
     setForm((prev) => {
       const next = { ...prev, [name]: finalValue };
       // Cambiar el servicio nuevo invalida el plan nuevo, y con el el tipo
@@ -531,6 +541,7 @@ export default function SaleForm() {
     try {
       const payload = {
         date: form.date,
+        customerId: selectedCustomer?.id || null,
         clientCode: form.clientCode,
         clientName: form.clientName,
         serviceType: form.serviceType,
@@ -582,7 +593,7 @@ export default function SaleForm() {
       }
       await api.createSale(payload);
       setSuccess('Registro guardado correctamente');
-        setForm({ date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet', requestType: form.requestType, additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', coverageZoneId: '', canalCaptacionId: '', equipmentRetained: null, requiresTechnicalVisit: null, equipmentDelivered: null, equipmentSerial: '', equipmentRecoveryRequired: false, meterNumber: '', sellerUserId: '', debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferReferences: '', transferHasSketch: null });
+        setForm({ date: today, customerId: '', clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet', requestType: form.requestType, additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', coverageZoneId: '', canalCaptacionId: '', equipmentRetained: null, requiresTechnicalVisit: null, equipmentDelivered: null, equipmentSerial: '', equipmentRecoveryRequired: false, meterNumber: '', sellerUserId: '', debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferReferences: '', transferHasSketch: null });
        setEquipmentLookup(null); setEquipmentLookupError('');
       setSelectedPlan(null); setSelectedCustomer(null); setQuery(''); setCustomers([]);
       setPromotions([]); setSelectedPromotion(null); setPriceMode('normal');

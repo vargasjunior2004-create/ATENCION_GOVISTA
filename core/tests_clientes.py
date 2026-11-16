@@ -71,3 +71,55 @@ class CustomerProfileTests(TestCase):
             content_type='application/json', **self.headers)
         self.assertEqual(review.status_code, 200)
         self.assertEqual(_json(review)['meter_review_status'], 'observado')
+
+    def test_selected_customer_is_reused_without_creating_duplicate(self):
+        customer = Customer.objects.create(
+            code='SOFTV-001',
+            name='CLIENTE CENTRALIZADO',
+            ci='CI-CENTRAL',
+            phone='70000001',
+        )
+        payload = {
+            'customerId': customer.id,
+            'clientCode': customer.code,
+            'clientName': customer.name,
+            'clientCi': customer.ci,
+            'clientPhone': customer.phone,
+            'serviceType': 'internet',
+            'requestType': 'nuevo_contrato',
+            'planId': self.plan.id,
+            'coverageZoneId': self.coverage_zone_id,
+            'canalCaptacionId': self.canal_captacion.id,
+            'meterNumber': 'CENTRAL-1',
+        }
+        first = self.client.post(
+            '/api/sales', payload, content_type='application/json',
+            **self.headers)
+        second = self.client.post(
+            '/api/sales', {**payload, 'meterNumber': 'CENTRAL-2'},
+            content_type='application/json', **self.headers)
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 201)
+        self.assertEqual(Customer.objects.filter(code='SOFTV-001').count(), 1)
+        self.assertEqual(
+            Customer.objects.get(pk=customer.id).sales.count(), 2)
+
+    def test_selected_customer_must_match_kardex(self):
+        customer = Customer.objects.create(
+            code='SOFTV-002', name='CLIENTE DOS')
+        response = self.client.post(
+            '/api/sales',
+            {
+                'customerId': customer.id,
+                'clientCode': 'OTRO-KARDEX',
+                'clientName': customer.name,
+                'serviceType': 'internet',
+                'requestType': 'nuevo_contrato',
+                'planId': self.plan.id,
+                'coverageZoneId': self.coverage_zone_id,
+                'canalCaptacionId': self.canal_captacion.id,
+            },
+            content_type='application/json',
+            **self.headers)
+        self.assertEqual(response.status_code, 400)
