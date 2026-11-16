@@ -10,7 +10,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
-from django.db import transaction
+from django.db import close_old_connections, transaction
 
 from core.models import Customer, CustomerService
 from .import_softv_customers import read_records
@@ -57,6 +57,10 @@ class Command(BaseCommand):
         parser.add_argument('--file', required=True, help='Ruta del Excel SOFTV')
         parser.add_argument('--sheet', default='Hoja1')
         parser.add_argument('--apply', action='store_true')
+        parser.add_argument(
+            '--batch-size', type=int, default=250,
+            help='Cantidad de servicios por lote al aplicar.',
+        )
         parser.add_argument('--report', help='Ruta opcional para informe JSON')
 
     def handle(self, *args, **options):
@@ -108,28 +112,56 @@ class Command(BaseCommand):
             report['services'].append(item)
 
         if options['apply']:
-            with transaction.atomic():
-                for item in report['services']:
-                    if item['action'] != 'create':
-                        continue
-                    customer = customers[item['code']]
-                    service, created = CustomerService.objects.get_or_create(
+            pending = [
+                item for item in report['services']
+                if item['action'] == 'create'
+            ]
+            batch_size = max(1, options['batch_size'])
+            for start in range(0, len(pending), batch_size):
+                batch = pending[start:start + batch_size]
+                close_old_connections()
+                objects = [
+                    CustomerService(
                         source=CustomerService.SOURCE_SOFTV,
-                        customer=customer,
+                        customer=customers[item['code']],
+                        source_customer_code=item['code'],
+                        raw_name=item['raw_name'],
                         raw_name_normalized=item['normalized'],
-                        defaults={
-                            'source_customer_code': item['code'],
-                            'raw_name': item['raw_name'],
-                            'source_period': item['period'],
-                            'source_year': int(item['year']) if str(
-                                item['year']).isdigit() else None,
-                            'source_file': path.name,
-                            'source_row': item['rows'][0],
-                            'service_status': None,
-                        },
+                        source_period=item['period'],
+                        source_year=int(item['year']) if str(
+                            item['year']).isdigit() else None,
+                        source_file=path.name,
+                        source_row=item['rows'][0],
+                        service_status=None,
                     )
-                    if created:
-                        report['counts']['created'] += 1
+                    for item in batch
+                ]
+                with transaction.atomic():
+                    CustomerService.objects.bulk_create(
+                        objects,
+                        batch_size=batch_size,
+                        ignore_conflicts=True,
+                    )
+                stored_pairs = set(
+                    CustomerService.objects.filter(
+                        source=CustomerService.SOURCE_SOFTV,
+                        customer_id__in={
+                            item['customer_id'] for item in batch
+                        },
+                        raw_name_normalized__in={
+                            item['normalized'] for item in batch
+                        },
+                    ).values_list('customer_id', 'raw_name_normalized')
+                )
+                report['counts']['created'] += sum(
+                    (item['customer_id'], item['normalized']) in stored_pairs
+                    for item in batch
+                )
+                self.stdout.write(
+                    f'Lote de servicios aplicado: '
+                    f'{min(start + batch_size, len(pending))}/'
+                    f'{len(pending)}'
+                )
             report['counts']['to_create'] = report['counts']['created']
 
         if options.get('report'):
