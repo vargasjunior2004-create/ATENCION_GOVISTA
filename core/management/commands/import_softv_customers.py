@@ -17,6 +17,7 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.db import close_old_connections
 
 from core.models import Customer
 from .inspect_softv_excel import cell, clean, normalize_row
@@ -112,6 +113,10 @@ class Command(BaseCommand):
             '--apply', action='store_true',
             help='Crea clientes faltantes. Sin esta opción solo analiza.',
         )
+        parser.add_argument(
+            '--batch-size', type=int, default=250,
+            help='Cantidad de clientes por lote al aplicar (por defecto: 250).',
+        )
         parser.add_argument('--report', help='Ruta opcional para informe JSON.')
 
     def handle(self, *args, **options):
@@ -176,26 +181,45 @@ class Command(BaseCommand):
             report['candidates'].append(candidate)
 
         if options['apply']:
-            with transaction.atomic():
-                for candidate in report['candidates']:
-                    if candidate['action'] != 'create':
-                        continue
+            pending = [
+                candidate for candidate in report['candidates']
+                if candidate['action'] == 'create'
+            ]
+            batch_size = max(1, options['batch_size'])
+            existing_codes = set(existing)
+            for start in range(0, len(pending), batch_size):
+                batch = pending[start:start + batch_size]
+                close_old_connections()
+                objects = []
+                for candidate in batch:
                     phone = candidate['phones'][0] if len(
                         candidate['phones']
                     ) == 1 else ''
-                    customer, created = Customer.objects.get_or_create(
+                    objects.append(Customer(
                         code=candidate['code'],
-                        defaults={
-                            'name': candidate['names'][0],
-                            'phone': phone,
-                            'status': 'activo',
-                            'active': True,
-                        },
+                        name=candidate['names'][0],
+                        phone=phone,
+                        status='activo',
+                        active=True,
+                    ))
+                with transaction.atomic():
+                    Customer.objects.bulk_create(
+                        objects,
+                        batch_size=batch_size,
+                        ignore_conflicts=True,
                     )
-                    if created:
-                        report['counts']['created'] += 1
-                    else:
-                        report['counts']['related'] += 1
+                batch_codes = {candidate['code'] for candidate in batch}
+                inserted_codes = set(
+                    Customer.objects.filter(code__in=batch_codes)
+                    .values_list('code', flat=True)
+                )
+                report['counts']['created'] += len(
+                    inserted_codes - existing_codes)
+                existing_codes.update(inserted_codes)
+                self.stdout.write(
+                    f'Lote aplicado: {min(start + batch_size, len(pending))}/'
+                    f'{len(pending)}'
+                )
             report['counts']['to_create'] = report['counts']['created']
 
         report_path = options.get('report')
