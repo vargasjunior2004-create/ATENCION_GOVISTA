@@ -61,10 +61,11 @@ class CustomerServiceImportTests(TestCase):
             CustomerService.objects.filter(
                 customer=self.customer_one).count(), 2)
         self.assertEqual(
-            CustomerService.objects.filter(raw_name='Iptv Basico').count(), 1)
+            CustomerService.objects.filter(
+                raw_name='PLAN INTERNET, Iptv Basico').count(), 1)
         self.assertTrue(
             CustomerService.objects.filter(
-                raw_name='Iptv Basico',
+                raw_name='PLAN INTERNET, Iptv Basico',
                 plan__isnull=True,
                 homologation_status='pending',
                 service_status__isnull=True,
