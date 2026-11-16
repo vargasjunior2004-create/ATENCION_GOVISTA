@@ -4,7 +4,8 @@ from django.db import DatabaseError, connection
 from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_field
 from .models import (
-    User, Customer, Contract, CoverageZone, Role, Permission, RolePermission, UserRole,
+    User, Customer, CustomerService, Contract, CoverageZone, Role, Permission,
+    RolePermission, UserRole,
     TemporaryFunction, TemporaryAssignment, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
     TarifaTraslado, TarifaTrasladoHistorial, TrasladoExterno,
     InventarioMovimiento, CanalCaptacion,
@@ -358,11 +359,13 @@ class CustomerSerializer(serializers.ModelSerializer):
 class CustomerLookupSerializer(serializers.ModelSerializer):
     """Cliente para autocompletar, incluyendo sus servicios conocidos."""
     services = serializers.SerializerMethodField()
+    softvServices = serializers.SerializerMethodField()
 
     class Meta:
         model = Customer
         fields = [
-            'id', 'code', 'name', 'ci', 'phone', 'status', 'active', 'services',
+            'id', 'code', 'name', 'ci', 'phone', 'status', 'active',
+            'services', 'softvServices',
         ]
 
     def get_services(self, obj):
@@ -379,6 +382,35 @@ class CustomerLookupSerializer(serializers.ModelSerializer):
             }
             for contract in contracts.all()
         ]
+
+
+    def get_softvServices(self, obj):
+        services = getattr(obj, 'external_services', None)
+        if services is None:
+            return []
+        return CustomerServiceSerializer(services.all(), many=True).data
+
+
+class CustomerServiceSerializer(serializers.ModelSerializer):
+    planLabel = serializers.SerializerMethodField()
+    serviceStatusLabel = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CustomerService
+        fields = [
+            'id', 'source', 'source_customer_code', 'raw_name',
+            'plan', 'planLabel', 'homologation_status',
+            'service_status', 'serviceStatusLabel',
+            'source_period', 'source_year', 'source_file', 'source_row',
+            'first_seen_at', 'last_seen_at',
+        ]
+        read_only_fields = fields
+
+    def get_planLabel(self, obj):
+        return obj.plan.label if obj.plan else None
+
+    def get_serviceStatusLabel(self, obj):
+        return obj.service_status or 'Desconocido'
 
 
 class CustomerLocationSerializer(serializers.ModelSerializer):
