@@ -825,14 +825,35 @@ export default function SaleForm() {
                   <li key={c.id}>
                     <button type="button" onClick={() => pickCustomer(c)}
                       className="w-full text-left px-4 py-3 hover:bg-brand-50 flex items-center justify-between gap-2 transition-colors">
-                      <span className="text-sm text-slate-700 font-medium">{c.name}</span>
-                      <span className="text-xs font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded">{c.code}</span>
+                       <span>
+                         <span className="block text-sm text-slate-700 font-medium">{c.name}</span>
+                         {c.services?.length > 0 && (
+                           <span className="mt-0.5 block text-xs text-slate-400">
+                             {c.services.map((service) => service.plan).join(' · ')}
+                           </span>
+                         )}
+                       </span>
+                       <span className="text-xs font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded">{c.code}</span>
                     </button>
                   </li>
                 ))}
               </ul>
-            )}
-            {!query && !selectedCustomer && (
+             )}
+             {selectedCustomer?.services?.length > 0 && (
+               <div className="mt-2 rounded-xl border border-emerald-100 bg-emerald-50/70 p-3">
+                 <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">
+                   Servicios registrados
+                 </p>
+                 <div className="mt-1 flex flex-wrap gap-2">
+                   {selectedCustomer.services.map((service) => (
+                     <span key={service.id} className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                       {service.plan} · {service.status}
+                     </span>
+                   ))}
+                 </div>
+               </div>
+             )}
+             {!query && !selectedCustomer && (
               <p className="text-xs text-slate-400 mt-1">Ingrese nombre o kardex; si no existe, se creara automaticamente.</p>
             )}
           </div>

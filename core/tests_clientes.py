@@ -62,6 +62,7 @@ class CustomerProfileTests(TestCase):
         search = self.client.get('/api/customers?q=MED-77', **self.headers)
         self.assertEqual(search.status_code, 200)
         self.assertEqual(len(_json(search)), 2)
+        self.assertEqual(len(_json(search)[0]['services']), 1)
 
         contract_id = payload['contracts'][0]['id']
         review = self.client.patch(

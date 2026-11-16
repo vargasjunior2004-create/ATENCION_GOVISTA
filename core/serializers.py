@@ -355,6 +355,32 @@ class CustomerSerializer(serializers.ModelSerializer):
         fields = ['id', 'code', 'name', 'ci', 'phone', 'status', 'active']
 
 
+class CustomerLookupSerializer(serializers.ModelSerializer):
+    """Cliente para autocompletar, incluyendo sus servicios conocidos."""
+    services = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Customer
+        fields = [
+            'id', 'code', 'name', 'ci', 'phone', 'status', 'active', 'services',
+        ]
+
+    def get_services(self, obj):
+        contracts = getattr(obj, 'contracts', None)
+        if contracts is None:
+            return []
+        return [
+            {
+                'id': contract.id,
+                'service_type': contract.service_type,
+                'plan': contract.plan_name or contract.plan.label,
+                'status': contract.status or 'sin_estado',
+                'contracted_on': contract.contracted_on,
+            }
+            for contract in contracts.all()
+        ]
+
+
 class CustomerLocationSerializer(serializers.ModelSerializer):
     customerCode = serializers.CharField(source='customer.code', read_only=True)
     customerName = serializers.CharField(source='customer.name', read_only=True)
