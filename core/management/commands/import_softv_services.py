@@ -21,20 +21,22 @@ def service_candidates(records):
     grouped = defaultdict(list)
     for record in records:
         raw_services = record.get('services_raw') or record.get('services', '')
-        for raw_name in raw_services.split(','):
-            raw_name = raw_name.strip()
-            if not raw_name:
-                continue
-            key = (record['code'], clean(raw_name).casefold())
-            grouped[key].append({
-                'code': record['code'],
-                'raw_name': raw_name,
-                'normalized': clean(raw_name).casefold(),
-                'period': record.get('period', ''),
-                'year': record.get('year') or None,
-                'row': record['row_number'],
-                'file': '',
-            })
+        # La celda completa representa un plan/paquete SOFTV. No se separa
+        # por comas: "GO-120(...)-COMBO, Iptv Basico, TV-120" es un solo
+        # servicio combinado y debe conservarse íntegramente.
+        raw_name = raw_services.strip()
+        if not raw_name:
+            continue
+        key = (record['code'], clean(raw_name).casefold())
+        grouped[key].append({
+            'code': record['code'],
+            'raw_name': raw_name,
+            'normalized': clean(raw_name).casefold(),
+            'period': record.get('period', ''),
+            'year': record.get('year') or None,
+            'row': record['row_number'],
+            'file': '',
+        })
     return [
         {
             'code': key[0],
