@@ -38,7 +38,8 @@ from .serializers import (
     UserSerializer, UserWriteSerializer, PermissionSerializer, RoleSerializer,
     UserRoleSerializer, TemporaryFunctionSerializer, TemporaryAssignmentSerializer,
     PlanSerializer,
-    PlanPublicSerializer, CustomerSerializer, ContractSerializer, SaleSerializer,
+    PlanPublicSerializer, CustomerSerializer, CustomerLookupSerializer,
+    ContractSerializer, SaleSerializer,
     SaleCreateSerializer, BackupSerializer,
     PromotionSerializer, PromotionWriteSerializer,
     TipoSolicitudPublicSerializer, MotivoSerializer, MotivoPublicSerializer,
@@ -1696,14 +1697,15 @@ class CustomerListView(APIView):
     """Busqueda de clientes por kardex o nombre (para autocompletar)."""
     def get(self, request):
         q = request.query_params.get('q', '').strip()
-        qs = Customer.objects.all().order_by('name', 'code')
+        qs = Customer.objects.prefetch_related('contracts__plan').all().order_by(
+            'name', 'code')
         if q:
             qs = qs.filter(
                 Q(code__icontains=q) | Q(name__icontains=q)
                 | Q(ci__icontains=q) | Q(phone__icontains=q)
                 | Q(contracts__meter_number__icontains=q)
             ).distinct()
-        return Response(CustomerSerializer(qs[:20], many=True).data)
+        return Response(CustomerLookupSerializer(qs[:20], many=True).data)
 
 
 def _maps_url_coordinates(value):
