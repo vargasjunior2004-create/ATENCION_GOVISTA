@@ -8,7 +8,7 @@ export const MODULES = [
     icon: MapPin,
     to: '/ubicaciones',
     permission: 'ubicaciones.clientes.view',
-    status: 'available',
+    status: 'soon',
   },
   {
     id: 'comercial',
@@ -44,7 +44,7 @@ export const MODULES = [
     to: '/atenciones/dashboard',
     permission: 'atenciones.view',
     role: 'call-center',
-    status: 'available',
+    status: 'soon',
   },
   {
     id: 'equipos',

@@ -43,10 +43,6 @@ export default function ModuleSelector() {
           ))}
         </div>
 
-        <p className="text-xs text-slate-400 mt-8 max-w-xl leading-relaxed">
-          Los módulos marcados como próximamente todavía no están habilitados.
-          No contienen información ni operaciones disponibles.
-        </p>
       </main>
     </div>
   );
