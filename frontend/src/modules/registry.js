@@ -1,4 +1,4 @@
-import { Briefcase, Headphones, MapPinned, Router, ShieldCheck, MapPin } from 'lucide-react';
+import { Briefcase, Headphones, MapPinned, Router, ShieldCheck, MapPin, Wrench } from 'lucide-react';
 
 export const MODULES = [
   {
@@ -44,6 +44,13 @@ export const MODULES = [
     to: '/atenciones/dashboard',
     permission: 'atenciones.view',
     role: 'call-center',
+    status: 'soon',
+  },
+  {
+    id: 'operativa',
+    name: 'Gestión Operativa',
+    description: 'Mesa de control, gestión de órdenes de trabajo, asignación de cuadrillas y seguimiento de operaciones técnicas.',
+    icon: Wrench,
     status: 'soon',
   },
   {
