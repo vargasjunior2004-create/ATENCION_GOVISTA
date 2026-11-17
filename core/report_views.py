@@ -3,7 +3,7 @@ import uuid
 
 from django.http import HttpResponse
 from django.utils import timezone
-from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
@@ -15,23 +15,25 @@ from .reports import (
     build_sales_pdf, build_sales_xlsx, build_sales_png,
     sign_report_token, unsign_report_token,
 )
-from .domain import request_type_label
-from .rbac import has_permission
+from .domain import request_type_label, request_type_catalog, MODO_TRASLADO
 
 
-class IsAdminRole(BasePermission):
-    """Solo el rol admin puede generar los reportes del historial.
-
-    Los reportes del dashboard tienen sus propios endpoints y estan
-    disponibles para cualquier usuario autenticado.
-    """
-
-    message = 'Se requieren permisos de administrador'
-
-    def has_permission(self, request, view):
-        user = getattr(request, 'user', None)
-        return bool(user and getattr(user, 'active', True)
-                    and has_permission(user, 'reports.export'))
+def _dashboard_report_request_type(value):
+    """Translate dashboard category aliases to the historical sale code."""
+    aliases = {
+        'nuevo_contrato': 'nuevo_contrato',
+        'recontrataciones': 'recontratacion',
+        'retiros': 'retiro',
+        'cambios_plan': 'cambio_plan',
+        'adiciones': 'adicion',
+    }
+    if value in aliases:
+        return aliases[value]
+    if value == 'traslados':
+        catalog = request_type_catalog()
+        return next((code for code, item in catalog.items()
+                     if item.modo == MODO_TRASLADO), 'traslado_externo')
+    return None
 
 
 def _sales_range(params, default_day=True):
@@ -95,7 +97,8 @@ def _filters_from_payload(payload):
 
 @extend_schema(responses={200: OpenApiResponse(OpenApiTypes.BINARY)})
 class SalesPdfView(APIView):
-    permission_classes = [IsAdminRole]
+    # Cualquier usuario autenticado puede generar reportes.
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         from_date, to_date = _sales_range(request.query_params)
@@ -111,7 +114,7 @@ class SalesPdfView(APIView):
 
 @extend_schema(responses={200: OpenApiResponse(OpenApiTypes.BINARY)})
 class SalesXlsxView(APIView):
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         from_date, to_date = _sales_range(request.query_params)
@@ -131,7 +134,7 @@ class SalesXlsxView(APIView):
 
 @extend_schema(responses={200: OpenApiResponse(OpenApiTypes.BINARY)})
 class SalesPngView(APIView):
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         from_date, to_date = _sales_range(request.query_params)
@@ -154,7 +157,9 @@ class DashboardPdfView(APIView):
 
     def get(self, request):
         today = timezone.localdate().isoformat()
-        buf = build_sales_pdf(today, today)
+        request_type = _dashboard_report_request_type(
+            request.query_params.get('requestType'))
+        buf = build_sales_pdf(today, today, request_type=request_type)
         return _pdf_response(buf, f'planilla-{today}-{today}.pdf')
 
 
@@ -166,7 +171,9 @@ class DashboardXlsxView(APIView):
 
     def get(self, request):
         today = timezone.localdate().isoformat()
-        buf = build_sales_xlsx(today, today)
+        request_type = _dashboard_report_request_type(
+            request.query_params.get('requestType'))
+        buf = build_sales_xlsx(today, today, request_type=request_type)
         response = HttpResponse(
             buf.getvalue(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -182,7 +189,9 @@ class DashboardPngView(APIView):
 
     def get(self, request):
         today = timezone.localdate().isoformat()
-        buf = build_sales_png(today, today)
+        request_type = _dashboard_report_request_type(
+            request.query_params.get('requestType'))
+        buf = build_sales_png(today, today, request_type=request_type)
         response = HttpResponse(buf.getvalue(), content_type='image/png')
         response['Content-Disposition'] = f'attachment; filename="foto-{today}-{today}.png"'
         return _download_headers(response)
@@ -190,7 +199,7 @@ class DashboardPngView(APIView):
 
 @extend_schema(responses={200: dict, 400: dict, 429: dict})
 class SalesPdfLinkView(APIView):
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'report_link'
 
@@ -202,7 +211,7 @@ class SalesPdfLinkView(APIView):
 
 @extend_schema(responses={200: dict, 400: dict, 429: dict})
 class SalesXlsxLinkView(APIView):
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'report_link'
 

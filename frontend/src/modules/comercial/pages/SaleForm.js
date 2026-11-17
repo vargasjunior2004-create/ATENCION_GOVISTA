@@ -1,19 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../../../services/api';
 import { Button, Input, Select, RadioChoiceGroup, Card, Alert, TotalDisplay } from '../../../components/ui';
-import { Check, MapPin, Route, Wrench, Package, ReceiptText } from 'lucide-react';
+import { Check, ExternalLink, MapPin, Route, Wrench, Package, ReceiptText } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import useRequestTypes from '../../../hooks/useRequestTypes';
 import useMotivos from '../../../hooks/useMotivos';
+import useCanalesCaptacion from '../../../hooks/useCanalesCaptacion';
 import SalePreviewModal from '../../../components/SalePreview';
-
-const SERVICE_TYPES = [
-  { value: 'internet', label: 'INTERNET' },
-  { value: 'tv', label: 'TV ANALOGA' },
-  { value: 'tv_digital', label: 'TV DIGITAL' },
-  { value: 'combo_analog', label: 'INTERNET + TV ANALOGA' },
-  { value: 'combo_digital', label: 'INTERNET + TV DIGITAL' },
-];
+import { SERVICE_TYPES, SERVICE_TYPE_TO_PLAN_TYPE } from '../serviceTypes';
 
 const SERVICE_TYPE_LABELS = Object.fromEntries(
   SERVICE_TYPES.map((t) => [t.value, t.label]));
@@ -21,13 +15,6 @@ const SERVICE_TYPE_LABELS = Object.fromEntries(
 // Tipo de servicio -> familia de plan que ese servicio puede contratar.
 // El catalogo de planes distingue tres familias, no cinco servicios: por eso
 // TV analoga y TV digital comparten 'tv', y los combos comparten 'combo'.
-const SERVICE_TYPE_TO_PLAN_TYPE = {
-  internet: 'internet',
-  tv: 'tv',
-  tv_digital: 'tv',
-  combo_analog: 'combo',
-  combo_digital: 'combo',
-};
 
 // Servicio anterior que se presume por defecto segun la familia del plan
 // elegido. El operador puede corregirlo si el cliente tiene otra variante.
@@ -55,32 +42,51 @@ export default function SaleForm() {
   };
   const today = getToday();
   const [plans, setPlans] = useState([]);
+  const [coverageZones, setCoverageZones] = useState([]);
+  const [coverageZonesLoading, setCoverageZonesLoading] = useState(true);
+  const [coverageZonesError, setCoverageZonesError] = useState('');
   const [form, setForm] = useState({
-    date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet',
-    requestType: 'nuevo_contrato', additionType: '', planFromId: '',
+    date: today, customerId: '', clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet',
+    requestType: '', additionType: '', planFromId: '',
     serviceTypeFrom: '', motivoId: '', notes: '',
-    planId: '',
+    planId: '', coverageZoneId: '',
+    canalCaptacionId: '',
     equipmentRetained: null, requiresTechnicalVisit: null,
-    equipmentDelivered: null, equipmentSerial: '',
+     equipmentDelivered: null, equipmentSerial: '', equipmentRecoveryRequired: false,
     meterNumber: '', sellerUserId: '',
     debtApplies: false, debtAmount: '',
-    transferCurrentAddress: '', transferNewAddress: '', transferZone: '',
+    transferCurrentAddress: '', transferNewAddress: '',
     transferReferences: '', transferHasSketch: null,
   });
   const { tipos: requestTypes, modoOf, nombreOf } = useRequestTypes();
   const { user } = useAuth();
   const { porCategoria, nombreOf: motivoNombreOf } = useMotivos();
+  const {
+    canales: canalesCaptacion,
+    loading: canalesCaptacionLoading,
+    error: canalesCaptacionError,
+    nombreOf: canalCaptacionNombreOf,
+  } = useCanalesCaptacion();
   const modo = modoOf(form.requestType);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [scanFile, setScanFile] = useState(null);
+  const [scanLoading, setScanLoading] = useState(false);
+  const [scanError, setScanError] = useState('');
+  const [scanNotice, setScanNotice] = useState('');
+  const [retirementReady, setRetirementReady] = useState(false);
+  const [scanPreviewUrl, setScanPreviewUrl] = useState('');
+  const [coverageZoneOptions, setCoverageZoneOptions] = useState([]);
+  const scanInputRef = useRef(null);
 
   const [query, setQuery] = useState('');
   const [customers, setCustomers] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [selectedSourceContract, setSelectedSourceContract] = useState(null);
   const dropdownRef = useRef(null);
 
   // Promotion state
@@ -93,6 +99,16 @@ export default function SaleForm() {
   const [equipmentLookupError, setEquipmentLookupError] = useState('');
 
   useEffect(() => {
+    if (!scanFile || !scanFile.type.startsWith('image/')) {
+      setScanPreviewUrl('');
+      return undefined;
+    }
+    const url = URL.createObjectURL(scanFile);
+    setScanPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [scanFile]);
+
+  useEffect(() => {
     api.getActivePlans().then(setPlans).catch(() => {});
     api.getActiveTransferTariffs().then(setTransferTariffs).catch(() => {});
     api.getActiveExternalSellers()
@@ -102,10 +118,30 @@ export default function SaleForm() {
       ));
   }, []);
 
-  // El tipo por defecto viene sembrado, pero si un administrador lo
-  // desactiva el formulario no puede quedar con un valor que ya no existe.
+  useEffect(() => {
+    let active = true;
+    api.getActiveCoverageZones()
+      .then((zones) => {
+        if (active) setCoverageZones(zones);
+      })
+      .catch((err) => {
+        if (active) {
+          setCoverageZonesError(
+            err?.error || 'No se pudieron cargar las zonas de cobertura.',
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setCoverageZonesLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  // El usuario elige el tipo antes de entrar al formulario correspondiente.
+  // Si el tipo seleccionado deja de estar disponible, se corrige al primero.
   useEffect(() => {
     if (!requestTypes.length) return;
+    if (!form.requestType) return;
     if (requestTypes.some((t) => t.code === form.requestType)) return;
     setForm((f) => ({ ...f, requestType: requestTypes[0].code }));
   }, [requestTypes, form.requestType]);
@@ -122,7 +158,15 @@ export default function SaleForm() {
 
   const pickCustomer = (c) => {
     setSelectedCustomer(c);
-    setForm((prev) => ({ ...prev, clientCode: c.code, clientName: c.name, clientCi: c.ci || '', clientPhone: c.phone || '' }));
+    setSelectedSourceContract(null);
+    setForm((prev) => ({
+      ...prev,
+      customerId: c.id,
+      clientCode: c.code,
+      clientName: c.name,
+      clientCi: c.ci || '',
+      clientPhone: c.phone || '',
+    }));
     setQuery(c.name);
     setCustomers([]);
     setShowDropdown(false);
@@ -140,8 +184,18 @@ export default function SaleForm() {
   const isCambio = modo === 'cambio_plan';
   const isAdicion = modo === 'adicion';
   const isRecontratacion = form.requestType === 'recontratacion';
+  const isNewContract = form.requestType === 'nuevo_contrato';
   const isContract = modo === 'nuevo' || isRecontratacion;
   const isTransfer = form.requestType === 'traslado_externo';
+  const requiresCoverageZone = isContract || isTransfer;
+  const coverageZoneSelectionError = coverageZonesError || (
+    !coverageZonesLoading && coverageZones.length === 0
+      ? 'No hay zonas activas disponibles. Contacte al administrador.'
+      : ''
+  );
+  const selectedCoverageZone = coverageZones.find(
+    (zone) => String(zone.id) === String(form.coverageZoneId),
+  );
   const isCallCenter = (user?.roles || []).some(
     (role) => role.code === 'call-center',
   );
@@ -166,6 +220,11 @@ export default function SaleForm() {
     if (modo === 'adicion') return p.type === 'combo';
     return p.type === SERVICE_TYPE_TO_PLAN_TYPE[form.serviceType];
   });
+
+  const additionCurrentOptions = SERVICE_TYPES.filter((t) => (
+    SERVICE_TYPE_TO_PLAN_TYPE[t.value] === 'internet'
+    || SERVICE_TYPE_TO_PLAN_TYPE[t.value] === 'tv'
+  ));
 
   // El plan anterior se ofrece completo y agrupado por familia, sin atarse
   // al servicio nuevo. Se omite el plan ya elegido como nuevo para no
@@ -193,6 +252,58 @@ export default function SaleForm() {
   const samePlanSelected = isCambio && form.planFromId
     && String(form.planId) === String(form.planFromId)
     && (!form.serviceTypeFrom || form.serviceTypeFrom === form.serviceType);
+
+  const canPrefillFromContract = isCambio || isAdicion || isTransfer;
+  const usableSourceContracts = (selectedCustomer?.services || []).filter(
+    (contract) => !['retirado', 'inactivo'].includes(contract.status),
+  );
+
+  const applySourceContract = (contract) => {
+    if (!contract || !canPrefillFromContract) return;
+    setSelectedSourceContract(contract);
+    setForm((prev) => {
+      const next = { ...prev };
+      if (isCambio) {
+        next.planFromId = String(contract.plan_id || '');
+        next.serviceTypeFrom = contract.service_type || '';
+      }
+      if (isAdicion) {
+        const serviceIsValid = additionCurrentOptions.some(
+          (service) => service.value === contract.service_type,
+        );
+        next.serviceTypeFrom = serviceIsValid ? contract.service_type : '';
+      }
+      if (isTransfer) {
+        next.serviceType = contract.service_type || prev.serviceType;
+        next.planId = String(contract.plan_id || '');
+        next.meterNumber = contract.meter_number || '';
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!canPrefillFromContract) {
+      setSelectedSourceContract(null);
+      return;
+    }
+    if (!usableSourceContracts.length) {
+      setSelectedSourceContract(null);
+      return;
+    }
+    const current = usableSourceContracts.find(
+      (contract) => contract.id === selectedSourceContract?.id,
+    );
+    if (current) {
+      applySourceContract(current);
+      return;
+    }
+    if (usableSourceContracts.length === 1) {
+      applySourceContract(usableSourceContracts[0]);
+    } else {
+      setSelectedSourceContract(null);
+    }
+  }, [selectedCustomer, form.requestType]);
 
   useEffect(() => {
     if (form.planId) {
@@ -255,6 +366,9 @@ export default function SaleForm() {
     const { name, value } = e.target;
     const UPPERCASE_FIELDS = ['clientCode', 'clientName', 'notes'];
     const finalValue = UPPERCASE_FIELDS.includes(name) ? value.toUpperCase() : value;
+    if (['clientCode', 'clientName', 'clientCi', 'clientPhone'].includes(name)) {
+      setSelectedCustomer(null);
+    }
     setForm((prev) => {
       const next = { ...prev, [name]: finalValue };
       // Cambiar el servicio nuevo invalida el plan nuevo, y con el el tipo
@@ -264,15 +378,22 @@ export default function SaleForm() {
         next.planId = '';
         next.serviceTypeFrom = '';
       }
-      if (name === 'requestType') {
-        next.planId = '';
-        next.motivoId = '';
-        const nuevoModo = modoOf(value);
-        if (nuevoModo !== 'adicion') next.additionType = '';
-        if (nuevoModo !== 'cambio_plan') {
-          next.planFromId = '';
-          next.serviceTypeFrom = '';
-        }
+        if (name === 'requestType') {
+          next.planId = '';
+          next.motivoId = '';
+          next.coverageZoneId = '';
+          const nuevoModo = modoOf(value);
+          if (nuevoModo === 'adicion') next.serviceType = 'combo_analog';
+          if (value !== 'nuevo_contrato') next.canalCaptacionId = '';
+          if (nuevoModo !== 'adicion') next.additionType = '';
+          if (nuevoModo !== 'adicion' && nuevoModo !== 'cambio_plan') {
+            next.planFromId = '';
+            next.serviceTypeFrom = '';
+          }
+          if (nuevoModo === 'adicion') {
+            next.planFromId = '';
+            next.serviceTypeFrom = '';
+          }
         if (value !== 'recontratacion') {
           next.equipmentRetained = null;
           next.requiresTechnicalVisit = null;
@@ -282,15 +403,27 @@ export default function SaleForm() {
         if (nuevoModo !== 'retiro') {
           next.equipmentDelivered = null;
           next.equipmentSerial = '';
+          next.equipmentRecoveryRequired = false;
           setEquipmentLookup(null);
           setEquipmentLookupError('');
         }
         if (value !== 'traslado_externo') {
           next.transferCurrentAddress = '';
           next.transferNewAddress = '';
-          next.transferZone = '';
           next.transferReferences = '';
           next.transferHasSketch = null;
+        }
+        if (
+          nuevoModo === 'retiro'
+          || nuevoModo === 'nuevo'
+          || modoOf(form.requestType) === 'retiro'
+          || form.requestType === 'nuevo_contrato'
+        ) {
+          setRetirementReady(false);
+          setScanFile(null);
+          setScanError('');
+          setScanNotice('');
+          if (scanInputRef.current) scanInputRef.current.value = '';
         }
       }
       return next;
@@ -322,29 +455,166 @@ export default function SaleForm() {
     }
   };
 
+  const acceptScanFile = (file) => {
+    if (!file) return;
+    const extension = `.${file.name.split('.').pop().toLowerCase()}`;
+    const validType = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(file.type)
+      || ['.pdf', '.jpg', '.jpeg', '.png', '.webp'].includes(extension);
+    if (!validType) {
+      setScanFile(null);
+      setScanError('Formato no permitido. Usa PDF, JPG, JPEG, PNG o WEBP.');
+      setRetirementReady(true);
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setScanFile(null);
+      setScanError('El archivo supera el máximo permitido de 10 MB.');
+      setRetirementReady(true);
+      return;
+    }
+    setScanFile(file);
+    setScanError('');
+    setScanNotice('');
+    setRetirementReady(false);
+  };
+
+  const handleDocumentPaste = (event) => {
+    if ((!isRetiro && !isNewContract) || event.defaultPrevented) return;
+    if (event.defaultPrevented) return;
+    const imageItem = [...(event.clipboardData?.items || [])]
+      .find((item) => item.kind === 'file' && item.type.startsWith('image/'));
+    const file = imageItem?.getAsFile();
+    if (file) {
+      event.preventDefault();
+      acceptScanFile(new File([file], `captura-venta-${Date.now()}.png`, {
+        type: file.type || 'image/png',
+      }));
+    }
+  };
+
+  const scanSaleDocument = async () => {
+    if (!scanFile) return;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    setScanLoading(true);
+    setScanError('');
+    setScanNotice('');
+    try {
+      const result = await api.scanSaleDocument(
+        scanFile,
+        isNewContract ? 'installation' : 'retirement',
+        { signal: controller.signal },
+      );
+      const extracted = result.fields || {};
+      setForm((prev) => ({
+        ...prev,
+        ...Object.fromEntries(
+          ['clientCode', 'clientName', 'clientCi', 'clientPhone',
+            'serviceType', 'notes', 'meterNumber', 'equipmentSerial']
+            .filter((key) => extracted[key])
+            .map((key) => [key, extracted[key]]),
+        ),
+        planId: extracted.planId ? String(extracted.planId) : prev.planId,
+        planFromId: extracted.planFromId ? String(extracted.planFromId) : prev.planFromId,
+        coverageZoneId: extracted.coverageZoneId
+          ? String(extracted.coverageZoneId) : prev.coverageZoneId,
+      }));
+      if (extracted.clientName) setQuery(extracted.clientName);
+      const warnings = result.warnings || [];
+      if (result.plan_options?.length > 1) {
+        warnings.push('Hay varias coincidencias de plan. Selecciona el plan manualmente.');
+      }
+      setCoverageZoneOptions(result.coverage_zone_options || []);
+      if (isNewContract && result.coverage_zone_options?.length > 1) {
+        warnings.push('Hay varias coincidencias de zona. Selecciona la zona manualmente.');
+      } else if (
+        isNewContract
+        && result.coverage_zone_options?.length === 0
+        && !result.fields?.coverageZoneId
+      ) {
+        warnings.push('No se pudo relacionar automáticamente la dirección con una zona.');
+      }
+      setRetirementReady(true);
+      setScanNotice(warnings.length
+        ? `Lectura terminada. ${warnings.join(' ')} Revisa y completa los campos faltantes.`
+        : 'Lectura terminada. Revisa los datos antes de guardar.');
+    } catch (err) {
+      setRetirementReady(true);
+      setScanNotice(
+        err?.name === 'AbortError'
+          ? 'La lectura tardó demasiado. Puedes completar el formulario manualmente.'
+          : `${err?.error || 'No fue posible extraer los datos del documento.'} Puedes completar el formulario manualmente.`,
+      );
+    } finally {
+      clearTimeout(timeoutId);
+      setScanLoading(false);
+    }
+  };
+
+  const handleScanDrop = (event) => {
+    event.preventDefault();
+    acceptScanFile(event.dataTransfer.files?.[0]);
+  };
+
+  const clearScannedDocument = () => {
+    setScanFile(null);
+    setScanError('');
+    setScanNotice('');
+    setCoverageZoneOptions([]);
+    setRetirementReady(false);
+    if (scanInputRef.current) scanInputRef.current.value = '';
+    setForm((prev) => ({
+      ...prev,
+      clientCode: '', clientName: '', clientCi: '', clientPhone: '',
+      serviceType: 'internet', planId: '', planFromId: '', serviceTypeFrom: '',
+      motivoId: '', additionType: '', equipmentDelivered: null,
+      equipmentSerial: '', equipmentRecoveryRequired: false,
+      notes: '', meterNumber: '', coverageZoneId: '', canalCaptacionId: '',
+      transferCurrentAddress: '', transferNewAddress: '', transferReferences: '',
+      transferHasSketch: null,
+    }));
+    setQuery('');
+    setSelectedCustomer(null);
+    setEquipmentLookup(null);
+    setEquipmentLookupError('');
+    setShowPreview(false);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess('');
+    if (isNewContract && !form.canalCaptacionId) {
+      setError('Selecciona de dónde nos conociste para registrar el nuevo contrato.');
+      return;
+    }
     setLoading(true);
     try {
       const payload = {
         date: form.date,
+        customerId: selectedCustomer?.id || null,
         clientCode: form.clientCode,
         clientName: form.clientName,
         serviceType: form.serviceType,
         requestType: form.requestType,
         additionType: isAdicion ? form.additionType : '',
         planFromId: isCambio && form.planFromId ? Number(form.planFromId) : null,
-        serviceTypeFrom: isCambio && form.serviceTypeFrom ? form.serviceTypeFrom : null,
+        serviceTypeFrom: (isCambio || isAdicion) && form.serviceTypeFrom
+          ? form.serviceTypeFrom : null,
         motivoId: (isCambio || isRetiro) && form.motivoId ? Number(form.motivoId) : null,
         notes: form.notes,
         planId: Number(form.planId),
       };
+      if (requiresCoverageZone) {
+        payload.coverageZoneId = Number(form.coverageZoneId);
+      }
       if (isContract) {
         payload.clientCi = form.clientCi;
         payload.clientPhone = form.clientPhone;
         payload.meterNumber = form.meterNumber;
+        if (isNewContract && form.canalCaptacionId) {
+          payload.canalCaptacionId = Number(form.canalCaptacionId);
+        }
         if (form.sellerUserId) {
           payload.sellerUserId = Number(form.sellerUserId);
         }
@@ -358,6 +628,7 @@ export default function SaleForm() {
       if (isRetiro) {
         payload.equipmentDelivered = form.equipmentDelivered;
         payload.equipmentSerial = form.equipmentDelivered ? form.equipmentSerial : '';
+        payload.equipmentRecoveryRequired = form.equipmentRecoveryRequired;
       }
       if (isTransfer) {
         const family = SERVICE_TYPE_TO_PLAN_TYPE[form.serviceType];
@@ -365,7 +636,6 @@ export default function SaleForm() {
         payload.transferTariffId = tariff?.id;
         payload.transferCurrentAddress = form.transferCurrentAddress;
         payload.transferNewAddress = form.transferNewAddress;
-        payload.transferZone = form.transferZone;
         payload.transferReferences = form.transferReferences;
         payload.transferHasSketch = form.transferHasSketch;
       }
@@ -374,7 +644,7 @@ export default function SaleForm() {
       }
       await api.createSale(payload);
       setSuccess('Registro guardado correctamente');
-       setForm({ date: today, clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet', requestType: 'nuevo_contrato', additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', equipmentRetained: null, requiresTechnicalVisit: null, equipmentDelivered: null, equipmentSerial: '', meterNumber: '', sellerUserId: '', debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferZone: '', transferReferences: '', transferHasSketch: null });
+        setForm({ date: today, customerId: '', clientCode: '', clientName: '', clientCi: '', clientPhone: '', serviceType: 'internet', requestType: form.requestType, additionType: '', planFromId: '', serviceTypeFrom: '', motivoId: '', notes: '', planId: '', coverageZoneId: '', canalCaptacionId: '', equipmentRetained: null, requiresTechnicalVisit: null, equipmentDelivered: null, equipmentSerial: '', equipmentRecoveryRequired: false, meterNumber: '', sellerUserId: '', debtApplies: false, debtAmount: '', transferCurrentAddress: '', transferNewAddress: '', transferReferences: '', transferHasSketch: null });
        setEquipmentLookup(null); setEquipmentLookupError('');
       setSelectedPlan(null); setSelectedCustomer(null); setQuery(''); setCustomers([]);
       setPromotions([]); setSelectedPromotion(null); setPriceMode('normal');
@@ -405,6 +675,41 @@ export default function SaleForm() {
   };
 
   const getMotivoLabel = () => motivoNombreOf(form.motivoId);
+  const coverageZoneSelect = (
+    <div className="space-y-2">
+      <Select
+        label="Zona de cobertura / Barrio *"
+        name="coverageZoneId"
+        value={form.coverageZoneId}
+        onChange={handleChange}
+        required
+        error={coverageZoneSelectionError}
+      >
+        <option value="">
+          {coverageZonesLoading ? 'Cargando zonas...' : 'Seleccione una zona'}
+        </option>
+        {coverageZones.map((zone) => (
+          <option key={zone.id} value={zone.id}>{zone.name}</option>
+        ))}
+      </Select>
+      {selectedCoverageZone?.google_maps_url && (
+        <a
+          href={selectedCoverageZone.google_maps_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-xs font-semibold text-brand-700 underline-offset-2 hover:underline focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+        >
+          Ver cobertura en el mapa
+          <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+        </a>
+      )}
+      {coverageZoneOptions.length > 1 && (
+        <p className="text-xs font-semibold text-amber-700">
+          Revisa las coincidencias sugeridas por la orden antes de guardar.
+        </p>
+      )}
+    </div>
+  );
 
   const previewSale = {
     date: formatDate(form.date),
@@ -428,12 +733,116 @@ export default function SaleForm() {
     requiresTechnicalVisit: isRecontratacion ? form.requiresTechnicalVisit : null,
     transferCurrentAddress: isTransfer ? form.transferCurrentAddress : null,
     transferNewAddress: isTransfer ? form.transferNewAddress : null,
-    transferZone: isTransfer ? form.transferZone : null,
+    transferZone: isTransfer ? selectedCoverageZone?.name : null,
+    coverageZoneName: requiresCoverageZone ? selectedCoverageZone?.name : null,
+    canalCaptacionNombre: isNewContract
+      ? canalCaptacionNombreOf(Number(form.canalCaptacionId)) : null,
     transferReferences: isTransfer ? form.transferReferences : null,
     transferHasSketch: isTransfer ? form.transferHasSketch : null,
     motivo: getMotivoLabel(),
+    equipmentDelivered: isRetiro ? form.equipmentDelivered : null,
+    equipmentSerial: isRetiro && form.equipmentDelivered ? form.equipmentSerial : '',
+    equipmentRecoveryRequired: isRetiro && form.equipmentRecoveryRequired,
     notes: form.notes,
   };
+
+  const requestTypeSelector = (
+    <Select
+      label="Tipo de Solicitud *"
+      name="requestType"
+      value={form.requestType}
+      onChange={handleChange}
+      required
+    >
+      <option value="">Seleccione una solicitud...</option>
+      {requestTypes.map((t) => (
+        <option key={t.code} value={t.code}>{t.nombre}</option>
+      ))}
+    </Select>
+  );
+
+  const retirementUploadPanel = (
+    <div
+      className="rounded-2xl border-2 border-dashed border-brand-200 bg-brand-50/40 p-5 sm:p-8"
+      onPaste={handleDocumentPaste}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={handleScanDrop}
+    >
+      <div className="mx-auto max-w-2xl text-center">
+        <p className="text-lg font-black text-slate-900">
+          {isNewContract ? 'Carga la orden de instalación' : 'Carga la orden de retiro'}
+        </p>
+        <p className="mt-2 text-sm text-slate-500">
+          {isNewContract
+            ? 'Usa la orden cuyo encabezado indique una instalación.'
+            : 'Usa la orden cuyo encabezado diga “Retiro de aparato”.'}
+          {' '}Selecciona una fotografía o PDF, arrástralo aquí o pega una captura con Ctrl+V.
+        </p>
+        <div className="mt-6 flex flex-col items-center gap-3">
+          <input
+            ref={scanInputRef}
+            type="file"
+            accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*"
+            onChange={(event) => acceptScanFile(event.target.files?.[0])}
+            className="block w-full max-w-md text-sm text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-4 file:py-3 file:text-sm file:font-bold file:text-brand-700"
+          />
+          {scanFile && (
+            <div className="w-full max-w-md rounded-xl border border-brand-200 bg-white p-3 text-left">
+              <p className="truncate text-sm font-bold text-slate-800">{scanFile.name}</p>
+              {scanPreviewUrl && (
+                <img src={scanPreviewUrl} alt="Vista previa de la orden" className="mt-3 max-h-64 w-full rounded-lg object-contain" />
+              )}
+              <button type="button" onClick={clearScannedDocument} className="mt-3 text-sm font-bold text-red-600 hover:underline">
+                Quitar archivo
+              </button>
+            </div>
+          )}
+          <Button type="button" onClick={scanSaleDocument} disabled={!scanFile || scanLoading}>
+            {scanLoading ? 'Gemini está analizando el documento...' : 'Leer documento y completar formulario'}
+          </Button>
+        </div>
+        {scanError && <p className="mt-4 text-sm font-semibold text-red-600">{scanError}</p>}
+        {scanNotice && <p className="mt-4 text-sm font-semibold text-emerald-700">{scanNotice}</p>}
+      </div>
+    </div>
+  );
+
+  if (!form.requestType) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+            Registrar Solicitud
+          </h1>
+          <p className="text-sm text-slate-400 mt-1">
+            Selecciona el tipo de solicitud para continuar.
+          </p>
+        </div>
+        <Card className="p-4 sm:p-6">
+          {requestTypeSelector}
+        </Card>
+      </div>
+    );
+  }
+
+  if ((isRetiro || isNewContract) && !retirementReady) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+            {isRetiro ? 'Registrar retiro' : 'Registrar nuevo contrato'}
+          </h1>
+          <p className="text-sm text-slate-400 mt-1">
+            Primero carga la orden para completar los datos.
+          </p>
+        </div>
+        <Card className="p-4 sm:p-6">
+          <div className="mb-5">{requestTypeSelector}</div>
+          {retirementUploadPanel}
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -443,15 +852,26 @@ export default function SaleForm() {
       </div>
 
       <Card className="p-6">
-        <form onSubmit={(e) => { e.preventDefault(); setShowPreview(true); }} className="space-y-5">
-          {error && <Alert type="error">{error}</Alert>}
-          {success && <Alert type="success">{success}</Alert>}
+        <form onSubmit={(e) => { e.preventDefault(); setShowPreview(true); }} onPaste={handleDocumentPaste} className="space-y-5">
+           {error && <Alert type="error">{error}</Alert>}
+           {success && <Alert type="success">{success}</Alert>}
+
+          {(isRetiro || isNewContract) && (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-brand-200 bg-brand-50/60 p-3">
+              <p className="truncate text-sm font-semibold text-slate-700">{scanFile?.name || 'Orden procesada'}</p>
+              <button type="button" onClick={clearScannedDocument} className="shrink-0 text-sm font-bold text-brand-700 hover:underline">
+                Cambiar documento
+              </button>
+            </div>
+          )}
+          {scanError && <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">{scanError}</p>}
+          {scanNotice && <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">{scanNotice}</p>}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Fecha</label>
               <div className="w-full px-4 py-3 rounded-xl bg-brand-50 border border-brand-200 text-brand-800 font-bold text-sm">
-                {formatDate(today)}
+                {formatDate(form.date)}
               </div>
             </div>
             <Input label="Kardex *" name="clientCode" value={form.clientCode} onChange={handleChange} required placeholder="N° kardex" />
@@ -472,16 +892,75 @@ export default function SaleForm() {
                   <li key={c.id}>
                     <button type="button" onClick={() => pickCustomer(c)}
                       className="w-full text-left px-4 py-3 hover:bg-brand-50 flex items-center justify-between gap-2 transition-colors">
-                      <span className="text-sm text-slate-700 font-medium">{c.name}</span>
-                      <span className="text-xs font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded">{c.code}</span>
+                       <span>
+                         <span className="block text-sm text-slate-700 font-medium">{c.name}</span>
+                         {c.services?.length > 0 && (
+                           <span className="mt-0.5 block text-xs text-slate-400">
+                             {c.services.map((service) => service.plan).join(' · ')}
+                           </span>
+                         )}
+                       </span>
+                       <span className="text-xs font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded">{c.code}</span>
                     </button>
                   </li>
                 ))}
               </ul>
-            )}
-            {!query && !selectedCustomer && (
-              <p className="text-xs text-slate-400 mt-1">Ingrese nombre o kardex; si no existe, se creara automaticamente.</p>
-            )}
+             )}
+             {selectedCustomer?.services?.length > 0 && (
+               <div className="mt-2 rounded-xl border border-emerald-100 bg-emerald-50/70 p-3">
+                 <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">
+                   Servicios registrados
+                 </p>
+                 <div className="mt-1 flex flex-wrap gap-2">
+                   {selectedCustomer.services.map((service) => (
+                     <span key={service.id} className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                       {service.plan} · {service.status}
+                     </span>
+                   ))}
+                 </div>
+               </div>
+             )}
+              {selectedCustomer?.softvServices?.length > 0 && (
+                <div className="mt-2 rounded-xl border border-sky-100 bg-sky-50/70 p-3">
+                 <p className="text-xs font-bold uppercase tracking-wide text-sky-700">
+                   Servicios reportados por SOFTV
+                 </p>
+                 <div className="mt-1 flex flex-wrap gap-2">
+                   {selectedCustomer.softvServices.map((service) => (
+                     <span key={service.id} className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-sky-800">
+                       {service.raw_name} · {service.serviceStatusLabel}
+                     </span>
+                   ))}
+                  </div>
+                </div>
+              )}
+              {canPrefillFromContract && selectedCustomer && usableSourceContracts.length > 1 && (
+                <div className="mt-2 rounded-xl border border-amber-100 bg-amber-50/70 p-3">
+                  <Select
+                    label="Contrato que se utilizará como actual"
+                    value={selectedSourceContract?.id || ''}
+                    onChange={(event) => {
+                      const contract = usableSourceContracts.find(
+                        (item) => String(item.id) === event.target.value,
+                      );
+                      applySourceContract(contract);
+                    }}
+                  >
+                    <option value="">Seleccione el contrato</option>
+                    {usableSourceContracts.map((contract) => (
+                      <option key={contract.id} value={contract.id}>
+                        {contract.plan} · {SERVICE_TYPE_LABELS[contract.service_type] || contract.service_type}
+                      </option>
+                    ))}
+                  </Select>
+                  <p className="mt-1 text-xs text-amber-700">
+                    Se usará para precargar la información del cambio, adición o traslado.
+                  </p>
+                </div>
+              )}
+              {!query && !selectedCustomer && (
+               <p className="text-xs text-slate-400 mt-1">Ingrese nombre o kardex; si no existe, se creara automaticamente.</p>
+             )}
           </div>
 
           {isContract && <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -490,30 +969,51 @@ export default function SaleForm() {
           </div>}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Select label="Tipo de Solicitud *" name="requestType" value={form.requestType} onChange={handleChange} required>
-              {requestTypes.map((t) => (
-                <option key={t.code} value={t.code}>{t.nombre}</option>
-              ))}
+            {requestTypeSelector}
+            <Select
+              label={(isCambio || isAdicion) ? 'Tipo de Servicio Nuevo *' : 'Tipo de Servicio *'}
+              name="serviceType"
+              value={form.serviceType}
+              onChange={handleChange}
+            >
+              {SERVICE_TYPES
+                .filter((t) => !isAdicion
+                  || SERVICE_TYPE_TO_PLAN_TYPE[t.value] === 'combo')
+                .map((t) => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
             </Select>
-             <Select
-               label={isCambio ? 'Tipo de Servicio Nuevo *' : 'Tipo de Servicio *'}
-               name="serviceType"
-               value={form.serviceType}
-               onChange={handleChange}
-             >
-               {SERVICE_TYPES.map((t) => (
-                 <option key={t.value} value={t.value}>{t.label}</option>
-               ))}
-             </Select>
           </div>
 
            {isAdicion && (
-            <Select label="Tipo de Adicion *" name="additionType" value={form.additionType} onChange={handleChange} required>
-              <option value="">--Seleccione--</option>
-              {ADDITION_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>{t.label}</option>
-              ))}
-            </Select>
+             <div className="space-y-4 rounded-2xl border-2 border-dashed border-emerald-200 bg-emerald-50/40 p-4">
+               <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider">
+                 Servicio que tiene el cliente
+               </p>
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                 <Select
+                   label="Servicio actual *"
+                   name="serviceTypeFrom"
+                   value={form.serviceTypeFrom}
+                   onChange={handleChange}
+                   required
+                 >
+                   <option value="">--Seleccione--</option>
+                   {additionCurrentOptions.map((t) => (
+                     <option key={t.value} value={t.value}>{t.label}</option>
+                   ))}
+                 </Select>
+                 <Select label="Servicio que se adiciona *" name="additionType" value={form.additionType} onChange={handleChange} required>
+                   <option value="">--Seleccione--</option>
+                   {ADDITION_TYPES.map((t) => (
+                     <option key={t.value} value={t.value}>{t.label}</option>
+                   ))}
+                 </Select>
+               </div>
+               <p className="text-xs text-slate-500">
+                 El nuevo servicio se registra como Combo. No requiere motivo.
+               </p>
+             </div>
            )}
 
           {isContract && (
@@ -533,6 +1033,31 @@ export default function SaleForm() {
                   ))}
                 </Select>
               </div>
+              {coverageZoneSelect}
+              {isNewContract && (
+                <>
+                  <Select
+                    label="¿De dónde nos conociste? *"
+                    name="canalCaptacionId"
+                    value={form.canalCaptacionId}
+                    onChange={handleChange}
+                    disabled={canalesCaptacionLoading}
+                    required
+                  >
+                    <option value="">
+                      {canalesCaptacionLoading
+                        ? 'Cargando canales...'
+                        : 'Seleccione un canal'}
+                    </option>
+                    {canalesCaptacion.map((canal) => (
+                      <option key={canal.id} value={canal.id}>{canal.nombre}</option>
+                    ))}
+                  </Select>
+                  {canalesCaptacionError && (
+                    <p className="text-xs text-red-600">{canalesCaptacionError}</p>
+                  )}
+                </>
+              )}
               <div className="rounded-xl border border-sky-100 bg-white/80 px-4 py-3">
                 <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Origen automático
@@ -556,7 +1081,7 @@ export default function SaleForm() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Input label="Domicilio actual" name="transferCurrentAddress" value={form.transferCurrentAddress} onChange={handleChange} placeholder="Si está disponible" />
                 <Input label="Nuevo domicilio *" name="transferNewAddress" value={form.transferNewAddress} onChange={handleChange} placeholder="Calle y número" required />
-                <Input label="Barrio / zona" name="transferZone" value={form.transferZone} onChange={handleChange} placeholder="Zona del nuevo domicilio" />
+                {coverageZoneSelect}
                 <Input label="Referencias" name="transferReferences" value={form.transferReferences} onChange={handleChange} placeholder="Puntos de referencia" />
               </div>
               <RadioChoiceGroup
@@ -686,17 +1211,22 @@ export default function SaleForm() {
                 label="Entrega de equipo"
                 name="equipmentDelivered"
                 value={form.equipmentDelivered === null ? '' : String(form.equipmentDelivered)}
-                onChange={(event) => setForm((prev) => ({ ...prev, equipmentDelivered: event.target.value === 'true', equipmentSerial: event.target.value === 'true' ? prev.equipmentSerial : '' }))}
+                 onChange={(event) => setForm((prev) => ({
+                   ...prev,
+                   equipmentDelivered: event.target.value === 'true',
+                   equipmentRecoveryRequired: event.target.value !== 'true',
+                    equipmentSerial: event.target.value === 'true' ? prev.equipmentSerial : '',
+                 }))}
                 options={[
                   { value: 'true', label: 'Sí, trae equipo', description: 'Se enviará a recepción pendiente de Inventario.', icon: <Package size={15} /> },
-                  { value: 'false', label: 'No trae equipo', description: 'El retiro continúa sin devolución física.', icon: <Check size={15} /> },
+                   { value: 'false', label: 'No, requiere retiro de equipo', description: 'Se generará una orden de retiro de equipo para su posterior gestión operativa.', icon: <Check size={15} /> },
                 ]}
               />
               {form.equipmentDelivered && (
                 <div className="space-y-2">
                   <Input label="Serie del equipo *" value={form.equipmentSerial} onChange={(event) => { setForm((prev) => ({ ...prev, equipmentSerial: event.target.value.toUpperCase() })); setEquipmentLookup(null); setEquipmentLookupError(''); }} onBlur={(event) => lookupEquipment(event.target.value)} placeholder="Escanea o escribe la serie" autoComplete="off" required />
                   {equipmentLookup && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">Equipo identificado: <strong>{equipmentLookup.articulo.marca} {equipmentLookup.articulo.modelo}</strong> · {equipmentLookup.articulo.tipo.nombre}. No se creará otro registro.</div>}
-                  {equipmentLookupError && <p className="text-xs font-semibold text-red-600">{equipmentLookupError}</p>}
+                   {equipmentLookupError && <p className="text-xs font-semibold text-amber-700">{equipmentLookupError} Puedes registrar el retiro; la serie quedará pendiente de identificación.</p>}
                 </div>
               )}
             </div>
@@ -880,7 +1410,7 @@ export default function SaleForm() {
             </div>
           )}
 
-          <Button type="submit" size="lg" className="w-full" disabled={!form.planId || samePlanSelected || ((isCambio || isRetiro) && !form.motivoId) || (isRetiro && (form.equipmentDelivered === null || (form.equipmentDelivered && (!form.equipmentSerial.trim() || !equipmentLookup)))) || (isRecontratacion && (form.equipmentRetained === null || form.requiresTechnicalVisit === null || (form.debtApplies && (!form.debtAmount || Number(form.debtAmount) <= 0)))) || (isTransfer && (!form.transferNewAddress.trim() || form.transferHasSketch === null || !transferTariffs.some((item) => item.service_type === SERVICE_TYPE_TO_PLAN_TYPE[form.serviceType])))}>
+          <Button type="submit" size="lg" className="w-full" disabled={!form.planId || samePlanSelected || (requiresCoverageZone && (!form.coverageZoneId || coverageZonesLoading || coverageZoneSelectionError)) || ((isCambio || isRetiro) && !form.motivoId) || (isRetiro && (form.equipmentDelivered === null || (form.equipmentDelivered && !form.equipmentSerial.trim()))) || (isRecontratacion && (form.equipmentRetained === null || form.requiresTechnicalVisit === null || (form.debtApplies && (!form.debtAmount || Number(form.debtAmount) <= 0)))) || (isTransfer && (!form.transferNewAddress.trim() || form.transferHasSketch === null || !transferTariffs.some((item) => item.service_type === SERVICE_TYPE_TO_PLAN_TYPE[form.serviceType])))}>
             Revisar Registro
           </Button>
         </form>

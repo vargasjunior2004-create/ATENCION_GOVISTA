@@ -1,13 +1,15 @@
 import React, { useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, KeyRound, LogOut } from 'lucide-react';
+import { ChevronDown, KeyRound, LogOut, Moon, Sun } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import { Badge } from '../ui';
 import ChangePasswordModal from './ChangePasswordModal';
 
 export default function AccountMenu({ variant = 'sidebar' }) {
   const { user, logout } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
@@ -18,9 +20,9 @@ export default function AccountMenu({ variant = 'sidebar' }) {
     || (user?.role === 'admin' ? 'ADMINISTRADOR' : 'OPERADOR');
   const roleColor = user?.isSystemAdmin || user?.role === 'admin' ? 'amber' : 'blue';
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setMenuOpen(false);
-    logout();
+    await logout();
     navigate('/login', { replace: true });
   };
 
@@ -33,6 +35,18 @@ export default function AccountMenu({ variant = 'sidebar' }) {
     <>
       <button
         type="button"
+        role="menuitem"
+        onClick={toggleTheme}
+        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+        aria-pressed={isDark}
+      >
+        {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+        {isDark ? 'Modo claro' : 'Modo oscuro'}
+      </button>
+      <div className="border-t border-slate-100 my-1" />
+      <button
+        type="button"
+        role="menuitem"
         onClick={openPassword}
         className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
       >
@@ -42,6 +56,7 @@ export default function AccountMenu({ variant = 'sidebar' }) {
       <div className="border-t border-slate-100 my-1" />
       <button
         type="button"
+        role="menuitem"
         onClick={handleLogout}
         className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors"
       >

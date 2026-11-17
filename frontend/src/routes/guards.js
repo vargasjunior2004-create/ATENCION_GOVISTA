@@ -20,11 +20,13 @@ export function PublicRoute() {
   return token ? <Navigate to="/" replace /> : <Outlet />;
 }
 
-export function ProtectedRoute() {
+export function ProtectedRoute({ children }) {
   const { token, sessionReady } = useAuth();
 
   if (!sessionReady) return <SessionLoader />;
-  return token ? <Outlet /> : <Navigate to="/login" replace />;
+  return token
+    ? (children || <Outlet />)
+    : <Navigate to="/login" replace />;
 }
 
 export function AdminRoute({ permission, children }) {

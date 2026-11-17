@@ -5,16 +5,21 @@ export function setOnAuthExpired(cb) { onAuthExpired = cb; }
 
 async function request(path, options = {}) {
   const token = localStorage.getItem('token');
-  const headers = { 'Content-Type': 'application/json', ...options.headers };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const isLoginRequest = path === '/api/auth/login';
+  const isFormData = options.body instanceof FormData;
+  const headers = { ...(isFormData ? {} : { 'Content-Type': 'application/json' }), ...options.headers };
+  if (token && !isLoginRequest) headers['Authorization'] = `Bearer ${token}`;
 
   const res = await fetch(`${API_URL}${path}`, { ...options, headers });
 
   if (res.status === 401) {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    if (onAuthExpired) onAuthExpired();
-    throw new Error('Sesión expirada');
+    const err = await res.json().catch(() => ({ error: 'Sesión inválida' }));
+    if (!isLoginRequest) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      if (onAuthExpired) onAuthExpired();
+    }
+    throw err;
   }
 
   if (!res.ok) {
@@ -34,12 +39,14 @@ const api = {
   login: (name, password) =>
     request('/api/auth/login', { method: 'POST', body: JSON.stringify({ name, password }) }),
 
+  logout: () => request('/api/auth/logout', { method: 'POST' }),
+
   me: () => request('/api/auth/me'),
 
-  changePassword: (current_password, new_password) =>
+  changePassword: (current_password, new_password, new_password_confirm) =>
     request('/api/auth/change-password', {
       method: 'POST',
-      body: JSON.stringify({ current_password, new_password }),
+      body: JSON.stringify({ current_password, new_password, new_password_confirm }),
     }),
 
   // Dashboard
@@ -53,6 +60,38 @@ const api = {
     const query = params.toString();
     return request(`/api/dashboard/stats${query ? `?${query}` : ''}`);
   },
+  getCommercialProductivity: (from = '', to = '', movementType = 'all', page = 1, pageSize = 25, userId = '') => {
+    const params = new URLSearchParams({ from, to, movement_type: movementType, page: String(page), page_size: String(pageSize) });
+    if (userId) params.set('user_id', String(userId));
+    return request(`/api/dashboard/productivity?${params.toString()}`);
+  },
+  getDashboardDrilldown: ({
+    indicator, category, from, to, movementType = 'all',
+    zoneName = '', planName = '', catalogLabel = '', planType = '',
+    channelKey = '',
+    motiveId = '',
+    search = '', page = 1, pageSize = 25,
+  }) => {
+    const params = new URLSearchParams({
+      indicator,
+      from,
+      to,
+      movement_type: movementType,
+      search,
+      page: String(page),
+      page_size: String(pageSize),
+    });
+    if (category) params.set('category', category);
+    if (zoneName) params.set('zone_name', zoneName);
+    if (indicator === 'plan') {
+      params.set('plan_name', planName);
+      params.set('catalog_label', catalogLabel);
+      params.set('plan_type', planType);
+    }
+    if (indicator === 'channel') params.set('channel_key', channelKey);
+    if (indicator === 'motive') params.set('motive_id', String(motiveId));
+    return request(`/api/dashboard/drilldown?${params.toString()}`);
+  },
 
   // Planes
   getPlans: () => request('/api/plans'),
@@ -63,6 +102,24 @@ const api = {
 
   // Tipos de solicitud (solo lectura para el formulario)
   getActiveRequestTypes: () => request('/api/request-types/active'),
+
+  // Zonas de cobertura
+  getActiveCoverageZones: () => request('/api/coverage/zones/?active=true'),
+  getCoverageZones: () => request('/api/coverage/zones/'),
+  getManagedCoverageZones: () => request('/api/coverage/zones/manage/'),
+
+  // Ubicación de clientes
+  searchLocationCustomers: (q = '') => request(`/api/ubicaciones/clientes${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  createCustomerLocation: (data) => request('/api/ubicaciones', { method: 'POST', body: data }),
+  updateCustomerLocation: (id, data) => request(`/api/ubicaciones/${id}`, { method: 'PATCH', body: data }),
+  getCustomerLocation: (id) => request(`/api/ubicaciones/${id}`),
+  getCustomerLocationHistory: (id) => request(`/api/ubicaciones/${id}/historial`),
+  createCoverageZone: (data) => request('/api/coverage/zones/manage/', {
+    method: 'POST', body: JSON.stringify(data),
+  }),
+  updateCoverageZone: (id, data) => request(`/api/coverage/zones/${id}/`, {
+    method: 'PATCH', body: JSON.stringify(data),
+  }),
 
   // Motivos
   getMotivos: (categoria = '') => {
@@ -80,6 +137,19 @@ const api = {
   createMotivo: (data) => request('/api/motivos', { method: 'POST', body: JSON.stringify(data) }),
   updateMotivo: (id, data) => request(`/api/motivos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteMotivo: (id) => request(`/api/motivos/${id}`, { method: 'DELETE' }),
+
+  // Canales de captación
+  getCanalesCaptacion: () => request('/api/canales-captacion'),
+  getActiveCanalesCaptacion: () => request('/api/canales-captacion/active'),
+  createCanalCaptacion: (data) => request('/api/canales-captacion', {
+    method: 'POST', body: JSON.stringify(data),
+  }),
+  updateCanalCaptacion: (id, data) => request(`/api/canales-captacion/${id}`, {
+    method: 'PATCH', body: JSON.stringify(data),
+  }),
+  deleteCanalCaptacion: (id) => request(`/api/canales-captacion/${id}`, {
+    method: 'DELETE',
+  }),
 
   // Promociones
   getPromotions: (planId) => {
@@ -114,12 +184,28 @@ const api = {
     return request(`/api/sales?${params.toString()}`);
   },
   createSale: (data) => request('/api/sales', { method: 'POST', body: JSON.stringify(data) }),
+  scanSaleDocument: (file, documentMode = 'retirement', options = {}) => {
+    const body = new FormData();
+    body.append('file', file);
+    body.append('document_mode', documentMode);
+    return request('/api/sales/escanear/', {
+      method: 'POST',
+      body,
+      ...options,
+    });
+  },
   updateSale: (id, data) => request(`/api/sales/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteSale: (id) => request(`/api/sales/${id}`, { method: 'DELETE' }),
   restoreSale: (id) => request(`/api/sales/${id}/restore`, { method: 'POST' }),
 
   // Clientes y contratos
   searchCustomers: (q = '') => request(`/api/customers?q=${encodeURIComponent(q)}`),
+  searchCustomersByCriteria: ({ code = '', name = '' } = {}) => {
+    const params = new URLSearchParams();
+    if (code) params.set('code', code);
+    else if (name) params.set('name', name);
+    return request(`/api/customers?${params.toString()}`);
+  },
   getCustomer: (id) => request(`/api/customers/${id}`),
   updateCustomer: (id, data) => request(`/api/customers/${id}`, {
     method: 'PUT', body: JSON.stringify(data),
@@ -133,17 +219,18 @@ const api = {
   }),
 
   // Usuarios
-  getUsers: () => request('/api/users'),
+  getUsers: () => request('/api/admin/usuarios').then((data) => data.results || data),
   getActiveExternalSellers: () => request('/api/external-sellers/active'),
-  createUser: (data) => request('/api/users', { method: 'POST', body: JSON.stringify(data) }),
-  updateUser: (id, data) => request(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  getRoles: () => request('/api/roles'),
-  getPermissions: () => request('/api/permissions'),
-  createRole: (data) => request('/api/roles', { method: 'POST', body: JSON.stringify(data) }),
-  updateRole: (id, data) => request(`/api/roles/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  getUserRoles: (id) => request(`/api/users/${id}/roles`),
-  assignUserRole: (id, role) => request(`/api/users/${id}/roles`, { method: 'POST', body: JSON.stringify({ role }) }),
-  revokeUserRole: (id) => request(`/api/user-roles/${id}`, { method: 'DELETE' }),
+  createUser: (data) => request('/api/admin/usuarios', { method: 'POST', body: JSON.stringify(data) }),
+  updateUser: (id, data) => request(`/api/admin/usuarios/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  getRoles: () => request('/api/admin/roles'),
+  getPermissions: () => request('/api/admin/permisos'),
+  getAdminAudit: () => request('/api/admin/auditoria'),
+  createRole: (data) => request('/api/admin/roles', { method: 'POST', body: JSON.stringify(data) }),
+  updateRole: (id, data) => request(`/api/admin/roles/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  getUserRoles: (id) => request(`/api/admin/usuarios/${id}/roles`),
+  assignUserRole: (id, role) => request(`/api/admin/usuarios/${id}/roles`, { method: 'POST', body: JSON.stringify({ role }) }),
+  revokeUserRole: (id) => request(`/api/admin/usuarios/roles/${id}`, { method: 'DELETE' }),
   getTemporaryFunctions: () => request('/api/temporary-functions'),
   getTemporaryAssignments: () => request('/api/temporary-assignments'),
   createTemporaryAssignment: (data) => request('/api/temporary-assignments', { method: 'POST', body: JSON.stringify(data) }),
@@ -188,17 +275,29 @@ const api = {
     if (showMotivos) params.set('showMotivos', 'si');
     return request(`/api/reports/png?${params.toString()}`);
   },
-  getDashboardPDF: () => request('/api/reports/dashboard/pdf'),
-  getDashboardXLSX: () => request('/api/reports/dashboard/xlsx'),
-  getDashboardPNG: () => request('/api/reports/dashboard/png'),
+  getDashboardPDF: (requestType = 'all') => {
+    const query = requestType && requestType !== 'all'
+      ? `?requestType=${encodeURIComponent(requestType)}` : '';
+    return request(`/api/reports/dashboard/pdf${query}`);
+  },
+  getDashboardXLSX: (requestType = 'all') => {
+    const query = requestType && requestType !== 'all'
+      ? `?requestType=${encodeURIComponent(requestType)}` : '';
+    return request(`/api/reports/dashboard/xlsx${query}`);
+  },
+  getDashboardPNG: (requestType = 'all') => {
+    const query = requestType && requestType !== 'all'
+      ? `?requestType=${encodeURIComponent(requestType)}` : '';
+    return request(`/api/reports/dashboard/png${query}`);
+  },
 
   // Backups
-  getBackups: () => request('/api/backups'),
+  getBackups: () => request('/api/admin/respaldos'),
   // Genera el respaldo y devuelve el archivo .dump directamente.
   // El servidor lo borra tras la transmision: no queda almacenado en Render.
   createBackup: () => {
     const token = localStorage.getItem('token');
-    return fetch(`${API_URL}/api/backups`, {
+    return fetch(`${API_URL}/api/admin/respaldos`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -219,7 +318,45 @@ const api = {
       return { blob: await res.blob(), filename };
     });
   },
-  deleteBackup: (id) => request(`/api/backups/${id}`, { method: 'DELETE' }),
+  deleteBackup: (id) => request(`/api/admin/respaldos/${id}`, { method: 'DELETE' }),
+
+  getAtencionCatalogs: (catalogType = '') => {
+    const query = catalogType ? `?catalog_type=${encodeURIComponent(catalogType)}` : '';
+    return request(`/api/call-center/catalogs${query}`);
+  },
+  updateAtencionCatalog: (id, data) => request(`/api/call-center/catalogs/${id}`, {
+    method: 'PATCH', body: JSON.stringify(data),
+  }),
+  getAtenciones: (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) params.set(key, value);
+    });
+    const query = params.toString();
+    return request(`/api/atenciones${query ? `?${query}` : ''}`);
+  },
+  createAtencion: (data) => request('/api/atenciones', {
+    method: 'POST', body: JSON.stringify(data),
+  }),
+  startAtencion: (data, idempotencyKey) => request('/api/atenciones/iniciar', {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify(data),
+  }),
+  startExistingAtencion: (id) => request(`/api/atenciones/${id}/iniciar`, { method: 'POST' }),
+  getOpenAtencion: () => request('/api/atenciones/abierta'),
+  finishAtencion: (id) => request(`/api/atenciones/${id}/finalizar`, { method: 'POST' }),
+  addAtencionAction: (id, data) => request(`/api/atenciones/${id}/acciones`, {
+    method: 'POST', body: JSON.stringify(data),
+  }),
+  getAtencionesDashboard: (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) params.set(key, value);
+    });
+    const query = params.toString();
+    return request(`/api/call-center/dashboard${query ? `?${query}` : ''}`);
+  },
 };
 
 export default api;

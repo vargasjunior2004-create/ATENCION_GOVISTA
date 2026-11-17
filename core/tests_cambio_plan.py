@@ -9,7 +9,9 @@ from datetime import timedelta
 from django.test import TestCase
 from django.utils import timezone
 
-from .models import User, Plan, Sale, Motivo, Promotion
+from .models import (
+    User, Plan, Sale, Motivo, Promotion, CoverageZone, CanalCaptacion,
+)
 from .domain import SERVICE_TYPE_TO_PLAN_TYPE, sale_service_label
 
 
@@ -40,6 +42,8 @@ class CambioPlanEntreServiciosTest(TestCase):
             categoria='cambio', nombre='MEJOR CALIDAD')
         self.motivo_retiro = Motivo.objects.create(
             categoria='retiro', nombre='MUDANZA')
+        self.canal_captacion = CanalCaptacion.objects.filter(
+            activo=True).first()
 
     def _token(self, user, password):
         r = self.client_.post('/api/auth/login',
@@ -73,6 +77,15 @@ class CambioPlanEntreServiciosTest(TestCase):
             HTTP_AUTHORIZATION=f'Bearer {self._token(self.admin, "pass1")}')
 
     def _post_sale(self, payload):
+        if payload.get('requestType') in {
+                'nuevo_contrato', 'recontratacion', 'traslado_externo'}:
+            payload = {
+                **payload,
+                'coverageZoneId': CoverageZone.objects.get(
+                    normalized_name='villa busch').id,
+            }
+        if payload.get('requestType') == 'nuevo_contrato':
+            payload['canalCaptacionId'] = self.canal_captacion.id
         return self.client_.post(
             '/api/sales', payload, content_type='application/json',
             HTTP_AUTHORIZATION=f'Bearer {self._token(self.admin, "pass1")}')
@@ -111,6 +124,42 @@ class CambioPlanEntreServiciosTest(TestCase):
         # Solo mensualidad: cambiar de servicio no cobra instalacion.
         self.assertEqual(sale.total, self.plans[('internet', 1)].monthly)
         self.assertEqual(sale.applied_installation, Decimal('0'))
+
+    def test_adicion_de_tv_desde_internet_termina_en_combo(self):
+        r = self._post_sale({
+            'clientCode': 'AD001', 'clientName': 'Adicion TV',
+            'serviceType': 'combo_analog', 'serviceTypeFrom': 'internet',
+            'requestType': 'adicion', 'additionType': 'adicion_tv',
+            'planId': self.plans[('combo', 1)].id,
+        })
+        self.assertEqual(r.status_code, 201, r.content)
+        sale = Sale.objects.get(clientCode='AD001')
+        self.assertEqual(sale.requestType, 'adicion')
+        self.assertEqual(sale.serviceTypeFrom, 'internet')
+        self.assertEqual(sale.serviceType, 'combo_analog')
+        self.assertEqual(sale.additionType, 'adicion_tv')
+        self.assertEqual(r.json()['previousService']['family'], 'internet')
+        self.assertEqual(sale_service_label(sale), 'INTERNET → COMBO')
+        self.assertTrue(r.json()['isServiceChange'])
+
+    def test_adicion_de_internet_desde_tv_termina_en_combo(self):
+        r = self._post_sale({
+            'clientCode': 'AD002', 'clientName': 'Adicion Internet',
+            'serviceType': 'combo_digital', 'serviceTypeFrom': 'tv',
+            'requestType': 'adicion', 'additionType': 'adicion_internet',
+            'planId': self.plans[('combo', 1)].id,
+        })
+        self.assertEqual(r.status_code, 201, r.content)
+
+    def test_adicion_exige_servicio_actual_y_coherencia(self):
+        r = self._post_sale({
+            'clientCode': 'AD003', 'clientName': 'Adicion invalida',
+            'serviceType': 'combo_analog', 'requestType': 'adicion',
+            'additionType': 'adicion_tv',
+            'planId': self.plans[('combo', 1)].id,
+        })
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('servicio actual', r.json()['error'])
 
     def test_etiqueta_de_conversion_en_el_reporte(self):
         self._post_cambio('combo', 'internet')

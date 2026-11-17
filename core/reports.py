@@ -144,6 +144,17 @@ def _report_identity(sale, public):
     )
 
 
+def _has_retirement_rows(sales, request_type, catalog):
+    """Indica si el reporte necesita la columna histórica del equipo."""
+    if request_type and request_type_mode(request_type, catalog) == 'retiro':
+        return True
+    return any(request_type_mode(s.requestType, catalog) == 'retiro' for s in sales)
+
+
+def _equipment_serial(sale):
+    return sale.equipment_serial or 'No registrada'
+
+
 def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
                     service_type_from=None, show_motivos=False,
                     technical_only=False, public=False):
@@ -168,6 +179,7 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
     title_to = datetime.strptime(to_date, '%Y-%m-%d').strftime('%d/%m/%Y')
 
     catalog = request_type_catalog()
+    include_equipment = _has_retirement_rows(sales, request_type, catalog)
     request_label = (request_type_label(request_type, catalog) if request_type
                      else 'TODAS LAS SOLICITUDES')
     service_label = _service_filter_label(service_type, service_type_from)
@@ -182,6 +194,8 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
               'PLAN ANTERIOR', 'PLAN ACTUAL']
     if show_motivos:
         header.append('MOTIVO')
+    if include_equipment:
+        header.append('SERIE DEL EQUIPO')
     header += ['MONTO', 'OPERADOR']
 
     # La tabla tiene que caber en A4 horizontal aunque los planes tengan
@@ -206,6 +220,8 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
         ]
         if show_motivos:
             row.append(s.changeReason or '')
+        if include_equipment:
+            row.append(_equipment_serial(s) if request_type_mode(s.requestType, catalog) == 'retiro' else '')
         row += [
             f'{float(s.total):.2f}',
             operator,
@@ -216,6 +232,8 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
         col_widths = [45, 52, 88, 80, 66, 88, 88, 60, 44, 70]
     else:
         col_widths = [42, 46, 80, 72, 58, 72, 72, 42, 64]
+    if include_equipment:
+        col_widths.insert(-2, 64)
 
     table = Table(rows, colWidths=col_widths, repeatRows=1)
     table.setStyle(TableStyle([
@@ -247,10 +265,15 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
     ws = wb.active
     ws.title = 'SOLICITUDES'
 
+    catalog = request_type_catalog()
+    include_equipment = _has_retirement_rows(sales, request_type, catalog)
+
     headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD',
                'PLAN ANTERIOR', 'PLAN ACTUAL']
     if show_motivos:
         headers.append('MOTIVO')
+    if include_equipment:
+        headers.append('SERIE DEL EQUIPO')
     headers += ['MONTO', 'OPERADOR']
 
     header_font = Font(bold=True, color='FFFFFF')
@@ -270,7 +293,6 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
         cell.alignment = header_alignment
         cell.border = thin_border
 
-    catalog = request_type_catalog()
     for row_idx, s in enumerate(sales, 2):
         plan_from_label, plan_current_label = sale_plan_labels(s, catalog)
         client_code, client_name, operator = _report_identity(s, public)
@@ -286,6 +308,8 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
         ]
         if show_motivos:
             data_row.append(s.changeReason or '')
+        if include_equipment:
+            data_row.append(_equipment_serial(s) if request_type_mode(s.requestType, catalog) == 'retiro' else '')
         data_row += [
             float(s.total),
             operator,
@@ -300,6 +324,8 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
     column_widths = [14, 14, 35, 24, 20, 20, 20]
     if show_motivos:
         column_widths.append(30)
+    if include_equipment:
+        column_widths.append(26)
     column_widths += [14, 20]
     for i, width in enumerate(column_widths, 1):
         ws.column_dimensions[chr(64 + i)].width = width

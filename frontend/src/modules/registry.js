@@ -1,19 +1,56 @@
-import { Briefcase, Headphones, Router } from 'lucide-react';
+import { Briefcase, Headphones, MapPinned, Router, ShieldCheck, MapPin, Wrench } from 'lucide-react';
 
 export const MODULES = [
+  {
+    id: 'ubicaciones',
+    name: 'Ubicación de Clientes',
+    description: 'Fotografías de fachada y ubicación de domicilios.',
+    icon: MapPin,
+    to: '/ubicaciones',
+    permission: 'ubicaciones.clientes.view',
+    status: 'soon',
+  },
   {
     id: 'comercial',
     name: 'Gestión Comercial',
     description: 'Solicitudes comerciales, contratos, cambios de plan y reportes.',
     icon: Briefcase,
     to: '/comercial',
+    permission: 'comercial.view',
+    status: 'available',
+  },
+  {
+    id: 'administracion',
+    name: 'Administración del Sistema',
+    description: 'Usuarios, roles, auditoría, respaldos y seguridad.',
+    icon: ShieldCheck,
+    to: '/administracion',
+    permission: 'sistema.acceso.view',
+    status: 'available',
+  },
+  {
+    id: 'cobertura',
+    name: 'Cobertura',
+    description: 'Mapa general, consulta y registro de zonas.',
+    icon: MapPinned,
+    to: '/cobertura',
     status: 'available',
   },
   {
     id: 'atencion',
-    name: 'Gestion operativa',
-    description: 'Tickets, atenciones, quejas, reclamos y acciones de soporte.',
+    name: 'Gestión de atenciones',
+    description: 'Atenciones, quejas, reclamos y productividad de Call Center.',
     icon: Headphones,
+    to: '/atenciones/dashboard',
+    permission: 'atenciones.view',
+    role: 'call-center',
+    status: 'soon',
+  },
+  {
+    id: 'operativa',
+    name: 'Gestión Operativa',
+    description: 'Mesa de control, gestión de órdenes de trabajo, asignación de cuadrillas y seguimiento de operaciones técnicas.',
+    icon: Wrench,
     status: 'soon',
   },
   {

@@ -62,6 +62,12 @@ const formatDate = (date) => {
 
 const formatDateTime = (value) => value ? new Date(value).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' }) : '—';
 
+const equipmentDescription = (sale) => {
+  if (sale.equipmentSerial) return sale.equipmentSerial;
+  if (sale.equipmentRecoveryRequired) return 'Pendiente de recuperación';
+  return 'No declarada';
+};
+
 function EyeButton({ onClick }) {
   return (
     <button
@@ -120,6 +126,17 @@ function SaleCard({ sale, isAdmin, archived, onPreview, onEdit, onDelete, onRest
               <span className="font-semibold text-slate-600">Motivo:</span> {sale.changeReason}
             </div>
           )}
+           {sale.canalCaptacion?.nombre && (
+            <div className="text-xs text-slate-500">
+              <span className="font-semibold text-slate-600">¿Cómo nos conoció?</span>{' '}
+              {sale.canalCaptacion.nombre}
+            </div>
+           )}
+           {requestMode(sale.requestType) === 'retiro' && (
+             <div className="text-xs text-slate-500">
+               <span className="font-semibold text-slate-600">Equipo / serie:</span> {equipmentDescription(sale)}
+             </div>
+           )}
           <div className="flex items-center justify-between">
             <span className="text-xs text-slate-400">por {sale.creator?.name || '-'}</span>
             <div className="flex items-center gap-1">
@@ -140,7 +157,8 @@ function SaleCard({ sale, isAdmin, archived, onPreview, onEdit, onDelete, onRest
 }
 
 export default function SalesList() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
+  const canGenerateReports = Boolean(user?.active);
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const [searchParams, setSearchParams] = useSearchParams();
@@ -182,6 +200,8 @@ export default function SalesList() {
     requestType: sale.requestType,
     clientCode: sale.clientCode,
     clientName: sale.clientName,
+    status: sale.status,
+    creatorName: sale.creator?.name,
     requestLabel: requestLabel(sale),
     serviceLabel: SERVICE_LABELS[sale.serviceType] || sale.serviceType,
     previousServiceLabel: sale.previousService?.serviceType
@@ -199,11 +219,16 @@ export default function SalesList() {
       ? parseFloat(sale.totalToCollect).toFixed(2) : null,
     equipmentRetained: sale.requestType === 'recontratacion' ? sale.equipmentRetained : null,
     requiresTechnicalVisit: sale.requestType === 'recontratacion' ? sale.requiresTechnicalVisit : null,
+    equipmentDelivered: sale.equipmentDelivered,
+    equipmentSerial: sale.equipmentSerial,
+    canalCaptacionNombre: sale.canalCaptacion?.nombre,
     motivo: sale.changeReason,
     notes: sale.notes,
   });
 
   const showMotivosColumn = showMotivos === 'si';
+  const showEquipmentColumn = requestType === 'all'
+    || sales.some((sale) => requestMode(sale.requestType) === 'retiro');
   const listReady = requestType !== '' && serviceType !== '';
   const reportReady = listReady && reportFormat !== '' && showMotivos !== '';
 
@@ -262,9 +287,13 @@ export default function SalesList() {
       if (name === 'serviceType') { next.planId = ''; next.serviceTypeFrom = ''; }
       if (name === 'requestType') {
         const nuevoModo = modoOf(value);
+        if (nuevoModo === 'adicion') next.serviceType = 'combo_analog';
         next.motivoId = '';
         if (nuevoModo !== 'adicion') next.additionType = '';
-        if (nuevoModo !== 'cambio_plan') { next.planFromId = ''; next.serviceTypeFrom = ''; }
+        if (nuevoModo !== 'cambio_plan' && nuevoModo !== 'adicion') {
+          next.planFromId = ''; next.serviceTypeFrom = '';
+        }
+        if (nuevoModo === 'adicion') next.planFromId = '';
       }
       return next;
     });
@@ -295,7 +324,7 @@ export default function SalesList() {
     e.preventDefault();
     setEditError('');
     try {
-       const payload = { date: editForm.date, clientCode: editForm.clientCode, clientName: editForm.clientName, serviceType: editForm.serviceType, requestType: editForm.requestType, additionType: editModo === 'adicion' ? editForm.additionType : '', planFromId: editModo === 'cambio_plan' && editForm.planFromId ? Number(editForm.planFromId) : null, serviceTypeFrom: editModo === 'cambio_plan' && editForm.serviceTypeFrom ? editForm.serviceTypeFrom : null, planId: Number(editForm.planId), notes: editForm.notes, appliedInstallation: Number(editForm.appliedInstallation), appliedMonthly: Number(editForm.appliedMonthly) };
+        const payload = { date: editForm.date, clientCode: editForm.clientCode, clientName: editForm.clientName, serviceType: editForm.serviceType, requestType: editForm.requestType, additionType: editModo === 'adicion' ? editForm.additionType : '', planFromId: editModo === 'cambio_plan' && editForm.planFromId ? Number(editForm.planFromId) : null, serviceTypeFrom: (editModo === 'cambio_plan' || editModo === 'adicion') && editForm.serviceTypeFrom ? editForm.serviceTypeFrom : null, planId: Number(editForm.planId), notes: editForm.notes, appliedInstallation: Number(editForm.appliedInstallation), appliedMonthly: Number(editForm.appliedMonthly) };
        if (editForm.requestType === 'recontratacion') {
          payload.debtApplies = editForm.debtApplies;
          payload.debtAmount = editForm.debtApplies ? Number(editForm.debtAmount) : 0;
@@ -344,7 +373,7 @@ export default function SalesList() {
   };
 
   const handleGenerateReport = async () => {
-    if (!isAdmin || !requestType || !serviceType || !reportFormat) return;
+    if (!canGenerateReports || !requestType || !serviceType || !reportFormat) return;
     setGeneratingReport(true);
     setMsg('');
     try {
@@ -431,15 +460,15 @@ export default function SalesList() {
           <Button
             variant="primary"
             onClick={handleGenerateReport}
-             disabled={!isAdmin || !reportReady || generatingReport}
-             className={(!isAdmin || !reportReady) ? 'opacity-50 cursor-not-allowed' : ''}
+             disabled={!canGenerateReports || !reportReady || generatingReport}
+             className={(!canGenerateReports || !reportReady) ? 'opacity-50 cursor-not-allowed' : ''}
           >
             {generatingReport ? 'Generando...' : 'Reporte'}
           </Button>
-          {!isAdmin && (
-            <p className="text-xs text-slate-400">Solo los administradores pueden generar reportes desde el historial</p>
-          )}
-          {isAdmin && !reportReady && (
+           {!canGenerateReports && (
+             <p className="text-xs text-slate-400">Debes iniciar sesión para generar reportes</p>
+           )}
+           {canGenerateReports && !reportReady && (
             <p className="text-xs text-slate-400">Selecciona solicitud, servicio, mostrar motivos y formato para habilitar el reporte</p>
           )}
         </div>
@@ -491,21 +520,29 @@ export default function SalesList() {
                     <option key={t.code} value={t.code}>{t.nombre}</option>
                   ))}
                 </Select>
-                <Select label="Tipo" name="serviceType" value={editForm.serviceType} onChange={handleEditChange}>
-                  <option value="internet">Internet</option>
-                  <option value="tv">TV Cable</option>
-                  <option value="tv_digital">TV Digital</option>
-                  <option value="combo_analog">Internet + TV Analoga</option>
-                  <option value="combo_digital">Internet + TV Digital</option>
-                </Select>
+                 <Select label={editModo === 'adicion' ? 'Tipo de Servicio Nuevo' : 'Tipo'} name="serviceType" value={editForm.serviceType} onChange={handleEditChange}>
+                   {SERVICE_TYPES.filter((t) => editModo !== 'adicion'
+                     || SERVICE_TYPE_TO_PLAN_TYPE[t.value] === 'combo').map((t) => (
+                     <option key={t.value} value={t.value}>{t.label}</option>
+                   ))}
+                 </Select>
               </div>
               {editModo === 'adicion' && (
-                <Select label="Tipo de Adicion" name="additionType" value={editForm.additionType} onChange={handleEditChange} required>
-                  <option value="">--Seleccione--</option>
-                  <option value="adicion_internet">ADICION INTERNET</option>
-                  <option value="adicion_tv">ADICION TV</option>
-                </Select>
-              )}
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                   <Select label="Servicio actual" name="serviceTypeFrom" value={editForm.serviceTypeFrom} onChange={handleEditChange} required>
+                     <option value="">--Seleccione--</option>
+                     {SERVICE_TYPES.filter((t) => ['internet', 'tv'].includes(
+                       SERVICE_TYPE_TO_PLAN_TYPE[t.value])).map((t) => (
+                       <option key={t.value} value={t.value}>{t.label}</option>
+                     ))}
+                   </Select>
+                   <Select label="Servicio que se adiciona" name="additionType" value={editForm.additionType} onChange={handleEditChange} required>
+                     <option value="">--Seleccione--</option>
+                     <option value="adicion_internet">ADICION INTERNET</option>
+                     <option value="adicion_tv">ADICION TV</option>
+                   </Select>
+                 </div>
+               )}
               {editModo === 'cambio_plan' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Select label="Plan Anterior" name="planFromId" value={editForm.planFromId} onChange={handleEditPreviousPlanChange} required>
@@ -618,7 +655,7 @@ export default function SalesList() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100">
-                  {['Fecha', 'Cod.', 'Nombre', 'Solicitud', 'Plan', ...(showMotivosColumn ? ['Motivo'] : []), 'Total cobro', 'Por', ''].map((h) => (
+                  {['Fecha', 'Cod.', 'Nombre', 'Solicitud', 'Plan', ...(showMotivosColumn ? ['Motivo'] : []), ...(showEquipmentColumn ? ['Equipo / serie'] : []), 'Total cobro', 'Por', ''].map((h) => (
                     <th key={h} className="text-left px-5 py-3.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">{h}</th>
                   ))}
                 </tr>
@@ -637,6 +674,11 @@ export default function SalesList() {
                     </td>
                     {showMotivosColumn && (
                       <td className="px-5 py-3.5 text-slate-500 text-xs">{s.changeReason || '—'}</td>
+                    )}
+                    {showEquipmentColumn && (
+                      <td className="px-5 py-3.5 text-slate-500 text-xs font-mono">
+                        {requestMode(s.requestType) === 'retiro' ? equipmentDescription(s) : '—'}
+                      </td>
                     )}
                     <td className="px-5 py-3.5 text-right font-bold text-brand-700 tabular-nums">{parseFloat(s.totalToCollect ?? s.total).toFixed(2)} Bs</td>
                     <td className="px-5 py-3.5 text-slate-500 text-xs">{s.creator?.name || '-'}</td>

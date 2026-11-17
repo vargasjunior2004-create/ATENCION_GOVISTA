@@ -36,8 +36,8 @@ export default function ChangePasswordModal({ open, onClose }) {
       setError('Completa todos los campos');
       return;
     }
-    if (newPassword.length < 6) {
-      setError('La nueva contrasena debe tener al menos 6 caracteres');
+    if (newPassword.length < 10) {
+      setError('La nueva contrasena debe tener al menos 10 caracteres');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -47,7 +47,9 @@ export default function ChangePasswordModal({ open, onClose }) {
 
     setSaving(true);
     try {
-      await api.changePassword(currentPassword, newPassword);
+      const data = await api.changePassword(currentPassword, newPassword, confirmPassword);
+      if (data.token) localStorage.setItem('token', data.token);
+      if (data.user) localStorage.setItem('user', JSON.stringify(data.user));
       setSuccess('Contrasena actualizada correctamente');
       setCurrentPassword('');
       setNewPassword('');

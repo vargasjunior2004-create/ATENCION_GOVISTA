@@ -3,7 +3,7 @@ from datetime import date
 from django.test import TestCase, Client
 
 from .models import (Customer, Plan, Sale, TarifaTraslado, TrasladoExterno,
-                     User)
+                     User, CoverageZone, CanalCaptacion)
 
 
 class ProtectedDeleteTests(TestCase):
@@ -15,6 +15,10 @@ class ProtectedDeleteTests(TestCase):
         self.plan = Plan.objects.create(
             code='INTEGRIDAD-PLAN', label='Plan integridad', type='internet',
             monthly=100, installation=50)
+        self.coverage_zone_id = CoverageZone.objects.get(
+            normalized_name='villa busch').id
+        self.canal_captacion = CanalCaptacion.objects.filter(
+            activo=True).first()
 
     def token(self):
         response = self.client.post(
@@ -48,7 +52,8 @@ class ProtectedDeleteTests(TestCase):
         payload = {
             'clientCode': 'IDEMP-1', 'clientName': 'PRUEBA IDEMPOTENCIA',
             'serviceType': 'internet', 'requestType': 'nuevo_contrato',
-            'planId': self.plan.id,
+            'planId': self.plan.id, 'coverageZoneId': self.coverage_zone_id,
+            'canalCaptacionId': self.canal_captacion.id,
         }
         headers = {
             'HTTP_AUTHORIZATION': f'Bearer {self.token()}',

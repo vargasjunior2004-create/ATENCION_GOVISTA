@@ -9,7 +9,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, authNotice } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (event) => {
@@ -111,6 +111,15 @@ export default function Login() {
               </div>
             )}
 
+            {authNotice && !error && (
+              <div
+                className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-5 text-amber-800"
+                role="status"
+              >
+                {authNotice}
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-5" aria-busy={loading}>
               <div>
                 <label htmlFor="login-name" className="mb-2 block text-sm font-semibold text-slate-700">
@@ -139,10 +148,12 @@ export default function Login() {
                     name="password"
                     type={showPassword ? 'text' : 'password'}
                     value={password}
-                  onChange={(event) => setPassword(event.target.value)}
+                    onChange={(event) => setPassword(event.target.value)}
                     autoComplete="current-password"
+                    autoCapitalize="none"
+                    spellCheck="false"
                     required
-                     className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3.5 pr-12 text-sm uppercase text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3.5 pr-12 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
                     placeholder="Escribe tu contraseña"
                   />
                   <button
