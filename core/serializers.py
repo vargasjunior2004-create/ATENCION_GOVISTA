@@ -376,9 +376,11 @@ class CustomerLookupSerializer(serializers.ModelSerializer):
             {
                 'id': contract.id,
                 'service_type': contract.service_type,
+                'plan_id': contract.plan_id,
                 'plan': contract.plan_name or contract.plan.label,
                 'status': contract.status or 'sin_estado',
                 'contracted_on': contract.contracted_on,
+                'meter_number': contract.meter_number,
             }
             for contract in contracts.all()
         ]
