@@ -1692,20 +1692,28 @@ class TransferTariffHistoryView(IsAdminMixin, APIView):
         return Response(TarifaTrasladoHistorialSerializer(history, many=True).data)
 
 
-@extend_schema(responses={200: CustomerSerializer(many=True)})
+@extend_schema(responses={200: CustomerLookupSerializer(many=True)})
 class CustomerListView(APIView):
     """Busqueda de clientes por kardex o nombre (para autocompletar)."""
     def get(self, request):
         q = request.query_params.get('q', '').strip()
+        code = request.query_params.get('code', '').strip()
+        name = request.query_params.get('name', '').strip()
         qs = Customer.objects.prefetch_related(
             'contracts__plan', 'external_services__plan',
         ).all().order_by('name', 'code')
-        if q:
+        if code:
+            qs = qs.filter(code__icontains=code)
+        elif name:
+            qs = qs.filter(name__icontains=name)
+        elif q:
             qs = qs.filter(
                 Q(code__icontains=q) | Q(name__icontains=q)
                 | Q(ci__icontains=q) | Q(phone__icontains=q)
                 | Q(contracts__meter_number__icontains=q)
             ).distinct()
+        else:
+            return Response([])
         return Response(CustomerLookupSerializer(qs[:20], many=True).data)
 
 

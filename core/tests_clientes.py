@@ -73,6 +73,25 @@ class CustomerProfileTests(TestCase):
         self.assertEqual(review.status_code, 200)
         self.assertEqual(_json(review)['meter_review_status'], 'observado')
 
+    def test_customer_search_requires_criterion_and_prioritizes_kardex(self):
+        Customer.objects.create(code='SEARCH-001', name='CLIENTE POR NOMBRE')
+        Customer.objects.create(code='SEARCH-002', name='CLIENTE POR KARDEX')
+
+        empty = self.client.get('/api/customers', **self.headers)
+        self.assertEqual(empty.status_code, 200)
+        self.assertEqual(_json(empty), [])
+
+        by_name = self.client.get(
+            '/api/customers?name=CLIENTE%20POR%20NOMBRE', **self.headers)
+        self.assertEqual(len(_json(by_name)), 1)
+        self.assertEqual(_json(by_name)[0]['code'], 'SEARCH-001')
+
+        by_both = self.client.get(
+            '/api/customers?code=SEARCH-002&name=CLIENTE%20POR%20NOMBRE',
+            **self.headers)
+        self.assertEqual(len(_json(by_both)), 1)
+        self.assertEqual(_json(by_both)[0]['code'], 'SEARCH-002')
+
     def test_selected_customer_is_reused_without_creating_duplicate(self):
         customer = Customer.objects.create(
             code='SOFTV-001',

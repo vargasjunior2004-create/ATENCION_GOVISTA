@@ -196,6 +196,12 @@ const api = {
 
   // Clientes y contratos
   searchCustomers: (q = '') => request(`/api/customers?q=${encodeURIComponent(q)}`),
+  searchCustomersByCriteria: ({ code = '', name = '' } = {}) => {
+    const params = new URLSearchParams();
+    if (code) params.set('code', code);
+    else if (name) params.set('name', name);
+    return request(`/api/customers?${params.toString()}`);
+  },
   getCustomer: (id) => request(`/api/customers/${id}`),
   updateCustomer: (id, data) => request(`/api/customers/${id}`, {
     method: 'PUT', body: JSON.stringify(data),
