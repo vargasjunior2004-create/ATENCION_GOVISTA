@@ -184,11 +184,15 @@ const api = {
     return request(`/api/sales?${params.toString()}`);
   },
   createSale: (data) => request('/api/sales', { method: 'POST', body: JSON.stringify(data) }),
-  scanSaleDocument: (file, documentMode = 'retirement') => {
+  scanSaleDocument: (file, documentMode = 'retirement', options = {}) => {
     const body = new FormData();
     body.append('file', file);
     body.append('document_mode', documentMode);
-    return request('/api/sales/escanear/', { method: 'POST', body });
+    return request('/api/sales/escanear/', {
+      method: 'POST',
+      body,
+      ...options,
+    });
   },
   updateSale: (id, data) => request(`/api/sales/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteSale: (id) => request(`/api/sales/${id}`, { method: 'DELETE' }),

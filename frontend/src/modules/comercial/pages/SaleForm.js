@@ -463,11 +463,13 @@ export default function SaleForm() {
     if (!validType) {
       setScanFile(null);
       setScanError('Formato no permitido. Usa PDF, JPG, JPEG, PNG o WEBP.');
+      setRetirementReady(true);
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
       setScanFile(null);
       setScanError('El archivo supera el máximo permitido de 10 MB.');
+      setRetirementReady(true);
       return;
     }
     setScanFile(file);
@@ -492,6 +494,8 @@ export default function SaleForm() {
 
   const scanSaleDocument = async () => {
     if (!scanFile) return;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
     setScanLoading(true);
     setScanError('');
     setScanNotice('');
@@ -499,6 +503,7 @@ export default function SaleForm() {
       const result = await api.scanSaleDocument(
         scanFile,
         isNewContract ? 'installation' : 'retirement',
+        { signal: controller.signal },
       );
       const extracted = result.fields || {};
       setForm((prev) => ({
@@ -534,8 +539,14 @@ export default function SaleForm() {
         ? `Lectura terminada. ${warnings.join(' ')} Revisa y completa los campos faltantes.`
         : 'Lectura terminada. Revisa los datos antes de guardar.');
     } catch (err) {
-      setScanError(err?.error || 'No se pudo interpretar el documento.');
+      setRetirementReady(true);
+      setScanNotice(
+        err?.name === 'AbortError'
+          ? 'La lectura tardó demasiado. Puedes completar el formulario manualmente.'
+          : `${err?.error || 'No fue posible extraer los datos del documento.'} Puedes completar el formulario manualmente.`,
+      );
     } finally {
+      clearTimeout(timeoutId);
       setScanLoading(false);
     }
   };
@@ -853,6 +864,8 @@ export default function SaleForm() {
               </button>
             </div>
           )}
+          {scanError && <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">{scanError}</p>}
+          {scanNotice && <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">{scanNotice}</p>}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
