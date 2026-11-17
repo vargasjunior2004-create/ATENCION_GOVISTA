@@ -227,7 +227,10 @@ class SaleDocumentScanView(APIView):
             from google.genai import types
 
             schema = self.ScanFields.model()
-            client = genai.Client(api_key=api_key)
+            client = genai.Client(
+                api_key=api_key,
+                http_options=types.HttpOptions(timeout=30000),
+            )
             document_mode = request.data.get('document_mode', 'retirement')
             is_installation = document_mode == 'installation'
             expected_type = 'instalacion' if is_installation else 'retiro_aparato'
