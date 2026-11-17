@@ -31,7 +31,7 @@ Login por **nombre de usuario** (no email):
 Despues del login se muestra un selector de modulos:
 
 - **Gestion Comercial:** disponible. Agrupa Dashboard, Nueva Solicitud e Historial, ademas de las herramientas administrativas (Planes, Motivos, Promociones, Usuarios y Copias de Seguridad).
-- **Atencion al Cliente** y **Gestion de Equipos:** visibles como "Proximamente", deshabilitados y sin rutas ni datos ficticios.
+- **Ubicación de Clientes**, **Gestión de atenciones** y **Gestión de Equipos:** visibles como "Próximamente", deshabilitados y sin rutas ni datos ficticios.
 - **Volver a modulos** regresa al selector sin cerrar sesion.
 - Las rutas antiguas se conservan como redirecciones y mantienen los parametros de la URL:
 
@@ -377,7 +377,7 @@ Y comparalo con el campo `checksum` del historial en la app.
 
 - `staticfiles/` se genera durante el deploy; WhiteNoise sirve los archivos del backend. Vercel sirve el build React
 - El selector de modulos es solo navegacion; la autorizacion real sigue siendo por rol en el backend. Aun no existen permisos por modulo
-- Atencion al Cliente y Gestion de Equipos estan deshabilitados hasta implementar su backend y permisos
+- Ubicación de Clientes, Gestión de atenciones y Gestión de Equipos están deshabilitados mientras continúa su desarrollo
 - `wsgi.py` ejecuta migraciones + seed automaticamente si no hay datos
 - Pooler de Supabase usa IPv4, compatible con Render free tier
 - Planes legacy no aparecen en el select al registrar nuevas solicitudes

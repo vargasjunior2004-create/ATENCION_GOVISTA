@@ -1,10 +1,11 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Clock } from 'lucide-react';
+import { ArrowRight, Ban, Clock } from 'lucide-react';
 
 export default function ModuleCard({ module }) {
   const Icon = module.icon;
   const available = module.status === 'available';
+  const comingSoon = module.status === 'soon';
 
   const content = (
     <>
@@ -19,7 +20,11 @@ export default function ModuleCard({ module }) {
             ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/60'
             : 'bg-slate-100 text-slate-500 ring-1 ring-slate-200/60'}`}
         >
-          {available ? 'Disponible' : <><Clock className="w-3 h-3" /> Próximamente</>}
+          {available
+            ? 'Disponible'
+            : comingSoon
+              ? <><Clock className="w-3 h-3" /> Próximamente</>
+              : <><Ban className="w-3 h-3" /> No disponible</>}
         </span>
       </div>
 
@@ -35,7 +40,13 @@ export default function ModuleCard({ module }) {
       <div className={`mt-6 pt-4 border-t flex items-center justify-between text-sm font-semibold
         ${available ? 'border-slate-100 text-brand-700' : 'border-slate-100 text-slate-400'}`}
       >
-        <span>{available ? 'Entrar al módulo' : 'Disponible próximamente'}</span>
+        <span>
+          {available
+            ? 'Entrar al módulo'
+            : comingSoon
+              ? 'Disponible próximamente'
+              : 'Módulo no disponible'}
+        </span>
         {available && <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />}
       </div>
     </>

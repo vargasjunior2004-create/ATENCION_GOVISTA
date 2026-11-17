@@ -27,13 +27,6 @@ import RolesPage from '../modules/administracion/pages/RolesPage';
 import AuditPage from '../modules/administracion/pages/AuditPage';
 import BackupsPage from '../modules/administracion/pages/BackupsPage';
 import SecurityPage from '../modules/administracion/pages/SecurityPage';
-import UbicacionesLayout from '../modules/ubicaciones/UbicacionesLayout';
-import UbicacionesPage from '../modules/ubicaciones/UbicacionesPage';
-import ProfilePage from '../modules/ubicaciones/ProfilePage';
-import AtencionesLayout from '../modules/atenciones/AtencionesLayout';
-import AtencionesDashboard from '../modules/atenciones/pages/AtencionesDashboard';
-import AtencionesList from '../modules/atenciones/pages/AtencionesList';
-import AtencionForm from '../modules/atenciones/pages/AtencionForm';
 
 export default function AppRoutes() {
   return (
@@ -45,11 +38,6 @@ export default function AppRoutes() {
       <Route element={<ProtectedRoute />}>
         <Route path="/" element={<ModuleSelector />} />
         <Route path="/equipos" element={<EquipmentPage />} />
-        <Route path="/ubicaciones" element={<AdminRoute permission="ubicaciones.clientes.view"><UbicacionesLayout /></AdminRoute>}>
-          <Route index element={<UbicacionesPage />} />
-          <Route path="registrar" element={<UbicacionesPage />} />
-          <Route path="perfil" element={<ProfilePage />} />
-        </Route>
         <Route path="/administracion" element={<AdminRoute permission="sistema.acceso.view"><AdministracionLayout /></AdminRoute>}>
           <Route index element={<Navigate to="usuarios" replace />} />
           <Route path="usuarios" element={<AdminRoute permission="usuarios.accounts.view"><UsersPage /></AdminRoute>} />
@@ -104,13 +92,6 @@ export default function AppRoutes() {
             element={<AdminRoute permission="commercial_config.manage"><TransferTariffs /></AdminRoute>}
           />
         </Route>
-        <Route path="/atenciones" element={<AtencionesLayout />}>
-          <Route index element={<Navigate to="dashboard" replace />} />
-          <Route path="dashboard" element={<AtencionesDashboard />} />
-          <Route path="listado" element={<AtencionesList />} />
-          <Route path="registrar" element={<AtencionForm />} />
-        </Route>
-
         <Route path="/nueva-venta" element={<LegacyRedirect to="/comercial/solicitudes/nueva" />} />
         <Route path="/ventas" element={<LegacyRedirect to="/comercial/solicitudes" />} />
         <Route path="/planes" element={<LegacyRedirect to="/comercial/planes" />} />
