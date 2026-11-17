@@ -16,6 +16,7 @@ import {
   CalendarClock,
   ClipboardList,
   Clock3,
+  ChevronDown,
   UserCheck,
   UserRound,
 } from 'lucide-react';
@@ -554,6 +555,8 @@ export default function Dashboard() {
   const services = analytics?.servicios || [];
   const plans = analytics?.planes || [];
   const zones = analytics?.zonas || [];
+  const [zonesExpanded, setZonesExpanded] = useState(false);
+  const visibleZones = zonesExpanded ? zones : zones.slice(0, 5);
   const channelAnalysis = analytics?.canales_captacion;
   const channels = channelAnalysis?.items || [];
   const topPlans = plans.slice(0, 5);
@@ -769,12 +772,13 @@ export default function Dashboard() {
                     </ResponsiveContainer>
                   </div>
                 </ChartCard>
-                 <ChartCard eyebrow="Solicitudes por zona" title="Zonas de mayor demanda">
-                  {zones.length ? (
-                    <div className="space-y-4">
-                      {zones.map((zone) => {
-                        const width = Math.max(zone.percentage, zone.count ? 2 : 0);
-                        return (
+                  <ChartCard eyebrow="Solicitudes por zona" title="Zonas de mayor demanda">
+                   {zones.length ? (
+                     <>
+                       <div className="space-y-4">
+                       {visibleZones.map((zone) => {
+                         const width = Math.max(zone.percentage, zone.count ? 2 : 0);
+                         return (
                           <button
                             key={zone.name}
                             type="button"
@@ -806,13 +810,24 @@ export default function Dashboard() {
                                 className="h-full rounded-full bg-brand-600 transition-all"
                                 style={{ width: `${width}%` }}
                               />
-                            </div>
-                          </button>
-                        );
-                      })}
-
-                    </div>
-                  ) : (
+                           </div>
+                           </button>
+                         );
+                       })}
+                       </div>
+                       {zones.length > 5 && (
+                         <button
+                           type="button"
+                           onClick={() => setZonesExpanded((expanded) => !expanded)}
+                           className="mt-5 flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-black text-brand-700 transition-colors hover:border-brand-200 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/30"
+                           aria-expanded={zonesExpanded}
+                         >
+                           {zonesExpanded ? 'Mostrar menos' : `Mostrar todas (${zones.length})`}
+                           <ChevronDown className={`h-4 w-4 transition-transform ${zonesExpanded ? 'rotate-180' : ''}`} />
+                         </button>
+                       )}
+                     </>
+                   ) : (
                     <EmptyChart message="No hay solicitudes con zona para estos filtros" />
                   )}
                 </ChartCard>
