@@ -86,6 +86,7 @@ export default function SaleForm() {
   const [customers, setCustomers] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [selectedSourceContract, setSelectedSourceContract] = useState(null);
   const dropdownRef = useRef(null);
 
   // Promotion state
@@ -157,6 +158,7 @@ export default function SaleForm() {
 
   const pickCustomer = (c) => {
     setSelectedCustomer(c);
+    setSelectedSourceContract(null);
     setForm((prev) => ({
       ...prev,
       customerId: c.id,
@@ -250,6 +252,58 @@ export default function SaleForm() {
   const samePlanSelected = isCambio && form.planFromId
     && String(form.planId) === String(form.planFromId)
     && (!form.serviceTypeFrom || form.serviceTypeFrom === form.serviceType);
+
+  const canPrefillFromContract = isCambio || isAdicion || isTransfer;
+  const usableSourceContracts = (selectedCustomer?.services || []).filter(
+    (contract) => !['retirado', 'inactivo'].includes(contract.status),
+  );
+
+  const applySourceContract = (contract) => {
+    if (!contract || !canPrefillFromContract) return;
+    setSelectedSourceContract(contract);
+    setForm((prev) => {
+      const next = { ...prev };
+      if (isCambio) {
+        next.planFromId = String(contract.plan_id || '');
+        next.serviceTypeFrom = contract.service_type || '';
+      }
+      if (isAdicion) {
+        const serviceIsValid = additionCurrentOptions.some(
+          (service) => service.value === contract.service_type,
+        );
+        next.serviceTypeFrom = serviceIsValid ? contract.service_type : '';
+      }
+      if (isTransfer) {
+        next.serviceType = contract.service_type || prev.serviceType;
+        next.planId = String(contract.plan_id || '');
+        next.meterNumber = contract.meter_number || '';
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!canPrefillFromContract) {
+      setSelectedSourceContract(null);
+      return;
+    }
+    if (!usableSourceContracts.length) {
+      setSelectedSourceContract(null);
+      return;
+    }
+    const current = usableSourceContracts.find(
+      (contract) => contract.id === selectedSourceContract?.id,
+    );
+    if (current) {
+      applySourceContract(current);
+      return;
+    }
+    if (usableSourceContracts.length === 1) {
+      applySourceContract(usableSourceContracts[0]);
+    } else {
+      setSelectedSourceContract(null);
+    }
+  }, [selectedCustomer, form.requestType]);
 
   useEffect(() => {
     if (form.planId) {
@@ -853,8 +907,8 @@ export default function SaleForm() {
                  </div>
                </div>
              )}
-             {selectedCustomer?.softvServices?.length > 0 && (
-               <div className="mt-2 rounded-xl border border-sky-100 bg-sky-50/70 p-3">
+              {selectedCustomer?.softvServices?.length > 0 && (
+                <div className="mt-2 rounded-xl border border-sky-100 bg-sky-50/70 p-3">
                  <p className="text-xs font-bold uppercase tracking-wide text-sky-700">
                    Servicios reportados por SOFTV
                  </p>
@@ -864,12 +918,36 @@ export default function SaleForm() {
                        {service.raw_name} · {service.serviceStatusLabel}
                      </span>
                    ))}
-                 </div>
-               </div>
+                  </div>
+                </div>
+              )}
+              {canPrefillFromContract && selectedCustomer && usableSourceContracts.length > 1 && (
+                <div className="mt-2 rounded-xl border border-amber-100 bg-amber-50/70 p-3">
+                  <Select
+                    label="Contrato que se utilizará como actual"
+                    value={selectedSourceContract?.id || ''}
+                    onChange={(event) => {
+                      const contract = usableSourceContracts.find(
+                        (item) => String(item.id) === event.target.value,
+                      );
+                      applySourceContract(contract);
+                    }}
+                  >
+                    <option value="">Seleccione el contrato</option>
+                    {usableSourceContracts.map((contract) => (
+                      <option key={contract.id} value={contract.id}>
+                        {contract.plan} · {SERVICE_TYPE_LABELS[contract.service_type] || contract.service_type}
+                      </option>
+                    ))}
+                  </Select>
+                  <p className="mt-1 text-xs text-amber-700">
+                    Se usará para precargar la información del cambio, adición o traslado.
+                  </p>
+                </div>
+              )}
+              {!query && !selectedCustomer && (
+               <p className="text-xs text-slate-400 mt-1">Ingrese nombre o kardex; si no existe, se creara automaticamente.</p>
              )}
-             {!query && !selectedCustomer && (
-              <p className="text-xs text-slate-400 mt-1">Ingrese nombre o kardex; si no existe, se creara automaticamente.</p>
-            )}
           </div>
 
           {isContract && <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
