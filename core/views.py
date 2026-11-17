@@ -250,11 +250,14 @@ class SaleDocumentScanView(APIView):
                      f'En documentType devuelve "{expected_type}" solo si el encabezado es visible; '
                      'para el tipo contrario u otros documentos devuelve "otro" o null. '
                      'No confundas una instalación con un retiro. '
-                     + (
-                         'Para una instalación, usa como clientCode el número que aparece junto a '
-                         '"CONTRATO" y extrae el nombre, teléfono, servicio instalado y plan. '
-                         if is_installation else ''
-                     )
+                      + (
+                          'Para una instalación, usa como clientCode el número que aparece junto a '
+                          '"CONTRATO" y extrae el nombre, teléfono, servicio instalado y plan. '
+                          'En la línea "DIRECCIÓN", conserva en address únicamente la dirección '
+                          'textual anterior a la coma; si después de la coma aparece un valor '
+                          'numérico, extráelo como meterNumber y no lo mezcles con address. '
+                          if is_installation else ''
+                      )
                      + 'Usa exactamente los códigos indicados en el esquema. '
                       'La fecha impresa no debe extraerse ni usarse para completar el formulario.')
                 ],
