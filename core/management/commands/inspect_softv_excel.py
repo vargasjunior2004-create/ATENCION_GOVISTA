@@ -13,6 +13,7 @@ Uso:
 import json
 from collections import Counter, defaultdict
 from pathlib import Path
+import unicodedata
 
 from django.core.management.base import BaseCommand, CommandError
 
@@ -37,8 +38,76 @@ def last_nonempty_column(row):
     return max(positions, default=0)
 
 
-def normalize_row(row, row_number):
+def normalize_header(value):
+    value = clean(value).upper()
+    return ''.join(
+        char for char in unicodedata.normalize('NFKD', value)
+        if not unicodedata.combining(char)
+    )
+
+
+def same_text(left, right):
+    return clean(left).casefold() == clean(right).casefold()
+
+
+def find_portfolio_header(rows):
+    """Encuentra el encabezado de la cartera SOFTV de 29 columnas."""
+    for row_number, row in enumerate(rows[:30]):
+        headers = {
+            normalize_header(value): index
+            for index, value in enumerate(row)
+            if clean(value)
+        }
+        if 'CONTRATO' in headers and 'NOMBRE' in headers:
+            return row_number, headers
+    return None, None
+
+
+def portfolio_cell(row, headers, name):
+    index = headers.get(normalize_header(name))
+    return cell(row, index) if index is not None else None
+
+
+def normalize_portfolio_row(row, row_number, headers):
+    """Normaliza una fila de cartera conservando los datos de origen."""
+    code = clean(portfolio_cell(row, headers, 'CONTRATO'))
+    name = clean(portfolio_cell(row, headers, 'NOMBRE'))
+    if not code and not name:
+        return None
+
+    phone_values = [
+        clean(portfolio_cell(row, headers, 'TELEFONO')),
+        clean(portfolio_cell(row, headers, 'CELULAR')),
+    ]
+    year = clean(portfolio_cell(row, headers, 'AÑO'))
+    return {
+        'code': code,
+        'name': name,
+        'period': clean(portfolio_cell(row, headers, 'PERIODO')),
+        'year': int(year) if year.isdigit() else None,
+        'services': clean(portfolio_cell(row, headers, 'PAQUETE')),
+        'services_raw': clean(portfolio_cell(row, headers, 'PAQUETE')),
+        'phones': phone_values,
+        'address': clean(portfolio_cell(row, headers, 'DIRECCIÓN')),
+        'ci': clean(portfolio_cell(row, headers, 'CÉDEULA DE IDENTIDAD')),
+        'neighborhood': clean(portfolio_cell(row, headers, 'BARRIO')),
+        'service_type': clean(portfolio_cell(row, headers, 'TIPO DE SERVICIO')),
+        'source_status': clean(portfolio_cell(row, headers, 'STATUS')),
+        'mac_onu': clean(portfolio_cell(row, headers, 'MAC ONU')),
+        'meter_number': clean(portfolio_cell(row, headers, 'NRO DE MEDIDOR')),
+        'installation_date': clean(
+            portfolio_cell(
+                row, headers, 'FECHA INSTALACIÓN ÚLTIMO SERVICIO VIGENTE')),
+        'row_number': row_number,
+        'block': 'portfolio_29_columns',
+    }
+
+
+def normalize_row(row, row_number, headers=None):
     """Devuelve un registro común para los bloques detectados en SOFTV."""
+    if headers is not None:
+        return normalize_portfolio_row(row, row_number, headers)
+
     last_column = last_nonempty_column(row)
     if last_column <= 1:
         return None
@@ -104,6 +173,13 @@ def normalize_row(row, row_number):
 
     values['row_number'] = row_number
     values['block'] = block
+    values.setdefault('ci', '')
+    values.setdefault('neighborhood', '')
+    values.setdefault('service_type', '')
+    values.setdefault('source_status', '')
+    values.setdefault('mac_onu', '')
+    values.setdefault('meter_number', '')
+    values.setdefault('installation_date', '')
     values['phones'] = sorted({
         phone for phone in values['phones'] if phone and phone not in {'0', '0.0'}
     })
@@ -152,18 +228,30 @@ class Command(BaseCommand):
         rows = list(worksheet.iter_rows(values_only=True))
         workbook.close()
 
+        header_row, portfolio_headers = find_portfolio_header(rows)
         records = []
         ignored_rows = []
-        for row_number, row in enumerate(rows, start=1):
+        source_rows = (
+            rows[header_row + 1:]
+            if portfolio_headers is not None
+            else rows
+        )
+        source_offset = header_row + 2 if portfolio_headers is not None else 1
+        for index, row in enumerate(source_rows):
+            row_number = index + source_offset
             if not any(value not in (None, '') for value in row):
                 continue
-            if row_number == 2 and clean(cell(row, 0)).upper() == 'COBIJA':
+            if (
+                portfolio_headers is None
+                and row_number == 2
+                and clean(cell(row, 0)).upper() == 'COBIJA'
+            ):
                 ignored_rows.append({
                     'row_number': row_number,
                     'reason': 'Encabezado de ubicación',
                 })
                 continue
-            record = normalize_row(row, row_number)
+            record = normalize_row(row, row_number, portfolio_headers)
             if record is None:
                 ignored_rows.append({
                     'row_number': row_number,
@@ -182,7 +270,8 @@ class Command(BaseCommand):
 
         existing = {
             customer.code: customer
-            for customer in Customer.objects.all().only('id', 'code', 'name', 'phone')
+            for customer in Customer.objects.all().only(
+                'id', 'code', 'name', 'ci', 'phone')
         }
 
         customers = []
@@ -196,7 +285,48 @@ class Command(BaseCommand):
             addresses = sorted({
                 item['address'] for item in items if item['address']
             })
+            cis = sorted({item.get('ci', '') for item in items if item.get('ci')})
+            neighborhoods = sorted({
+                item.get('neighborhood', '')
+                for item in items if item.get('neighborhood')
+            })
+            service_types = sorted({
+                item.get('service_type', '')
+                for item in items if item.get('service_type')
+            })
+            source_statuses = sorted({
+                item.get('source_status', '')
+                for item in items if item.get('source_status')
+            })
+            review_reasons = []
+            if len(names) > 1:
+                review_reasons.append('titular_nombre_diferente')
+            if len(cis) > 1:
+                review_reasons.append('cedula_diferente')
+            if len(addresses) > 1:
+                review_reasons.append('direccion_diferente')
+            if len(service_types) > 1:
+                review_reasons.append('tipo_servicio_diferente')
+            if len(services) > 1:
+                review_reasons.append('paquete_diferente')
+            if len(source_statuses) > 1:
+                review_reasons.append('estado_softv_diferente')
             customer = existing.get(code)
+            existing_name_difference = bool(
+                customer and names and not same_text(customer.name, names[0])
+            )
+            existing_ci_difference = bool(
+                customer and cis and customer.ci and customer.ci not in cis
+            )
+            if existing_name_difference:
+                review_reasons.append('nombre_diferente_con_go_vista')
+            if existing_ci_difference:
+                review_reasons.append('cedula_diferente_con_go_vista')
+            reconciliation_status = (
+                'review' if review_reasons
+                else 'matched' if customer
+                else 'new_kardex'
+            )
             customers.append({
                 'code': code,
                 'rows': [item['row_number'] for item in items],
@@ -205,9 +335,14 @@ class Command(BaseCommand):
                 'services': services,
                 'phones': phones,
                 'addresses': addresses,
+                'cis': cis,
+                'neighborhoods': neighborhoods,
+                'service_types': service_types,
+                'source_statuses': source_statuses,
                 'blocks': sorted({item['block'] for item in items}),
                 'existing_customer_id': customer.id if customer else None,
                 'existing_customer_name': customer.name if customer else '',
+                'existing_customer_ci': customer.ci if customer else '',
                 'existing_customer_phone': customer.phone if customer else '',
                 'name_conflict': len(names) > 1,
                 'service_count': len(services),
@@ -216,11 +351,21 @@ class Command(BaseCommand):
                 # repetidos; no se bloquea ni se descarta ningún teléfono.
                 'phone_conflict': len(items) > 1 and len(phones) > 1,
                 'phone_count': len(phones),
+                'review_reasons': review_reasons,
+                'manual_review': bool(review_reasons),
+                'existing_name_difference': existing_name_difference,
+                'existing_ci_difference': existing_ci_difference,
+                'reconciliation_status': reconciliation_status,
             })
 
         report = {
             'file': str(path),
             'sheet': sheet_name,
+            'header_row': header_row + 1 if portfolio_headers is not None else None,
+            'columns': (
+                sorted(portfolio_headers.keys())
+                if portfolio_headers is not None else []
+            ),
             'workbook_sheets': workbook_sheets,
             'total_rows_read': len(rows),
             'data_rows': len(records),
@@ -247,6 +392,9 @@ class Command(BaseCommand):
             ),
             'phone_conflicts': sum(
                 1 for customer in customers if customer['phone_conflict']
+            ),
+            'manual_review': sum(
+                1 for customer in customers if customer['manual_review']
             ),
             'customers': customers,
         }

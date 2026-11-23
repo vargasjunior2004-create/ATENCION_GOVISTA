@@ -20,7 +20,9 @@ from django.db import transaction
 from django.db import close_old_connections
 
 from core.models import Customer
-from .inspect_softv_excel import cell, clean, normalize_row
+from .inspect_softv_excel import (
+    cell, clean, find_portfolio_header, normalize_row,
+)
 
 
 def read_records(path, sheet_name):
@@ -43,15 +45,27 @@ def read_records(path, sheet_name):
 
     rows = list(workbook[sheet_name].iter_rows(values_only=True))
     workbook.close()
+    header_row, portfolio_headers = find_portfolio_header(rows)
     records = []
     ignored = []
-    for row_number, row in enumerate(rows, start=1):
+    source_rows = (
+        rows[header_row + 1:]
+        if portfolio_headers is not None
+        else rows
+    )
+    source_offset = header_row + 2 if portfolio_headers is not None else 1
+    for index, row in enumerate(source_rows):
+        row_number = index + source_offset
         if not any(value not in (None, '') for value in row):
             continue
-        if row_number == 2 and clean(cell(row, 0)).upper() == 'COBIJA':
+        if (
+            portfolio_headers is None
+            and row_number == 2
+            and clean(cell(row, 0)).upper() == 'COBIJA'
+        ):
             ignored.append({'row_number': row_number, 'reason': 'Encabezado'})
             continue
-        record = normalize_row(row, row_number)
+        record = normalize_row(row, row_number, portfolio_headers)
         if record is None:
             ignored.append({
                 'row_number': row_number,

@@ -9,7 +9,7 @@ from .models import (
     TemporaryFunction, TemporaryAssignment, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
     TarifaTraslado, TarifaTrasladoHistorial, TrasladoExterno,
     InventarioMovimiento, CanalCaptacion,
-    CustomerLocation, CustomerLocationHistory,
+    CustomerLocation, CustomerLocationHistory, CustomerEquipment,
 )
 from .models import normalize_canal_captacion_name
 from .domain import (
@@ -391,6 +391,24 @@ class CustomerLookupSerializer(serializers.ModelSerializer):
         if services is None:
             return []
         return CustomerServiceSerializer(services.all(), many=True).data
+
+
+class CustomerEquipmentSerializer(serializers.ModelSerializer):
+    contractNumber = serializers.CharField(
+        source='contract.number', read_only=True, allow_null=True)
+
+    class Meta:
+        model = CustomerEquipment
+        fields = [
+            'id', 'customer', 'contract', 'contractNumber', 'mac_address',
+            'brand', 'model', 'equipment_type', 'status',
+            'assignment_status', 'source', 'source_row', 'notes',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'customer', 'contractNumber', 'source', 'source_row',
+            'created_at', 'updated_at',
+        ]
 
 
 class CustomerServiceSerializer(serializers.ModelSerializer):
