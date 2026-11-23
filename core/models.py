@@ -744,6 +744,46 @@ class Sale(models.Model):
         return f'{self.date} {self.clientName}'
 
 
+class CustomerEquipment(models.Model):
+    """Equipo ONU asociado a un cliente y, cuando existe, a un contrato."""
+    REVIEW_CHOICES = [
+        ('pending', 'Pendiente de revisión'),
+        ('verified', 'Verificado'),
+        ('conflict', 'Requiere revisión'),
+    ]
+
+    customer = models.ForeignKey(
+        Customer, on_delete=models.PROTECT, related_name='equipment_assignments')
+    contract = models.ForeignKey(
+        Contract, null=True, blank=True, on_delete=models.PROTECT,
+        related_name='equipment_assignments')
+    mac_address = models.CharField(max_length=80, db_index=True)
+    brand = models.CharField(max_length=120, blank=True, default='')
+    model = models.CharField(max_length=120, blank=True, default='')
+    equipment_type = models.CharField(max_length=120, blank=True, default='')
+    status = models.CharField(max_length=40, blank=True, default='')
+    assignment_status = models.CharField(
+        max_length=20, choices=REVIEW_CHOICES, default='pending')
+    source = models.CharField(max_length=20, default='softv')
+    source_row = models.PositiveIntegerField(null=True, blank=True)
+    notes = models.CharField(max_length=500, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['customer', 'mac_address'],
+                name='unique_customer_equipment_mac',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['contract', 'assignment_status']),
+            models.Index(fields=['mac_address', 'assignment_status']),
+        ]
+
+
 class SaleIdempotencyKey(models.Model):
     """Resultado de un POST de venta protegido contra reintentos."""
     STATUS_CHOICES = [

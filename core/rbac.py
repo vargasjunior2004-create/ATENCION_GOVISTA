@@ -7,6 +7,9 @@ from .models import RolePermission, TemporaryAssignment
 
 
 PRODUCTIVITY_SUPERVISOR_ROLES = {'gerente', 'jefe-comercial'}
+CUSTOMER_EQUIPMENT_EDIT_ROLES = {
+    'gerente', 'jefe-comercial', 'jefa-operativa', 'sistema-admin',
+}
 
 
 def _role_queryset(user):
@@ -37,6 +40,17 @@ def can_supervise_productivity(user):
         return True
     return _role_queryset(user).filter(
         role__code__in=PRODUCTIVITY_SUPERVISOR_ROLES,
+    ).exists()
+
+
+def can_edit_customer_equipment(user):
+    """Solo responsables comerciales/operativos y administración pueden corregir equipos."""
+    if not user or not getattr(user, 'is_authenticated', False):
+        return False
+    if is_system_admin(user):
+        return True
+    return _role_queryset(user).filter(
+        role__code__in=CUSTOMER_EQUIPMENT_EDIT_ROLES,
     ).exists()
 
 

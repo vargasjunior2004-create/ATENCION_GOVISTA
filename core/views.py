@@ -32,6 +32,7 @@ from .models import (
     TemporaryFunction, TemporaryAssignment, Plan, Promotion, Sale, Backup, TipoSolicitud, Motivo,
     TarifaTraslado, TarifaTrasladoHistorial, SaleIdempotencyKey, AuditLog,
     InventarioMovimiento, CanalCaptacion, CustomerLocation, CustomerLocationHistory,
+    CustomerEquipment,
     UserSession,
 )
 from .serializers import (
@@ -46,6 +47,7 @@ from .serializers import (
     CoverageZoneSerializer, TarifaTrasladoSerializer, TarifaTrasladoHistorialSerializer,
     CanalCaptacionSerializer, CanalCaptacionPublicSerializer,
     CustomerLocationSerializer, CustomerLocationHistorySerializer,
+    CustomerEquipmentSerializer,
 )
 from .domain import (
     request_type_mode, request_type_catalog,
@@ -1958,6 +1960,10 @@ class CustomerDetailView(APIView):
             sales, many=True, context={'catalog': request_type_catalog()}).data
         return Response({
             'customer': CustomerSerializer(customer).data,
+            'equipment': CustomerEquipmentSerializer(
+                customer.equipment_assignments.select_related('contract'),
+                many=True,
+            ).data,
             'softvServices': CustomerServiceSerializer(
                 customer.external_services.all(), many=True).data,
             'summary': {
@@ -1986,6 +1992,33 @@ class CustomerDetailView(APIView):
             request, 'updated', 'customer', customer.id,
             before=before, after=CustomerSerializer(customer).data)
         return Response(CustomerSerializer(customer).data)
+
+
+class CustomerEquipmentDetailView(APIView):
+    """Permite corregir la asignación ONU desde la ficha del cliente."""
+
+    def patch(self, request, pk):
+        from .rbac import can_edit_customer_equipment
+        if not can_edit_customer_equipment(request.user):
+            return Response(
+                {'error': 'No tienes permisos para editar equipos del cliente'},
+                status=403)
+        equipment = CustomerEquipment.objects.filter(
+            pk=pk).select_related('contract', 'customer').first()
+        if equipment is None:
+            return Response({'error': 'Equipo no encontrado'}, status=404)
+        serializer = CustomerEquipmentSerializer(
+            equipment, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response({'error': serializer.errors}, status=400)
+        equipment = serializer.save(assignment_status='verified')
+        from .audit import record_audit
+        record_audit(
+            request, 'updated', 'customer_equipment', equipment.id,
+            module='comercial',
+            after=CustomerEquipmentSerializer(equipment).data,
+        )
+        return Response(CustomerEquipmentSerializer(equipment).data)
 
 
 class ContractMeterReviewView(IsAdminMixin, APIView):

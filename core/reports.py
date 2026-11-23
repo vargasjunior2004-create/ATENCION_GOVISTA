@@ -131,7 +131,7 @@ def _service_filter_label(service_type=None, service_type_from=None):
         parts.append(
             f'servicio anterior: '
             f'{SERVICE_TYPE_LABELS.get(service_type_from, service_type_from)}')
-    return ' - '.join(parts) if parts else 'TODOS LOS SERVICIOS'
+    return ' - '.join(parts) if parts else 'TODOS TIPOS DE SERVICIOS'
 
 
 def _report_identity(sale, public):
@@ -191,7 +191,7 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
     )
 
     header = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD',
-              'PLAN ANTERIOR', 'PLAN ACTUAL']
+               'TIPO DE PLAN']
     if show_motivos:
         header.append('MOTIVO')
     if include_equipment:
