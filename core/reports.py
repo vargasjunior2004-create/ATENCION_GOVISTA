@@ -383,8 +383,8 @@ def build_sales_png(from_date, to_date, request_type=None, service_type=None,
                             service_type_from, technical_only)
 
     headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD',
-               'PLAN ANTERIOR', 'PLAN ACTUAL']
-    col_widths = [140, 130, 300, 240, 180, 180, 180]
+               'PLAN ACTUAL']
+    col_widths = [140, 130, 300, 240, 180, 180]
     if show_motivos:
         headers.append('MOTIVO')
         col_widths.append(200)
