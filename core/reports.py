@@ -191,7 +191,7 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
     )
 
     header = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD',
-               'TIPO DE PLAN']
+              'PLAN', 'PLAN ACTUAL']
     if show_motivos:
         header.append('MOTIVO')
     if include_equipment:
@@ -269,7 +269,7 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
     include_equipment = _has_retirement_rows(sales, request_type, catalog)
 
     headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD',
-               'PLAN ANTERIOR', 'PLAN ACTUAL']
+               'PLAN', 'PLAN ACTUAL']
     if show_motivos:
         headers.append('MOTIVO')
     if include_equipment:
@@ -383,7 +383,7 @@ def build_sales_png(from_date, to_date, request_type=None, service_type=None,
                             service_type_from, technical_only)
 
     headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD',
-               'PLAN ANTERIOR', 'PLAN ACTUAL']
+               'PLAN', 'PLAN ACTUAL']
     col_widths = [140, 130, 300, 240, 180, 180, 180]
     if show_motivos:
         headers.append('MOTIVO')

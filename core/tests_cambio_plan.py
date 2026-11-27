@@ -425,7 +425,8 @@ class CambioPlanEntreServiciosTest(TestCase):
         ws = openpyxl.load_workbook(
             io.BytesIO(build_sales_xlsx(hoy, hoy).getvalue())).active
         headers = [c.value for c in ws[1]]
-        prev_col = headers.index('PLAN ANTERIOR')
+        prev_col = headers.index('PLAN')
+        self.assertNotIn('PLAN ANTERIOR', headers)
         curr_col = headers.index('PLAN ACTUAL')
         rows = {row[1]: row for row in ws.iter_rows(
             min_row=2, values_only=True) if row[0]}
@@ -453,7 +454,8 @@ class CambioPlanEntreServiciosTest(TestCase):
         ws = openpyxl.load_workbook(
             io.BytesIO(build_sales_xlsx(hoy, hoy).getvalue())).active
         headers = [c.value for c in ws[1]]
-        prev_col = headers.index('PLAN ANTERIOR')
+        prev_col = headers.index('PLAN')
+        self.assertNotIn('PLAN ANTERIOR', headers)
         curr_col = headers.index('PLAN ACTUAL')
         row = next(r for r in ws.iter_rows(min_row=2, values_only=True)
                    if r[1] == 'CP001')
