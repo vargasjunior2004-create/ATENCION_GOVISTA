@@ -11,7 +11,7 @@ from .domain import (
     ADDITION_TYPE_LABELS, SERVICE_TYPE_LABELS,
     SERVICE_TYPE_TO_PLAN_TYPE, sale_service_label, sale_plan_labels,
     request_type_label, request_type_mode, request_type_catalog,
-    MODO_ADICION,
+    MODO_ADICION, MODO_CAMBIO_PLAN, codes_with_modes,
 )
 
 def get_request_label(sale, catalog=None):
@@ -93,13 +93,20 @@ def _report_header(title, subtitle):
 # ---------------------------------------------------------------- PDF (sales)
 
 def _sales_queryset(from_date, to_date, request_type=None, service_type=None,
-                    service_type_from=None, technical_only=False):
-    """Movimientos del rango con los filtros aplicados, en una sola regla."""
+                    service_type_from=None, technical_only=False,
+                    catalog=None):
+    """Movimientos reportables del rango con los filtros aplicados."""
     from django.db.models import Q
 
-    qs = Sale.objects.select_related('plan', 'planFromId', 'createdBy').filter(
+    if catalog is None:
+        catalog = request_type_catalog()
+
+    qs = Sale.objects.select_related('plan', 'createdBy').filter(
         deleted_at__isnull=True,
         date__gte=from_date, date__lte=to_date)
+    change_plan_codes = codes_with_modes({MODO_CAMBIO_PLAN}, catalog)
+    if change_plan_codes:
+        qs = qs.exclude(requestType__in=change_plan_codes)
     if request_type:
         qs = qs.filter(requestType=request_type)
     if service_type:
@@ -131,7 +138,7 @@ def _service_filter_label(service_type=None, service_type_from=None):
         parts.append(
             f'servicio anterior: '
             f'{SERVICE_TYPE_LABELS.get(service_type_from, service_type_from)}')
-    return ' - '.join(parts) if parts else 'TODOS LOS SERVICIOS'
+    return ' - '.join(parts) if parts else 'TODOS TIPOS DE SERVICIOS'
 
 
 def _report_identity(sale, public):
@@ -142,6 +149,17 @@ def _report_identity(sale, public):
         sale.clientName or '',
         sale.createdBy.name if sale.createdBy else '',
     )
+
+
+def _has_retirement_rows(sales, request_type, catalog):
+    """Indica si el reporte necesita la columna histórica del equipo."""
+    if request_type and request_type_mode(request_type, catalog) == 'retiro':
+        return True
+    return any(request_type_mode(s.requestType, catalog) == 'retiro' for s in sales)
+
+
+def _equipment_serial(sale):
+    return sale.equipment_serial or 'No registrada'
 
 
 def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
@@ -155,8 +173,9 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
     from reportlab.lib.styles import getSampleStyleSheet
     from datetime import datetime
 
+    catalog = request_type_catalog()
     sales = _sales_queryset(from_date, to_date, request_type, service_type,
-                            service_type_from, technical_only)
+                            service_type_from, technical_only, catalog)
 
     styles = getSampleStyleSheet()
     buf = BytesIO()
@@ -167,7 +186,7 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
     title_from = datetime.strptime(from_date, '%Y-%m-%d').strftime('%d/%m/%Y')
     title_to = datetime.strptime(to_date, '%Y-%m-%d').strftime('%d/%m/%Y')
 
-    catalog = request_type_catalog()
+    include_equipment = _has_retirement_rows(sales, request_type, catalog)
     request_label = (request_type_label(request_type, catalog) if request_type
                      else 'TODAS LAS SOLICITUDES')
     service_label = _service_filter_label(service_type, service_type_from)
@@ -178,10 +197,11 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
         Paragraph('', styles['Normal']),
     )
 
-    header = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD',
-              'PLAN ANTERIOR', 'PLAN ACTUAL']
+    header = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD', 'PLAN']
     if show_motivos:
         header.append('MOTIVO')
+    if include_equipment:
+        header.append('SERIE DEL EQUIPO')
     header += ['MONTO', 'OPERADOR']
 
     # La tabla tiene que caber en A4 horizontal aunque los planes tengan
@@ -193,7 +213,7 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
         'ReportCell', fontSize=7, leading=8)
     rows = [[Paragraph(h, header_style) for h in header]]
     for s in sales:
-        plan_from_label, plan_current_label = sale_plan_labels(s, catalog)
+        _, plan_label = sale_plan_labels(s, catalog)
         client_code, client_name, operator = _report_identity(s, public)
         row = [
             s.date.strftime('%d/%m/%Y') if s.date else '',
@@ -201,11 +221,12 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
             client_name,
             sale_service_label(s, catalog),
             get_request_label(s, catalog),
-            plan_from_label,
-            plan_current_label,
+            plan_label,
         ]
         if show_motivos:
             row.append(s.changeReason or '')
+        if include_equipment:
+            row.append(_equipment_serial(s) if request_type_mode(s.requestType, catalog) == 'retiro' else '')
         row += [
             f'{float(s.total):.2f}',
             operator,
@@ -213,9 +234,11 @@ def build_sales_pdf(from_date, to_date, request_type=None, service_type=None,
         rows.append([Paragraph(escape(str(v)), cell_style) for v in row])
 
     if show_motivos:
-        col_widths = [45, 52, 88, 80, 66, 88, 88, 60, 44, 70]
+        col_widths = [45, 52, 88, 80, 66, 88, 60, 44, 70]
     else:
-        col_widths = [42, 46, 80, 72, 58, 72, 72, 42, 64]
+        col_widths = [42, 46, 80, 72, 58, 72, 42, 64]
+    if include_equipment:
+        col_widths.insert(-2, 64)
 
     table = Table(rows, colWidths=col_widths, repeatRows=1)
     table.setStyle(TableStyle([
@@ -240,17 +263,22 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
+    catalog = request_type_catalog()
     sales = _sales_queryset(from_date, to_date, request_type, service_type,
-                            service_type_from, technical_only)
+                            service_type_from, technical_only, catalog)
 
     wb = Workbook()
     ws = wb.active
     ws.title = 'SOLICITUDES'
 
+    include_equipment = _has_retirement_rows(sales, request_type, catalog)
+
     headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD',
-               'PLAN ANTERIOR', 'PLAN ACTUAL']
+               'PLAN']
     if show_motivos:
         headers.append('MOTIVO')
+    if include_equipment:
+        headers.append('SERIE DEL EQUIPO')
     headers += ['MONTO', 'OPERADOR']
 
     header_font = Font(bold=True, color='FFFFFF')
@@ -270,9 +298,8 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
         cell.alignment = header_alignment
         cell.border = thin_border
 
-    catalog = request_type_catalog()
     for row_idx, s in enumerate(sales, 2):
-        plan_from_label, plan_current_label = sale_plan_labels(s, catalog)
+        _, plan_label = sale_plan_labels(s, catalog)
         client_code, client_name, operator = _report_identity(s, public)
 
         data_row = [
@@ -281,11 +308,12 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
             client_name,
             sale_service_label(s, catalog),
             get_request_label(s, catalog),
-            plan_from_label,
-            plan_current_label,
+            plan_label,
         ]
         if show_motivos:
             data_row.append(s.changeReason or '')
+        if include_equipment:
+            data_row.append(_equipment_serial(s) if request_type_mode(s.requestType, catalog) == 'retiro' else '')
         data_row += [
             float(s.total),
             operator,
@@ -297,9 +325,11 @@ def build_sales_xlsx(from_date, to_date, request_type=None, service_type=None,
             if isinstance(value, float):
                 cell.number_format = '#,##0.00'
 
-    column_widths = [14, 14, 35, 24, 20, 20, 20]
+    column_widths = [14, 14, 35, 24, 20, 20]
     if show_motivos:
         column_widths.append(30)
+    if include_equipment:
+        column_widths.append(26)
     column_widths += [14, 20]
     for i, width in enumerate(column_widths, 1):
         ws.column_dimensions[chr(64 + i)].width = width
@@ -353,12 +383,13 @@ def build_sales_png(from_date, to_date, request_type=None, service_type=None,
     from PIL import Image, ImageDraw, ImageFont
     from datetime import datetime
 
+    catalog = request_type_catalog()
     sales = _sales_queryset(from_date, to_date, request_type, service_type,
-                            service_type_from, technical_only)
+                            service_type_from, technical_only, catalog)
 
     headers = ['FECHA', 'KARDEX', 'CLIENTE', 'SERVICIO', 'SOLICITUD',
-               'PLAN ANTERIOR', 'PLAN ACTUAL']
-    col_widths = [140, 130, 300, 240, 180, 180, 180]
+               'PLAN']
+    col_widths = [140, 130, 300, 240, 180, 180]
     if show_motivos:
         headers.append('MOTIVO')
         col_widths.append(200)
@@ -383,10 +414,9 @@ def build_sales_png(from_date, to_date, request_type=None, service_type=None,
 
     # Primera pasada: envolver cada celda a su columna y medir la fila.
     # El alto total depende de esto, asi que va antes de crear la imagen.
-    catalog = request_type_catalog()
     rows = []
     for s in sales:
-        plan_from_label, plan_current_label = sale_plan_labels(s, catalog)
+        _, plan_label = sale_plan_labels(s, catalog)
         client_code, client_name, operator = _report_identity(s, public)
         values = [
             s.date.strftime('%d/%m/%Y') if s.date else '',
@@ -394,8 +424,7 @@ def build_sales_png(from_date, to_date, request_type=None, service_type=None,
             client_name,
             sale_service_label(s, catalog),
             get_request_label(s, catalog),
-            plan_from_label,
-            plan_current_label,
+            plan_label,
         ]
         if show_motivos:
             values.append(s.changeReason or '')

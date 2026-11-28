@@ -15,7 +15,6 @@ export default function PromotionsModule() {
   const [form, setForm] = useState({ ...emptyForm });
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
-  const [deletingPromo, setDeletingPromo] = useState(null);
   const [filterPlan, setFilterPlan] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
 
@@ -81,18 +80,6 @@ export default function PromotionsModule() {
     } catch (err) { setError(err.error || 'Error al guardar promocion'); }
   };
 
-  const handleDelete = async () => {
-    if (!deletingPromo) return;
-    try {
-      await api.deletePromotion(deletingPromo.id);
-      setDeletingPromo(null);
-      load();
-    } catch (err) {
-      alert(err.error || 'Error al eliminar');
-      setDeletingPromo(null);
-    }
-  };
-
   const toggleActive = async (promo) => {
     try {
       await api.updatePromotion(promo.id, { active: !promo.active });
@@ -150,32 +137,6 @@ export default function PromotionsModule() {
       </Card>
 
       {error && <Alert type="error">{error}</Alert>}
-
-      {/* Delete confirmation */}
-      {deletingPromo && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setDeletingPromo(null)}>
-          <Card className="w-full max-w-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-                <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-900">Eliminar promocion</h3>
-                <p className="text-sm text-slate-500">Esta accion no se puede deshacer</p>
-              </div>
-            </div>
-            <p className="text-sm text-slate-600">
-              Seguro que deseas eliminar la promocion <strong>{deletingPromo.name}</strong>?
-            </p>
-            <div className="flex gap-3 pt-2">
-              <Button variant="danger" onClick={handleDelete}>Si, eliminar</Button>
-              <Button variant="secondary" onClick={() => setDeletingPromo(null)}>Cancelar</Button>
-            </div>
-          </Card>
-        </div>
-      )}
 
       {/* Create/Edit modal */}
       {showForm && (
@@ -273,7 +234,6 @@ export default function PromotionsModule() {
                     <Button variant={p.active ? 'secondary' : 'success'} size="sm" onClick={() => toggleActive(p)}>
                       {p.active ? 'Desactivar' : 'Activar'}
                     </Button>
-                    <Button variant="danger" size="sm" onClick={() => setDeletingPromo(p)}>Eliminar</Button>
                   </td>
                 </tr>
               );
@@ -308,7 +268,6 @@ export default function PromotionsModule() {
                 <Button variant={p.active ? 'secondary' : 'success'} size="sm" onClick={() => toggleActive(p)} className="flex-1">
                   {p.active ? 'Desactivar' : 'Activar'}
                 </Button>
-                <Button variant="danger" size="sm" onClick={() => setDeletingPromo(p)} className="flex-1">Eliminar</Button>
               </div>
             </Card>
           );

@@ -12,6 +12,8 @@ dependencies = [
     "openpyxl>=3.1",
     "whitenoise>=6.0",
     "tzdata",
+    "google-genai>=1.0,<2.0",
+    "pydantic>=2.7,<3.0",
 ]
 
 [tool.uv]

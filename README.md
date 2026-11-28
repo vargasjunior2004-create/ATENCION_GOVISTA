@@ -31,7 +31,7 @@ Login por **nombre de usuario** (no email):
 Despues del login se muestra un selector de modulos:
 
 - **Gestion Comercial:** disponible. Agrupa Dashboard, Nueva Solicitud e Historial, ademas de las herramientas administrativas (Planes, Motivos, Promociones, Usuarios y Copias de Seguridad).
-- **Atencion al Cliente** y **Gestion de Equipos:** visibles como "Proximamente", deshabilitados y sin rutas ni datos ficticios.
+- **Ubicación de Clientes**, **Gestión de atenciones** y **Gestión de Equipos:** visibles como "Próximamente", deshabilitados y sin rutas ni datos ficticios.
 - **Volver a modulos** regresa al selector sin cerrar sesion.
 - Las rutas antiguas se conservan como redirecciones y mantienen los parametros de la URL:
 
@@ -100,19 +100,19 @@ Los reportes del dashboard (PDF, Excel y Foto del dia) estan disponibles para cu
 
 - **Formato desde filtros:** usuario elige PDF o Excel antes de generar
 - **Columnas unificadas:** todos los reportes comparten las mismas columnas:
-  - FECHA | KARDEX | CLIENTE | SERVICIO | SOLICITUD | PLAN ANTERIOR | PLAN ACTUAL | MOTIVO | MONTO | OPERADOR
-  - La columna **MOTIVO** solo aparece cuando se elige `Si, mostrar motivos` en los filtros; sin ella, el reporte mantiene las 9 columnas base
+  - FECHA | KARDEX | CLIENTE | SERVICIO | SOLICITUD | PLAN | MOTIVO | MONTO | OPERADOR
+  - La columna **MOTIVO** solo aparece cuando se elige `Si, mostrar motivos` en los filtros; sin ella, el reporte mantiene las 8 columnas base
 - **Fecha:** formato DD/MM/YYYY en titulo y datos
 - **Solicitud:**
   - Adicion muestra "ADICION INTERNET" o "ADICION TV" segun sub-tipo
-  - Los demas muestran el label estandar (INSTALACIONES, CAMBIO DE PLAN, etc.)
-- **Plan anterior / Plan actual:**
-  - Cambio de Plan muestra el nombre del plan anterior y el del plan nuevo en columnas separadas
-  - Retiro muestra el plan que tenia el cliente antes de retirarse en **PLAN ANTERIOR** y deja **PLAN ACTUAL** vacio (`—`)
-  - Altas, adiciones y demas movimientos sin plan anterior muestran `—` en **PLAN ANTERIOR**
-  - Los nombres se guardan como snapshot (`planFrom` y `planName`) para que renombrar el catalogo no altere movimientos historicos
-- **Servicio:** en cambios de plan muestra la conversion. Si cambia la familia usa "COMBO → INTERNET"; si solo cambia la variante usa "COMBO ANALÓGICO → COMBO DIGITAL"; si el servicio no cambia, muestra solo el servicio
-- **Filtro por servicio anterior:** disponible en el listado y en los reportes, para encontrar las solicitudes donde el cliente venia de otro servicio
+  - Los cambios de plan no se incluyen en los reportes ni en sus conteos
+  - Los demas muestran el label estandar (INSTALACIONES, RETIROS, etc.)
+- **Plan:**
+  - Se muestra solo el plan actual/nuevo bajo **PLAN**; no se incluye el plan anterior
+  - Cuando un movimiento no tiene plan actual, muestra `—`
+  - El plan mostrado se guarda como snapshot (`planName`) para que renombrar el catalogo no altere movimientos historicos
+- **Servicio:** muestra el servicio reportado en cada movimiento incluido
+- **Filtro por servicio anterior:** disponible en el listado y en los filtros del reporte; los cambios de plan permanecen excluidos de los archivos generados
 - **Titulo PDF:** `SOLICITUDES — TIPO SOLICITUD — TIPO SERVICIO` + fechas
 - **Links publicos:** PDF y XLSX con vigencia de 1 hora
 
@@ -377,7 +377,7 @@ Y comparalo con el campo `checksum` del historial en la app.
 
 - `staticfiles/` se genera durante el deploy; WhiteNoise sirve los archivos del backend. Vercel sirve el build React
 - El selector de modulos es solo navegacion; la autorizacion real sigue siendo por rol en el backend. Aun no existen permisos por modulo
-- Atencion al Cliente y Gestion de Equipos estan deshabilitados hasta implementar su backend y permisos
+- Ubicación de Clientes, Gestión de atenciones y Gestión de Equipos están deshabilitados mientras continúa su desarrollo
 - `wsgi.py` ejecuta migraciones + seed automaticamente si no hay datos
 - Pooler de Supabase usa IPv4, compatible con Render free tier
 - Planes legacy no aparecen en el select al registrar nuevas solicitudes

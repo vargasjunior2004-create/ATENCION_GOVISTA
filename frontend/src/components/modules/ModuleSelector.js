@@ -6,7 +6,13 @@ import AccountMenu from '../layout/AccountMenu';
 import ModuleCard from './ModuleCard';
 
 export default function ModuleSelector() {
-  const { user } = useAuth();
+  const { user, isAdmin, hasPermission } = useAuth();
+  const availableModules = MODULES.filter(
+    (module) => (
+      (!module.permission || isAdmin || hasPermission(module.permission))
+      && (!module.role || isAdmin || user?.role === module.role)
+    ),
+  );
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -32,15 +38,11 @@ export default function ModuleSelector() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mt-10">
-          {MODULES.map((module) => (
+          {availableModules.map((module) => (
             <ModuleCard key={module.id} module={module} />
           ))}
         </div>
 
-        <p className="text-xs text-slate-400 mt-8 max-w-xl leading-relaxed">
-          Los módulos marcados como próximamente todavía no están habilitados.
-          No contienen información ni operaciones disponibles.
-        </p>
       </main>
     </div>
   );

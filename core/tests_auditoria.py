@@ -2,7 +2,9 @@ from datetime import date
 
 from django.test import TestCase, Client
 
-from .models import AuditLog, Plan, Sale, User
+from .models import (
+    AuditLog, Plan, Sale, User, CoverageZone, CanalCaptacion,
+)
 
 
 class AuditLogTests(TestCase):
@@ -14,6 +16,10 @@ class AuditLogTests(TestCase):
         self.plan = Plan.objects.create(
             code='AUDIT-PLAN', label='Plan auditoria', type='internet',
             monthly=100, installation=50)
+        self.coverage_zone_id = CoverageZone.objects.get(
+            normalized_name='villa busch').id
+        self.canal_captacion = CanalCaptacion.objects.filter(
+            activo=True).first()
 
     def token(self):
         response = self.client.post(
@@ -28,6 +34,8 @@ class AuditLogTests(TestCase):
                 'clientCode': 'AUDIT-1', 'clientName': 'CLIENTE AUDIT',
                 'serviceType': 'internet', 'requestType': 'nuevo_contrato',
                 'planId': self.plan.id,
+                'coverageZoneId': self.coverage_zone_id,
+                'canalCaptacionId': self.canal_captacion.id,
             }, content_type='application/json',
             HTTP_AUTHORIZATION=f'Bearer {self.token()}')
 

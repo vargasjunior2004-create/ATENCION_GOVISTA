@@ -18,18 +18,43 @@ function getStoredUser() {
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(getStoredUser);
   const [sessionReady, setSessionReady] = useState(() => !localStorage.getItem('token'));
+  const [authNotice, setAuthNotice] = useState('');
 
   const logoutTimer = useRef(null);
+  const logoutInProgress = useRef(false);
 
-  const logout = useCallback(() => {
+  const clearLocalSession = useCallback(() => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setUser(null);
     if (logoutTimer.current) clearTimeout(logoutTimer.current);
   }, []);
 
+  const logout = useCallback(async () => {
+    if (logoutInProgress.current) return { remoteRevoked: false, repeated: true };
+    logoutInProgress.current = true;
+    setAuthNotice('');
+    const token = localStorage.getItem('token');
+    if (!token) {
+      clearLocalSession();
+      logoutInProgress.current = false;
+      return { remoteRevoked: false };
+    }
+    try {
+      await api.logout();
+      clearLocalSession();
+      return { remoteRevoked: true };
+    } catch (error) {
+      clearLocalSession();
+      setAuthNotice('La sesión se cerró en este dispositivo, pero no se pudo confirmar la revocación en el servidor.');
+      return { remoteRevoked: false, error };
+    } finally {
+      logoutInProgress.current = false;
+    }
+  }, [clearLocalSession]);
+
   useEffect(() => {
-    setOnAuthExpired(logout);
+    setOnAuthExpired(clearLocalSession);
 
     let cancelled = false;
     const token = localStorage.getItem('token');
@@ -49,7 +74,7 @@ export function AuthProvider({ children }) {
       })
       .catch(() => {
         if (cancelled) return;
-        logout();
+        clearLocalSession();
         setSessionReady(true);
       });
 
@@ -57,11 +82,11 @@ export function AuthProvider({ children }) {
       cancelled = true;
       setOnAuthExpired(null);
     };
-  }, [logout]);
+  }, [clearLocalSession]);
 
   const resetTimer = useCallback(() => {
     if (logoutTimer.current) clearTimeout(logoutTimer.current);
-    logoutTimer.current = setTimeout(logout, INACTIVITY_TIMEOUT);
+    logoutTimer.current = setTimeout(() => { logout(); }, INACTIVITY_TIMEOUT);
   }, [logout]);
 
   useEffect(() => {
@@ -79,6 +104,7 @@ export function AuthProvider({ children }) {
 
   const login = async (name, password) => {
     const data = await api.login(name, password);
+    setAuthNotice('');
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
     setUser(data.user);
@@ -96,6 +122,7 @@ export function AuthProvider({ children }) {
     sessionReady,
     login,
     logout,
+    authNotice,
     isAdmin,
     hasPermission,
   };

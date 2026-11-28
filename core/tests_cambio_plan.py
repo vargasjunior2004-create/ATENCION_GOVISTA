@@ -9,7 +9,9 @@ from datetime import timedelta
 from django.test import TestCase
 from django.utils import timezone
 
-from .models import User, Plan, Sale, Motivo, Promotion
+from .models import (
+    User, Plan, Sale, Motivo, Promotion, CoverageZone, CanalCaptacion,
+)
 from .domain import SERVICE_TYPE_TO_PLAN_TYPE, sale_service_label
 
 
@@ -40,6 +42,8 @@ class CambioPlanEntreServiciosTest(TestCase):
             categoria='cambio', nombre='MEJOR CALIDAD')
         self.motivo_retiro = Motivo.objects.create(
             categoria='retiro', nombre='MUDANZA')
+        self.canal_captacion = CanalCaptacion.objects.filter(
+            activo=True).first()
 
     def _token(self, user, password):
         r = self.client_.post('/api/auth/login',
@@ -73,6 +77,15 @@ class CambioPlanEntreServiciosTest(TestCase):
             HTTP_AUTHORIZATION=f'Bearer {self._token(self.admin, "pass1")}')
 
     def _post_sale(self, payload):
+        if payload.get('requestType') in {
+                'nuevo_contrato', 'recontratacion', 'traslado_externo'}:
+            payload = {
+                **payload,
+                'coverageZoneId': CoverageZone.objects.get(
+                    normalized_name='villa busch').id,
+            }
+        if payload.get('requestType') == 'nuevo_contrato':
+            payload['canalCaptacionId'] = self.canal_captacion.id
         return self.client_.post(
             '/api/sales', payload, content_type='application/json',
             HTTP_AUTHORIZATION=f'Bearer {self._token(self.admin, "pass1")}')
@@ -111,6 +124,42 @@ class CambioPlanEntreServiciosTest(TestCase):
         # Solo mensualidad: cambiar de servicio no cobra instalacion.
         self.assertEqual(sale.total, self.plans[('internet', 1)].monthly)
         self.assertEqual(sale.applied_installation, Decimal('0'))
+
+    def test_adicion_de_tv_desde_internet_termina_en_combo(self):
+        r = self._post_sale({
+            'clientCode': 'AD001', 'clientName': 'Adicion TV',
+            'serviceType': 'combo_analog', 'serviceTypeFrom': 'internet',
+            'requestType': 'adicion', 'additionType': 'adicion_tv',
+            'planId': self.plans[('combo', 1)].id,
+        })
+        self.assertEqual(r.status_code, 201, r.content)
+        sale = Sale.objects.get(clientCode='AD001')
+        self.assertEqual(sale.requestType, 'adicion')
+        self.assertEqual(sale.serviceTypeFrom, 'internet')
+        self.assertEqual(sale.serviceType, 'combo_analog')
+        self.assertEqual(sale.additionType, 'adicion_tv')
+        self.assertEqual(r.json()['previousService']['family'], 'internet')
+        self.assertEqual(sale_service_label(sale), 'INTERNET → COMBO')
+        self.assertTrue(r.json()['isServiceChange'])
+
+    def test_adicion_de_internet_desde_tv_termina_en_combo(self):
+        r = self._post_sale({
+            'clientCode': 'AD002', 'clientName': 'Adicion Internet',
+            'serviceType': 'combo_digital', 'serviceTypeFrom': 'tv',
+            'requestType': 'adicion', 'additionType': 'adicion_internet',
+            'planId': self.plans[('combo', 1)].id,
+        })
+        self.assertEqual(r.status_code, 201, r.content)
+
+    def test_adicion_exige_servicio_actual_y_coherencia(self):
+        r = self._post_sale({
+            'clientCode': 'AD003', 'clientName': 'Adicion invalida',
+            'serviceType': 'combo_analog', 'requestType': 'adicion',
+            'additionType': 'adicion_tv',
+            'planId': self.plans[('combo', 1)].id,
+        })
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('servicio actual', r.json()['error'])
 
     def test_etiqueta_de_conversion_en_el_reporte(self):
         self._post_cambio('combo', 'internet')
@@ -326,18 +375,18 @@ class CambioPlanEntreServiciosTest(TestCase):
         codigos = {i['clientCode'] for i in r.json()['items']}
         self.assertEqual(codigos, {'F1'})
 
-    def test_reporte_excel_muestra_la_conversion(self):
+    def test_reporte_excel_excluye_cambios_de_plan(self):
         import io
         import openpyxl
         from .reports import build_sales_xlsx
         self._post_cambio('combo', 'internet')
         self._post_cambio('internet', 'combo', client_code='CP002')
         hoy = timezone.localdate().isoformat()
-        buf = build_sales_xlsx(hoy, hoy, 'cambio_plan')
+        buf = build_sales_xlsx(hoy, hoy)
         ws = openpyxl.load_workbook(io.BytesIO(buf.getvalue())).active
-        servicios = [r[3] for r in ws.iter_rows(min_row=2, values_only=True) if r[0]]
-        self.assertIn('COMBO → INTERNET', servicios)
-        self.assertIn('INTERNET → COMBO', servicios)
+        self.assertEqual(list(ws.iter_rows(min_row=2, values_only=True)), [])
+        self.assertIn('PLAN', [cell.value for cell in ws[1]])
+        self.assertNotIn('PLAN ANTERIOR', [cell.value for cell in ws[1]])
 
     def test_variante_de_combo_se_distingue_en_el_reporte(self):
         """Combo analogico -> digital no se confunde con un cambio de familia."""
@@ -354,7 +403,7 @@ class CambioPlanEntreServiciosTest(TestCase):
         self.assertEqual(sale_service_label(sale),
                          'COMBO ANALÓGICO → COMBO DIGITAL')
 
-    def test_xlsx_separa_plan_anterior_y_plan_actual(self):
+    def test_xlsx_muestra_solo_plan_actual_y_excluye_cambios(self):
         import io
         import openpyxl
         from .reports import build_sales_xlsx
@@ -376,17 +425,15 @@ class CambioPlanEntreServiciosTest(TestCase):
         ws = openpyxl.load_workbook(
             io.BytesIO(build_sales_xlsx(hoy, hoy).getvalue())).active
         headers = [c.value for c in ws[1]]
-        prev_col = headers.index('PLAN ANTERIOR')
-        curr_col = headers.index('PLAN ACTUAL')
+        plan_col = headers.index('PLAN')
+        self.assertNotIn('PLAN ANTERIOR', headers)
+        self.assertNotIn('PLAN ACTUAL', headers)
         rows = {row[1]: row for row in ws.iter_rows(
             min_row=2, values_only=True) if row[0]}
 
-        self.assertEqual(rows['CP001'][prev_col], 'COMBO 2')
-        self.assertEqual(rows['CP001'][curr_col], 'INTERNET 1')
-        self.assertEqual(rows['CPN'][prev_col], '—')
-        self.assertEqual(rows['CPN'][curr_col], 'INTERNET 1')
-        self.assertEqual(rows['CPR'][prev_col], 'INTERNET 1')
-        self.assertEqual(rows['CPR'][curr_col], '—')
+        self.assertNotIn('CP001', rows)
+        self.assertEqual(rows['CPN'][plan_col], 'INTERNET 1')
+        self.assertEqual(rows['CPR'][plan_col], '—')
 
     def test_nombres_de_planes_historicos_sobreviven_al_catalogo(self):
         """Renombrar el catalogo no debe reescribir un movimiento ya emitido."""
@@ -394,9 +441,11 @@ class CambioPlanEntreServiciosTest(TestCase):
         import openpyxl
         from .reports import build_sales_xlsx
 
-        self._post_cambio('combo', 'internet', client_code='CP001')
-        self.plans[('combo', 2)].label = 'COMBO RENOMBRADO'
-        self.plans[('combo', 2)].save()
+        self._post_sale({
+            'clientCode': 'CP001', 'clientName': 'Nuevo',
+            'serviceType': 'internet', 'requestType': 'nuevo_contrato',
+            'planId': self.plans[('internet', 1)].id,
+        })
         self.plans[('internet', 1)].label = 'INTERNET RENOMBRADO'
         self.plans[('internet', 1)].save()
 
@@ -404,12 +453,12 @@ class CambioPlanEntreServiciosTest(TestCase):
         ws = openpyxl.load_workbook(
             io.BytesIO(build_sales_xlsx(hoy, hoy).getvalue())).active
         headers = [c.value for c in ws[1]]
-        prev_col = headers.index('PLAN ANTERIOR')
-        curr_col = headers.index('PLAN ACTUAL')
+        plan_col = headers.index('PLAN')
         row = next(r for r in ws.iter_rows(min_row=2, values_only=True)
                    if r[1] == 'CP001')
-        self.assertEqual(row[prev_col], 'COMBO 2')
-        self.assertEqual(row[curr_col], 'INTERNET 1')
+        self.assertNotIn('PLAN ANTERIOR', headers)
+        self.assertNotIn('PLAN ACTUAL', headers)
+        self.assertEqual(row[plan_col], 'INTERNET 1')
 
     def test_edicion_de_plan_limpia_promocion_incompatible(self):
         today = timezone.localdate()
@@ -520,19 +569,25 @@ class CambioPlanEntreServiciosTest(TestCase):
 
     def test_pdf_soporta_nombres_de_plan_largos(self):
         from .reports import build_sales_pdf
-        self._post_cambio('combo', 'internet')
+        self._post_sale({
+            'clientCode': 'CP001', 'clientName': 'Nuevo',
+            'serviceType': 'internet', 'requestType': 'nuevo_contrato',
+            'planId': self.plans[('internet', 1)].id,
+        })
         sale = Sale.objects.get(clientCode='CP001')
-        sale.planFrom = 'PLAN ANTERIOR ' + ('A' * 40)
-        sale.planName = 'PLAN ACTUAL ' + ('B' * 100)
-        sale.save(update_fields=['planFrom', 'planName'])
+        sale.planName = 'PLAN ' + ('B' * 100)
+        sale.save(update_fields=['planName'])
         hoy = timezone.localdate().isoformat()
         buf = build_sales_pdf(hoy, hoy, show_motivos=True)
         self.assertTrue(buf.getvalue().startswith(b'%PDF'))
 
     def test_los_tres_formatos_generan_sin_error(self):
-        from .reports import build_sales_pdf, build_sales_png, build_sales_xlsx
+        from .reports import (
+            _sales_queryset, build_sales_pdf, build_sales_png, build_sales_xlsx,
+        )
         self._post_cambio('combo', 'internet')
         hoy = timezone.localdate().isoformat()
+        self.assertFalse(_sales_queryset(hoy, hoy).exists())
         self.assertTrue(build_sales_pdf(hoy, hoy, 'cambio_plan').getvalue())
         self.assertTrue(build_sales_xlsx(hoy, hoy, 'cambio_plan').getvalue())
         self.assertTrue(build_sales_png(hoy, hoy, 'cambio_plan').getvalue())

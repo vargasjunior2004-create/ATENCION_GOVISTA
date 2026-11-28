@@ -1,11 +1,30 @@
 from django.urls import path
 from . import views
 from . import report_views
+from .atencion_views import (
+    AtencionActionView, AtencionCatalogoListView, AtencionDashboardView,
+    AtencionDetailView, AtencionFinishView, AtencionListView, AtencionStartView,
+    AtencionCatalogoDetailView, AtencionOpenView, AtencionStartCreateView,
+    PagoAtendidoDetailView, PagoAtendidoListView,
+)
 
 urlpatterns = [
     path('health', views.HealthView.as_view()),
     path('ready', views.ReadyView.as_view()),
+    path('atenciones', AtencionListView.as_view()),
+    path('atenciones/iniciar', AtencionStartCreateView.as_view()),
+    path('atenciones/abierta', AtencionOpenView.as_view()),
+    path('atenciones/<uuid:pk>', AtencionDetailView.as_view()),
+    path('atenciones/<uuid:pk>/acciones', AtencionActionView.as_view()),
+    path('atenciones/<uuid:pk>/iniciar', AtencionStartView.as_view()),
+    path('atenciones/<uuid:pk>/finalizar', AtencionFinishView.as_view()),
+    path('call-center/dashboard', AtencionDashboardView.as_view()),
+    path('call-center/catalogs', AtencionCatalogoListView.as_view()),
+    path('call-center/catalogs/<int:pk>', AtencionCatalogoDetailView.as_view()),
+    path('pagos-atendidos', PagoAtendidoListView.as_view()),
+    path('pagos-atendidos/<int:pk>', PagoAtendidoDetailView.as_view()),
     path('auth/login', views.LoginView.as_view()),
+    path('auth/logout', views.LogoutView.as_view()),
     path('auth/me', views.MeView.as_view()),
     path('auth/change-password', views.ChangePasswordView.as_view()),
 
@@ -13,11 +32,19 @@ urlpatterns = [
     path('plans/active', views.ActivePlansView.as_view()),
     path('plans/<int:pk>', views.PlanDetailView.as_view()),
 
+    path('coverage/zones/', views.ActiveCoverageZoneListView.as_view()),
+    path('coverage/zones/manage/', views.CoverageZoneAdminListView.as_view()),
+    path('coverage/zones/<int:pk>/', views.CoverageZoneDetailView.as_view()),
+
     path('request-types/active', views.ActiveRequestTypesView.as_view()),
 
     path('motivos', views.MotivoListView.as_view()),
     path('motivos/active', views.ActiveMotivosView.as_view()),
     path('motivos/<int:pk>', views.MotivoDetailView.as_view()),
+
+    path('canales-captacion', views.CanalCaptacionListView.as_view()),
+    path('canales-captacion/active', views.ActiveCanalesCaptacionView.as_view()),
+    path('canales-captacion/<int:pk>', views.CanalCaptacionDetailView.as_view()),
 
     path('promotions', views.PromotionListView.as_view()),
     path('promotions/active', views.ActivePromotionsView.as_view()),
@@ -31,6 +58,8 @@ urlpatterns = [
     path('sales/<int:pk>/restore', views.SaleRestoreView.as_view()),
     path('sales/<int:pk>', views.SaleDetailView.as_view()),
     path('dashboard/stats', views.DashboardStatsView.as_view()),
+    path('dashboard/productivity', views.CommercialProductivityView.as_view()),
+    path('dashboard/drilldown', views.DashboardDrilldownView.as_view()),
 
     path('users', views.UserListView.as_view()),
     path('users/<int:pk>', views.UserDetailView.as_view()),
@@ -47,6 +76,11 @@ urlpatterns = [
 
     path('customers', views.CustomerListView.as_view()),
     path('customers/<int:pk>', views.CustomerDetailView.as_view()),
+    path('customer-equipment/<int:pk>', views.CustomerEquipmentDetailView.as_view()),
+    path('ubicaciones/clientes', views.CustomerLocationListView.as_view()),
+    path('ubicaciones', views.CustomerLocationCreateView.as_view()),
+    path('ubicaciones/<int:pk>', views.CustomerLocationDetailView.as_view()),
+    path('ubicaciones/<int:pk>/historial', views.CustomerLocationHistoryView.as_view()),
     path('contracts/<int:pk>/meter-review', views.ContractMeterReviewView.as_view()),
     path('contracts/<int:pk>/meter', views.ContractMeterUpdateView.as_view()),
     path('contracts/<int:pk>', views.ContractDetailView.as_view()),

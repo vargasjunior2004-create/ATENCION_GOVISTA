@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'drf_spectacular',
     'core',
+    'administration',
 ]
 
 MIDDLEWARE = [
@@ -184,9 +185,18 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': __import__('datetime').timedelta(hours=8),
     'ROTATE_REFRESH_TOKENS': True,
     # token_blacklist requiere AUTH_USER_MODEL de Django; este proyecto usa
-    # core.User y la integración se planifica para una fase de autenticación.
+    # core.User. La revocación se hace con User.token_version.
     'BLACKLIST_AFTER_ROTATION': False,
 }
+
+# Política de seguridad administrativa.
+PASSWORD_MIN_LENGTH = int(os.environ.get('PASSWORD_MIN_LENGTH', '8'))
+# Los intentos fallidos se registran para auditoría, sin bloqueo automático.
+# Render entrega la IP real en X-Forwarded-For. Solo activar detrás de un
+# proxy confiable; en desarrollo se usa REMOTE_ADDR.
+TRUST_PROXY_HEADERS = os.environ.get(
+    'TRUST_PROXY_HEADERS', 'true' if not DEBUG else 'false'
+).lower() in ('1', 'true', 'yes')
 
 SECURE_SSL_REDIRECT = not DEBUG
 SESSION_COOKIE_SECURE = not DEBUG
@@ -211,3 +221,9 @@ LOGGING = {
 
 # Ruta donde se sirve el build del frontend React (producción)
 FRONTEND_BUILD_DIR = BASE_DIR / 'frontend_build'
+
+# Storage privado para fotografías sensibles de domicilios.
+SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
+SUPABASE_STORAGE_BUCKET = os.environ.get(
+    'SUPABASE_STORAGE_BUCKET', 'ubicaciones-clientes')
