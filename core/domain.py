@@ -229,7 +229,7 @@ def sale_plan_labels(sale, catalog=None):
     - Cambio de plan: el anterior sale del snapshot `planFrom` y el actual
       del snapshot `planName`, con el catalogo como respaldo.
     - Retiro: el unico plan del movimiento es el que tenia el cliente antes
-      de retirarse, por eso va en la columna anterior y la actual queda vacia.
+      de retirarse, por eso se muestra en la columna actual que usa el reporte.
     - Altas, adiciones y demas: no tienen plan anterior.
     """
     mode = request_type_mode(sale.requestType, catalog)
@@ -237,7 +237,7 @@ def sale_plan_labels(sale, catalog=None):
                          getattr(sale, 'planName', ''))
 
     if mode == MODO_RETIRO:
-        return current or PLAN_EMPTY, PLAN_EMPTY
+        return PLAN_EMPTY, current or PLAN_EMPTY
 
     if mode == MODO_CAMBIO_PLAN:
         previous = _plan_label(getattr(sale, 'planFromId', None),

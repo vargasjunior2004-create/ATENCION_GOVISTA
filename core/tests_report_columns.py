@@ -40,6 +40,12 @@ class ReportEquipmentColumnTests(TestCase):
         self.assertEqual(rows[0][serial_index], 'ONU-001')
         self.assertEqual(rows[1][serial_index], 'No registrada')
 
+    def test_retirement_report_shows_plan_in_plan_column(self):
+        self.sale('retiro', 'RET-PLAN')
+        headers, rows = self.xlsx_headers_and_rows('retiro')
+        plan_index = headers.index('PLAN')
+        self.assertEqual(rows[0][plan_index], self.plan.label)
+
     def test_non_retirement_report_does_not_include_serial(self):
         self.sale('nuevo_contrato', 'NEW-001')
         headers, _ = self.xlsx_headers_and_rows('nuevo_contrato')
